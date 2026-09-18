@@ -63,8 +63,8 @@ fn plr_login_with_resolution(gs: &mut GameState, nr: usize) {
             nr,
             login_ticket_data.character_id,
             &character.name,
-            "login",
-            "rejected",
+            player_logging::PlayerLogCategory::Login,
+            player_logging::PlayerLogOutcome::Rejected,
             &format!("client_version_too_old version={version}"),
         );
         log::warn!("Client too old ({}). Logout demanded", version);
@@ -79,8 +79,8 @@ fn plr_login_with_resolution(gs: &mut GameState, nr: usize) {
                 nr,
                 login_ticket_data.character_id,
                 &character.name,
-                "login",
-                "rejected",
+                player_logging::PlayerLogCategory::Login,
+                player_logging::PlayerLogOutcome::Rejected,
                 &format!("character_validation_failed reason={reason:?}"),
             );
             log::warn!("API login denied: {:?}", reason);
@@ -98,7 +98,12 @@ fn plr_login_with_resolution(gs: &mut GameState, nr: usize) {
     let cn = gs.players[nr].usnr;
 
     player_logging::bind_player(cn, nr, login_ticket_data.character_id, &character.name);
-    player_logging::log_event(cn, "login", "attempt", "character record accepted");
+    player_logging::log_event(
+        cn,
+        player_logging::PlayerLogCategory::Login,
+        player_logging::PlayerLogOutcome::Attempt,
+        "character record accepted",
+    );
 
     if cn == 0 || cn >= core::constants::MAXCHARS {
         log::warn!("Login as {} denied (illegal cn)", cn);
@@ -284,7 +289,12 @@ fn plr_login_with_resolution(gs: &mut GameState, nr: usize) {
     gs.really_update_char(cn);
 
     log::info!("Login successful");
-    player_logging::log_event(cn, "login", "success", "login completed");
+    player_logging::log_event(
+        cn,
+        player_logging::PlayerLogCategory::Login,
+        player_logging::PlayerLogOutcome::Success,
+        "login completed",
+    );
 
     // intro messages
     let intro1 = "Welcome to Men Among Gods, my friend!\n";
@@ -504,8 +514,8 @@ pub fn plr_logout(gs: &mut GameState, character_id: usize, player_id: usize, rea
         let character_name = gs.characters[character_id].get_name().to_owned();
         player_logging::log_event(
             character_id,
-            "logout",
-            "success",
+            player_logging::PlayerLogCategory::Logout,
+            player_logging::PlayerLogOutcome::Success,
             &format!("reason={reason:?} name=\"{character_name}\""),
         );
         if reason != LogoutReason::Shutdown {

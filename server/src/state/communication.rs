@@ -1,7 +1,10 @@
 use crate::game_state::GameState;
 use crate::god::God;
 use crate::network_manager;
-use crate::{driver, helpers, player_logging};
+use crate::{
+    driver, helpers,
+    player_logging::{self, PlayerLogCategory as LogCategory, PlayerLogOutcome as LogOutcome},
+};
 use core::constants::{CT_LGUARD, CharacterFlags};
 use core::ranks::Rank;
 use core::server_commands::ServerCommandType;
@@ -904,12 +907,17 @@ impl GameState {
         if text == self.god_password.as_str() {
             player_logging::log_event(
                 cn,
-                "chat",
-                "attempt",
+                LogCategory::Chat,
+                LogOutcome::Attempt,
                 "god password authentication attempt (content redacted)",
             );
         } else {
-            player_logging::log_event(cn, "chat", "attempt", &format!("public_text=\"{}\"", text));
+            player_logging::log_event(
+                cn,
+                LogCategory::Chat,
+                LogOutcome::Attempt,
+                &format!("public_text=\"{}\"", text),
+            );
         }
         // Rate limiting for players (skip for direct '|' logs)
         if (self.characters[cn].flags & CharacterFlags::Player.bits()) != 0
@@ -919,7 +927,12 @@ impl GameState {
             let can_proceed = self.characters[cn].data[71] <= core::constants::MAXSAY;
 
             if !can_proceed {
-                player_logging::log_event(cn, "chat", "rejected", "public speech rate limited");
+                player_logging::log_event(
+                    cn,
+                    LogCategory::Chat,
+                    LogOutcome::Rejected,
+                    "public speech rate limited",
+                );
                 self.do_character_log(
                     cn,
                     FontColor::Green,
@@ -997,19 +1010,34 @@ impl GameState {
         // direct log write from client
         if text.strip_prefix('|').is_some() {
             log::info!("Character {} issued direct log input", cn);
-            player_logging::log_event(cn, "chat", "success", "direct log input (content redacted)");
+            player_logging::log_event(
+                cn,
+                LogCategory::Chat,
+                LogOutcome::Success,
+                "direct log input (content redacted)",
+            );
             return;
         }
 
         if text.starts_with('#') || text.starts_with('/') {
-            player_logging::log_event(cn, "command", "attempt", "chat command dispatched");
+            player_logging::log_event(
+                cn,
+                LogCategory::Command,
+                LogOutcome::Attempt,
+                "chat command dispatched",
+            );
             self.do_command(cn, &text[1..]);
             return;
         }
 
         // shutup check
         if (self.characters[cn].flags & CharacterFlags::ShutUp.bits()) != 0 {
-            player_logging::log_event(cn, "chat", "rejected", "character is muted");
+            player_logging::log_event(
+                cn,
+                LogCategory::Chat,
+                LogOutcome::Rejected,
+                "character is muted",
+            );
             self.do_character_log(
                 cn,
                 FontColor::Red,
@@ -1086,7 +1114,12 @@ impl GameState {
         }
 
         if is_player_or_usurp {
-            player_logging::log_event(cn, "chat", "success", &format!("public_text=\"{}\"", ptr));
+            player_logging::log_event(
+                cn,
+                LogCategory::Chat,
+                LogOutcome::Success,
+                &format!("public_text=\"{}\"", ptr),
+            );
             chlog!(cn, "Says \"{}\"", ptr);
         }
 
@@ -1105,15 +1138,15 @@ impl GameState {
         };
         player_logging::log_event(
             cn,
-            "chat",
-            "attempt",
+            LogCategory::Chat,
+            LogOutcome::Attempt,
             &format!("tell_target=\"{con}\" text=\"{audit_text}\""),
         );
         if (self.characters[cn].flags & CharacterFlags::ShutUp.bits()) != 0 {
             player_logging::log_event(
                 cn,
-                "chat",
-                "rejected",
+                LogCategory::Chat,
+                LogOutcome::Rejected,
                 "tell blocked because character is muted",
             );
             self.do_character_log(
@@ -1125,7 +1158,12 @@ impl GameState {
         }
         let co = self.do_lookup_char(con) as usize;
         if co == 0 {
-            player_logging::log_event(cn, "chat", "rejected", "tell target was not found");
+            player_logging::log_event(
+                cn,
+                LogCategory::Chat,
+                LogOutcome::Rejected,
+                "tell target was not found",
+            );
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -1155,7 +1193,12 @@ impl GameState {
             || (co_invis && cn_invis_level < co_invis_level)
             || (!cn_is_god && (co_notell || is_ignored))
         {
-            player_logging::log_event(cn, "chat", "rejected", "tell target is not listening");
+            player_logging::log_event(
+                cn,
+                LogCategory::Chat,
+                LogOutcome::Rejected,
+                "tell target is not listening",
+            );
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -1188,7 +1231,12 @@ impl GameState {
             }
         }
         if text.is_empty() {
-            player_logging::log_event(cn, "chat", "rejected", "tell text was empty");
+            player_logging::log_event(
+                cn,
+                LogCategory::Chat,
+                LogOutcome::Rejected,
+                "tell text was empty",
+            );
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -1213,14 +1261,14 @@ impl GameState {
         );
         player_logging::log_event(
             co,
-            "chat",
-            "success",
+            LogCategory::Chat,
+            LogOutcome::Success,
             &format!("received_tell_from=\"{cn_name}\" text=\"{audit_text}\""),
         );
         player_logging::log_event(
             cn,
-            "chat",
-            "success",
+            LogCategory::Chat,
+            LogOutcome::Success,
             &format!("told=\"{co_name}\" text=\"{audit_text}\""),
         );
         if cn == co {
@@ -1246,20 +1294,25 @@ impl GameState {
         };
         player_logging::log_event(
             cn,
-            "chat",
-            "attempt",
+            LogCategory::Chat,
+            LogOutcome::Attempt,
             &format!("group_text=\"{audit_text}\""),
         );
         if text.is_empty() {
-            player_logging::log_event(cn, "chat", "rejected", "group tell text was empty");
+            player_logging::log_event(
+                cn,
+                LogCategory::Chat,
+                LogOutcome::Rejected,
+                "group tell text was empty",
+            );
             self.do_character_log(cn, core::types::FontColor::Red, "Group-Tell. Yes. group-tell it will be. But what do you want to tell the other group members?\n");
             return;
         }
         if (self.characters[cn].flags & CharacterFlags::ShutUp.bits()) != 0 {
             player_logging::log_event(
                 cn,
-                "chat",
-                "rejected",
+                LogCategory::Chat,
+                LogOutcome::Rejected,
                 "group tell blocked because character is muted",
             );
             self.do_character_log(
@@ -1291,8 +1344,8 @@ impl GameState {
                     );
                     player_logging::log_event(
                         co,
-                        "chat",
-                        "success",
+                        LogCategory::Chat,
+                        LogOutcome::Success,
                         &format!("received_group_tell_from=\"{name}\" text=\"{audit_text}\""),
                     );
                     found = true;
@@ -1310,12 +1363,17 @@ impl GameState {
             }
             player_logging::log_event(
                 cn,
-                "chat",
-                "success",
+                LogCategory::Chat,
+                LogOutcome::Success,
                 &format!("group_text=\"{audit_text}\""),
             );
         } else {
-            player_logging::log_event(cn, "chat", "rejected", "character has no group");
+            player_logging::log_event(
+                cn,
+                LogCategory::Chat,
+                LogOutcome::Rejected,
+                "character has no group",
+            );
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -1335,20 +1393,25 @@ impl GameState {
         };
         player_logging::log_event(
             cn,
-            "chat",
-            "attempt",
+            LogCategory::Chat,
+            LogOutcome::Attempt,
             &format!("staff_text=\"{audit_text}\""),
         );
         if text.is_empty() {
-            player_logging::log_event(cn, "chat", "rejected", "staff tell text was empty");
+            player_logging::log_event(
+                cn,
+                LogCategory::Chat,
+                LogOutcome::Rejected,
+                "staff tell text was empty",
+            );
             self.do_character_log(cn, core::types::FontColor::Red, "Staff-Tell. Yes. staff-tell it will be. But what do you want to tell the other staff members?\n");
             return;
         }
         if (self.characters[cn].flags & CharacterFlags::ShutUp.bits()) != 0 {
             player_logging::log_event(
                 cn,
-                "chat",
-                "rejected",
+                LogCategory::Chat,
+                LogOutcome::Rejected,
                 "staff tell blocked because character is muted",
             );
             self.do_character_log(
@@ -1368,8 +1431,8 @@ impl GameState {
         }
         player_logging::log_event(
             cn,
-            "chat",
-            "success",
+            LogCategory::Chat,
+            LogOutcome::Success,
             &format!("staff_text=\"{audit_text}\""),
         );
     }
@@ -1383,17 +1446,27 @@ impl GameState {
         } else {
             text
         };
-        player_logging::log_event(cn, "chat", "attempt", &format!("imp_text=\"{audit_text}\""));
+        player_logging::log_event(
+            cn,
+            LogCategory::Chat,
+            LogOutcome::Attempt,
+            &format!("imp_text=\"{audit_text}\""),
+        );
         if text.is_empty() {
-            player_logging::log_event(cn, "chat", "rejected", "imp tell text was empty");
+            player_logging::log_event(
+                cn,
+                LogCategory::Chat,
+                LogOutcome::Rejected,
+                "imp tell text was empty",
+            );
             self.do_character_log(cn, core::types::FontColor::Red, "Imp-Tell. Yes. imp-tell it will be. But what do you want to tell the other imps?\n");
             return;
         }
         if (self.characters[cn].flags & CharacterFlags::ShutUp.bits()) != 0 {
             player_logging::log_event(
                 cn,
-                "chat",
-                "rejected",
+                LogCategory::Chat,
+                LogOutcome::Rejected,
                 "imp tell blocked because character is muted",
             );
             self.do_character_log(
@@ -1420,7 +1493,12 @@ impl GameState {
         if (self.characters[cn].flags & CharacterFlags::Player.bits()) != 0 {
             log::info!("imp-tells \"{}\"", audit_text);
         }
-        player_logging::log_event(cn, "chat", "success", &format!("imp_text=\"{audit_text}\""));
+        player_logging::log_event(
+            cn,
+            LogCategory::Chat,
+            LogOutcome::Success,
+            &format!("imp_text=\"{audit_text}\""),
+        );
     }
 
     /// Port of `do_shout(int cn, const char *text)` from `svr_do.cpp`
@@ -1434,12 +1512,17 @@ impl GameState {
         };
         player_logging::log_event(
             cn,
-            "chat",
-            "attempt",
+            LogCategory::Chat,
+            LogOutcome::Attempt,
             &format!("shout_text=\"{audit_text}\""),
         );
         if text.is_empty() {
-            player_logging::log_event(cn, "chat", "rejected", "shout text was empty");
+            player_logging::log_event(
+                cn,
+                LogCategory::Chat,
+                LogOutcome::Rejected,
+                "shout text was empty",
+            );
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -1448,7 +1531,12 @@ impl GameState {
             return;
         }
         if self.characters[cn].a_end < 50000 {
-            player_logging::log_event(cn, "chat", "rejected", "shout lacked endurance");
+            player_logging::log_event(
+                cn,
+                LogCategory::Chat,
+                LogOutcome::Rejected,
+                "shout lacked endurance",
+            );
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -1459,8 +1547,8 @@ impl GameState {
         if (self.characters[cn].flags & CharacterFlags::ShutUp.bits()) != 0 {
             player_logging::log_event(
                 cn,
-                "chat",
-                "rejected",
+                LogCategory::Chat,
+                LogOutcome::Rejected,
                 "shout blocked because character is muted",
             );
             self.do_character_log(
@@ -1493,8 +1581,8 @@ impl GameState {
         }
         player_logging::log_event(
             cn,
-            "chat",
-            "success",
+            LogCategory::Chat,
+            LogOutcome::Success,
             &format!("shout_text=\"{audit_text}\""),
         );
     }

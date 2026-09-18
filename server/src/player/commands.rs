@@ -464,11 +464,21 @@ pub fn plr_cmd_skill(gs: &mut GameState, nr: usize) {
 
     // sanity checks: skill index must be within available skill table
     if n >= core::types::Character::default().skill.len() {
-        player_logging::log_event(cn, "spell", "rejected", &format!("invalid_skill={n}"));
+        player_logging::log_event(
+            cn,
+            player_logging::PlayerLogCategory::Spell,
+            player_logging::PlayerLogOutcome::Rejected,
+            &format!("invalid_skill={n}"),
+        );
         return;
     }
     if co >= core::constants::MAXCHARS {
-        player_logging::log_event(cn, "spell", "rejected", &format!("invalid_target={co}"));
+        player_logging::log_event(
+            cn,
+            player_logging::PlayerLogCategory::Spell,
+            player_logging::PlayerLogOutcome::Rejected,
+            &format!("invalid_target={co}"),
+        );
         return;
     }
 
@@ -477,8 +487,8 @@ pub fn plr_cmd_skill(gs: &mut GameState, nr: usize) {
     if !has_skill {
         player_logging::log_event(
             cn,
-            "spell",
-            "rejected",
+            player_logging::PlayerLogCategory::Spell,
+            player_logging::PlayerLogOutcome::Rejected,
             &format!("skill_not_known={n} target={co}"),
         );
         return;

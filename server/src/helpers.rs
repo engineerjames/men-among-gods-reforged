@@ -18,7 +18,12 @@ macro_rules! chlog {
         let prefix = format!("Character {}: ", $cn);
         let message = format!($fmt $(, $args)*);
         log::info!("{}{}", prefix, message);
-        crate::player_logging::log_event($cn, "gameplay", "success", &message);
+        crate::player_logging::log_event(
+            $cn,
+            crate::player_logging::PlayerLogCategory::Gameplay,
+            crate::player_logging::PlayerLogOutcome::Success,
+            &message,
+        );
     };
 }
 

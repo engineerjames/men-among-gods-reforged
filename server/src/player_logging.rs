@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::{self, Display};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -13,6 +14,59 @@ const MAX_MESSAGE_BYTES: usize = 4096;
 
 static PLAYER_LOGGER: OnceLock<Mutex<PlayerLogManager>> = OnceLock::new();
 
+/// Categorizes an event written to a player audit log.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlayerLogCategory {
+    /// Login and authentication lifecycle event.
+    Login,
+    /// Logout and disconnect lifecycle event.
+    Logout,
+    /// Player speech or other communication event.
+    Chat,
+    /// Player command dispatch event.
+    Command,
+    /// Skill or spell event.
+    Spell,
+    /// Gameplay event emitted by the shared gameplay log funnel.
+    Gameplay,
+}
+
+impl Display for PlayerLogCategory {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let value = match self {
+            Self::Login => "LOGIN",
+            Self::Logout => "LOGOUT",
+            Self::Chat => "CHAT",
+            Self::Command => "COMMAND",
+            Self::Spell => "SPELL",
+            Self::Gameplay => "GAMEPLAY",
+        };
+        formatter.write_str(value)
+    }
+}
+
+/// Describes the result of a player audit event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlayerLogOutcome {
+    /// The player action was received but has not completed.
+    Attempt,
+    /// The player action completed successfully.
+    Success,
+    /// The player action was refused or could not complete.
+    Rejected,
+}
+
+impl Display for PlayerLogOutcome {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let value = match self {
+            Self::Attempt => "ATTEMPT",
+            Self::Success => "SUCCESS",
+            Self::Rejected => "REJECTED",
+        };
+        formatter.write_str(value)
+    }
+}
+
 struct PlayerLogManager {
     directory: PathBuf,
     active_logs: HashMap<usize, ActivePlayerLog>,
@@ -20,8 +74,9 @@ struct PlayerLogManager {
 
 struct ActivePlayerLog {
     api_character_id: u64,
+    character_slot: usize,
     name: String,
-    player_slot: usize,
+    server_slot: usize,
     path: PathBuf,
     file: File,
 }
@@ -67,16 +122,16 @@ pub fn initialize(directory: impl AsRef<Path>) -> io::Result<()> {
 /// # Arguments
 ///
 /// * `character_slot` - Runtime character slot used by gameplay code.
-/// * `player_slot` - Runtime network-player slot included in event records.
+/// * `server_slot` - Runtime server connection slot included in event records.
 /// * `api_character_id` - Stable API character identifier used in filenames.
 /// * `name` - Current character name used in the filename and event records.
-pub fn bind_player(character_slot: usize, player_slot: usize, api_character_id: u64, name: &str) {
+pub fn bind_player(character_slot: usize, server_slot: usize, api_character_id: u64, name: &str) {
     if api_character_id == 0 {
         return;
     }
 
     with_manager(|manager| {
-        if let Err(error) = manager.bind_player(character_slot, player_slot, api_character_id, name)
+        if let Err(error) = manager.bind_player(character_slot, server_slot, api_character_id, name)
         {
             eprintln!("Warning: could not bind player log: {}", error);
         }
@@ -102,13 +157,22 @@ pub fn unbind_player(character_slot: usize) {
 /// # Arguments
 ///
 /// * `character_slot` - Runtime character slot associated with the event.
-/// * `category` - Stable audit category such as `chat` or `spell`.
-/// * `outcome` - Outcome such as `attempt`, `success`, or `rejected`.
+/// * `category` - Typed audit category such as [`PlayerLogCategory::Chat`] or
+///   [`PlayerLogCategory::Spell`].
+/// * `outcome` - Typed outcome such as [`PlayerLogOutcome::Attempt`],
+///   [`PlayerLogOutcome::Success`], or [`PlayerLogOutcome::Rejected`].
 /// * `message` - Human-readable event detail.
-pub fn log_event(character_slot: usize, category: &str, outcome: &str, message: &str) {
+#[track_caller]
+pub fn log_event(
+    character_slot: usize,
+    category: PlayerLogCategory,
+    outcome: PlayerLogOutcome,
+    message: &str,
+) {
+    let location = std::panic::Location::caller();
     with_manager(|manager| {
         if let Some(active_log) = manager.active_logs.get_mut(&character_slot)
-            && let Err(error) = active_log.write_event(category, outcome, message)
+            && let Err(error) = active_log.write_event(category, outcome, message, location)
         {
             eprintln!("Warning: could not write player log: {}", error);
         }
@@ -120,32 +184,35 @@ pub fn log_event(character_slot: usize, category: &str, outcome: &str, message: 
 ///
 /// # Arguments
 ///
-/// * `player_slot` - Runtime network-player slot.
+/// * `server_slot` - Runtime server connection slot.
 /// * `api_character_id` - Stable API character identifier.
 /// * `name` - Character name supplied by the API.
 /// * `category` - Stable audit category.
 /// * `outcome` - Event outcome.
 /// * `message` - Human-readable event detail.
+#[track_caller]
 pub fn log_identity_event(
-    player_slot: usize,
+    server_slot: usize,
     api_character_id: u64,
     name: &str,
-    category: &str,
-    outcome: &str,
+    category: PlayerLogCategory,
+    outcome: PlayerLogOutcome,
     message: &str,
 ) {
     if api_character_id == 0 {
         return;
     }
 
+    let location = std::panic::Location::caller();
     with_manager(|manager| {
         if let Err(error) = manager.write_identity_event(
-            player_slot,
+            server_slot,
             api_character_id,
             name,
             category,
             outcome,
             message,
+            location,
         ) {
             eprintln!("Warning: could not write player identity log: {}", error);
         }
@@ -168,7 +235,7 @@ impl PlayerLogManager {
     fn bind_player(
         &mut self,
         character_slot: usize,
-        player_slot: usize,
+        server_slot: usize,
         api_character_id: u64,
         name: &str,
     ) -> io::Result<()> {
@@ -183,8 +250,9 @@ impl PlayerLogManager {
             character_slot,
             ActivePlayerLog {
                 api_character_id,
+                character_slot,
                 name: sanitized_name,
-                player_slot,
+                server_slot,
                 path,
                 file,
             },
@@ -194,12 +262,13 @@ impl PlayerLogManager {
 
     fn write_identity_event(
         &self,
-        player_slot: usize,
+        server_slot: usize,
         api_character_id: u64,
         name: &str,
-        category: &str,
-        outcome: &str,
+        category: PlayerLogCategory,
+        outcome: PlayerLogOutcome,
         message: &str,
+        location: &'static std::panic::Location<'static>,
     ) -> io::Result<()> {
         let sanitized_name = sanitize_name(name);
         let path = self.log_path(api_character_id, &sanitized_name);
@@ -209,11 +278,13 @@ impl PlayerLogManager {
             &mut file,
             &path,
             api_character_id,
+            None,
             &sanitized_name,
-            player_slot,
+            server_slot,
             category,
             outcome,
             message,
+            location,
         )
     }
 
@@ -224,16 +295,24 @@ impl PlayerLogManager {
 }
 
 impl ActivePlayerLog {
-    fn write_event(&mut self, category: &str, outcome: &str, message: &str) -> io::Result<()> {
+    fn write_event(
+        &mut self,
+        category: PlayerLogCategory,
+        outcome: PlayerLogOutcome,
+        message: &str,
+        location: &'static std::panic::Location<'static>,
+    ) -> io::Result<()> {
         write_event(
             &mut self.file,
             &self.path,
             self.api_character_id,
+            Some(self.character_slot),
             &self.name,
-            self.player_slot,
+            self.server_slot,
             category,
             outcome,
             message,
+            location,
         )
     }
 }
@@ -242,22 +321,29 @@ fn write_event(
     file: &mut File,
     path: &Path,
     api_character_id: u64,
+    character_slot: Option<usize>,
     name: &str,
-    player_slot: usize,
-    category: &str,
-    outcome: &str,
+    server_slot: usize,
+    category: PlayerLogCategory,
+    outcome: PlayerLogOutcome,
     message: &str,
+    location: &'static std::panic::Location<'static>,
 ) -> io::Result<()> {
     let message = sanitize_message(message);
+    let character_slot =
+        character_slot.map_or_else(|| "unknown".to_owned(), |slot| slot.to_string());
+    let source = source_location(location);
     let line = format!(
-        "{} api_character_id={} name=\"{}\" player_slot={} category={} outcome={} message=\"{}\"\n",
+        "{} {} [{}][{}] - {} (api_character_id={} character_slot={} server_slot={} name=\"{}\")\n",
         Utc::now().format("%Y-%m-%dT%H:%M:%S%.f"),
-        api_character_id,
-        escape_field(name),
-        player_slot,
-        escape_field(category),
-        escape_field(outcome),
+        source,
+        category,
+        outcome,
         escape_field(&message),
+        api_character_id,
+        character_slot,
+        server_slot,
+        escape_field(name),
     );
 
     if file.metadata()?.len().saturating_add(line.len() as u64) > MAX_LOG_BYTES {
@@ -268,6 +354,14 @@ fn write_event(
 
     file.write_all(line.as_bytes())?;
     file.flush()
+}
+
+fn source_location(location: &'static std::panic::Location<'static>) -> String {
+    let file = location.file();
+    let file = file
+        .rsplit_once("/server/")
+        .map_or_else(|| file.to_owned(), |(_, suffix)| format!("server/{suffix}"));
+    format!("{}:{}", file, location.line())
 }
 
 fn open_append(path: &Path) -> io::Result<File> {
@@ -376,7 +470,10 @@ fn escape_field(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::sanitize_name;
+    use std::collections::HashMap;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::{PlayerLogCategory, PlayerLogManager, PlayerLogOutcome, sanitize_name};
 
     #[test]
     fn sanitize_name_removes_path_and_control_characters() {
@@ -395,5 +492,49 @@ mod tests {
     fn sanitize_name_uses_fallback_for_empty_names() {
         assert_eq!(sanitize_name(""), "unknown");
         assert_eq!(sanitize_name(".."), "unknown");
+    }
+
+    #[test]
+    fn event_preserves_distinct_identity_fields_and_enum_values() {
+        let unique_id = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock should be after the Unix epoch")
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "mag-player-log-test-{}-{unique_id}",
+            std::process::id()
+        ));
+        std::fs::create_dir(&directory).expect("test log directory should be creatable");
+        let mut manager = PlayerLogManager {
+            directory: directory.clone(),
+            active_logs: HashMap::new(),
+        };
+        manager
+            .bind_player(12, 1, 77, "Ashrune")
+            .expect("player log should be bindable");
+
+        manager
+            .active_logs
+            .get_mut(&12)
+            .expect("bound player log should exist")
+            .write_event(
+                PlayerLogCategory::Login,
+                PlayerLogOutcome::Success,
+                "login completed",
+                std::panic::Location::caller(),
+            )
+            .expect("test event should be writable");
+        drop(manager);
+
+        let path = directory.join("77_Ashrune.log");
+        let line = std::fs::read_to_string(&path).expect("test log should be readable");
+        assert!(line.contains("[LOGIN][SUCCESS] - login completed"));
+        assert!(
+            line.contains("(api_character_id=77 character_slot=12 server_slot=1 name=\"Ashrune\")")
+        );
+        assert!(line.contains("server/src/player_logging.rs:"));
+        assert!(line.contains("T") && !line.contains("-06:00"));
+
+        std::fs::remove_dir_all(directory).expect("test log directory should be removable");
     }
 }

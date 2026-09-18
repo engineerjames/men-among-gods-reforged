@@ -18,7 +18,9 @@ Each active log is limited to 100 MiB and retains five fixed-window archives.
 The server container sets `MAG_LOG_DIR=/var/mag/logs` and mounts
 `./server/logs` so logs survive container replacement. Player audit records
 include login/logout, communication, and spell/action outcomes; credentials,
-login tickets, and password contents are redacted or omitted.
+login tickets, and password contents are redacted or omitted. Each record
+keeps the stable `api_character_id`, runtime `character_slot`, and server
+connection `server_slot` as separate fields.
 
 ## High-Level Architecture
 

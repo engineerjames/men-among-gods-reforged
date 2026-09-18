@@ -104,7 +104,12 @@ pub fn spellcost(gs: &mut GameState, cn: usize, cost: i32) -> i32 {
     }
     let a_mana = gs.characters[cn].a_mana;
     if cost * 1000 > a_mana {
-        player_logging::log_event(cn, "spell", "rejected", "insufficient_mana");
+        player_logging::log_event(
+            cn,
+            player_logging::PlayerLogCategory::Spell,
+            player_logging::PlayerLogOutcome::Rejected,
+            "insufficient_mana",
+        );
         gs.do_character_log(
             cn,
             core::types::FontColor::Red,
@@ -130,7 +135,12 @@ pub fn spellcost(gs: &mut GameState, cn: usize, cost: i32) -> i32 {
 pub fn spellcost_endurance(gs: &mut GameState, cn: usize, cost: i32) -> i32 {
     let a_end = gs.characters[cn].a_end;
     if cost * 1000 > a_end {
-        player_logging::log_event(cn, "spell", "rejected", "insufficient_endurance");
+        player_logging::log_event(
+            cn,
+            player_logging::PlayerLogCategory::Spell,
+            player_logging::PlayerLogOutcome::Rejected,
+            "insufficient_endurance",
+        );
         gs.do_character_log(cn, FontColor::Red, "You're too exhausted!\n");
         return -1;
     }
@@ -4673,7 +4683,12 @@ pub fn is_back(cn: &Character, co: &Character) -> bool {
 ///
 /// * Panics if `cn` is not a valid character index.
 pub fn nomagic(gs: &mut GameState, cn: usize) {
-    player_logging::log_event(cn, "spell", "rejected", "magic_disabled");
+    player_logging::log_event(
+        cn,
+        player_logging::PlayerLogCategory::Spell,
+        player_logging::PlayerLogOutcome::Rejected,
+        "magic_disabled",
+    );
     gs.do_character_log(
         cn,
         FontColor::Green,
@@ -6550,16 +6565,16 @@ pub fn skill_driver(gs: &mut GameState, cn: usize, nr: i32) {
     let target = gs.characters[cn].skill_target1;
     player_logging::log_event(
         cn,
-        "spell",
-        "attempt",
+        player_logging::PlayerLogCategory::Spell,
+        player_logging::PlayerLogOutcome::Attempt,
         &format!("skill={nr} target={target}"),
     );
     // Check whether the character can use this skill/spell
     if gs.characters[cn].skill[nr as usize][0] == 0 {
         player_logging::log_event(
             cn,
-            "spell",
-            "rejected",
+            player_logging::PlayerLogCategory::Spell,
+            player_logging::PlayerLogOutcome::Rejected,
             &format!("skill_not_available={nr}"),
         );
         gs.do_character_log(cn, FontColor::Green, "You cannot use this skill/spell.\n");
