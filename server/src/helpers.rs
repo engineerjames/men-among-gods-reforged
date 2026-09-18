@@ -14,9 +14,10 @@ use crate::{driver, game_state::GameState, god::God, populate};
 
 #[macro_export]
 macro_rules! chlog {
-    ($cn:expr, $fmt:expr $(, $args:expr)*) => {
+    ($cn:expr, $fmt:expr $(, $args:expr)*) => {{
         let prefix = format!("Character {}: ", $cn);
-        let message = format!($fmt $(, $args)*);
+        let raw_message = format!($fmt $(, $args)*);
+        let message = raw_message.trim_end_matches(['\r', '\n']);
         log::info!("{}{}", prefix, message);
         crate::player_logging::log_event(
             $cn,
@@ -24,7 +25,7 @@ macro_rules! chlog {
             crate::player_logging::PlayerLogOutcome::Success,
             &message,
         );
-    };
+    }};
 }
 
 /// Format a number into a compact string with K/M suffixes.
