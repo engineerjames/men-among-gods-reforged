@@ -3,7 +3,7 @@ use core::{
         AT_AGIL, AT_STREN, CHD_COMPANION, CHD_COMPANION2, CHD_TALKATIVE, CNTSAY, COMPANION_TIMEOUT,
         CT_COMPANION, CharacterFlags, DX_DOWN, DX_LEFT, DX_LEFTDOWN, DX_LEFTUP, DX_RIGHT,
         DX_RIGHTDOWN, DX_RIGHTUP, DX_UP, ItemFlags, MAXCHARS, MAXSAY, NT_DIDHIT, NT_GOTHIT,
-        NT_GOTMISS, SERVER_MAPX, SERVER_MAPY, TICKS, USE_ACTIVE, USE_EMPTY,
+        SERVER_MAPX, SERVER_MAPY, TICKS, USE_ACTIVE, USE_EMPTY,
     },
     skills::{
         SK_ANGUISH_EARTH, SK_ANGUISH_ICE, SK_ANGUISH_LAVA, SK_AURA_CURSE, SK_AURA_WAR_BANNER,
@@ -345,41 +345,6 @@ pub fn chance_base(gs: &mut GameState, cn: usize, skill: i32, d20: i32, power: i
         gs.do_character_log(cn, core::types::FontColor::Red, "You lost your focus!\n");
         return -1;
     }
-    0
-}
-
-/// Performs a simple spell focus check for `cn`.
-///
-/// # Arguments
-///
-/// * `gs` - Active game state used for caster state and failure messages.
-/// * `cn` - Caster character index.
-/// * `d20` - Base d20 threshold before luck adjustment.
-///
-/// # Returns
-///
-/// * `0` when focus succeeds, or `-1` when focus is lost.
-///
-/// # Panics
-///
-/// * Panics if `cn` is not a valid character index.
-pub fn chance(_gs: &mut GameState, _cn: usize, _d20: i32) -> i32 {
-    // Ported from C++ chance(int cn, int d20)
-    // let mut d20 = d20;
-    // let (flags, luck) = (gs.characters[cn].flags, gs.characters[cn].luck);
-    // if (flags & CharacterFlags::Player.bits()) != 0 && luck < 0 {
-    //     d20 += luck / 500 - 1;
-    // }
-
-    // d20 = d20.clamp(0, 18);
-
-    // let roll = crate::helpers::random_mod(20);
-    // if roll as i32 > d20 {
-    //     gs.do_character_log(cn, core::types::FontColor::Red, "You lost your focus!\n");
-    //     return -1;
-    // }
-
-    // TODO: Leave this commented out for now to remove the random chance to lose focus
     0
 }
 
@@ -861,25 +826,6 @@ pub fn skill_light(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    if chance(gs, cn, 18) != 0 {
-        if cn != co {
-            let sense = gs.characters[co].skill[SK_SENSE][5];
-            let light_skill = gs.characters[cn].skill[SK_LIGHT][5];
-            if sense > (light_skill + 5) {
-                let reference = gs.characters[cn].reference;
-                gs.do_character_log(
-                    co,
-                    FontColor::Green,
-                    &format!(
-                        "{} tried to cast light on you but failed.\n",
-                        c_string_to_str(&reference)
-                    ),
-                );
-            }
-        }
-        return;
-    }
-
     let light_skill = gs.characters[cn].skill[SK_LIGHT][5];
     spell_light(gs, cn, co, i32::from(light_skill));
 
@@ -1092,24 +1038,6 @@ pub fn skill_protect(gs: &mut GameState, cn: usize) {
     if spellcost(gs, cn, 15) != 0 {
         return;
     }
-    if chance(gs, cn, 18) != 0 {
-        if cn != co {
-            let sense = gs.characters[co].skill[SK_SENSE][5];
-            let prot_skill = gs.characters[cn].skill[SK_PROTECT][5];
-            if sense > (prot_skill + 5) {
-                let reference = gs.characters[cn].reference;
-                gs.do_character_log(
-                    co,
-                    FontColor::Green,
-                    &format!(
-                        "{} tried to cast protect on you but failed.\n",
-                        c_string_to_str(&reference)
-                    ),
-                );
-            }
-        }
-        return;
-    }
 
     let power = i32::from(gs.characters[cn].skill[SK_PROTECT][5]);
     spell_protect(gs, cn, co, power);
@@ -1310,24 +1238,6 @@ pub fn skill_enhance(gs: &mut GameState, cn: usize) {
         if spellcost(gs, cn, 15) != 0 {
             return;
         }
-        if chance(gs, cn, 18) != 0 {
-            if cn != co {
-                let sense = gs.characters[co].skill[SK_SENSE][5];
-                let enh_skill = gs.characters[cn].skill[SK_ENHANCE][5];
-                if sense > (enh_skill + 5) {
-                    let reference = gs.characters[cn].reference;
-                    gs.do_character_log(
-                        co,
-                        FontColor::Yellow,
-                        &format!(
-                            "{} tried to cast enhance weapon on you but failed.\n",
-                            c_string_to_str(&reference)
-                        ),
-                    );
-                }
-            }
-            return;
-        }
         let power = i32::from(gs.characters[cn].skill[SK_ENHANCE][5]);
         spell_enhance(gs, cn, co, power);
         add_exhaust(gs, cn, TICKS / 2);
@@ -1335,24 +1245,6 @@ pub fn skill_enhance(gs: &mut GameState, cn: usize) {
     }
 
     if spellcost(gs, cn, 15) != 0 {
-        return;
-    }
-    if chance(gs, cn, 18) != 0 {
-        if cn != co {
-            let sense = gs.characters[co].skill[SK_SENSE][5];
-            let enh_skill = gs.characters[cn].skill[SK_ENHANCE][5];
-            if sense > (enh_skill + 5) {
-                let reference = gs.characters[cn].reference;
-                gs.do_character_log(
-                    co,
-                    FontColor::Yellow,
-                    &format!(
-                        "{} tried to cast enhance weapon on you but failed.\n",
-                        c_string_to_str(&reference)
-                    ),
-                );
-            }
-        }
         return;
     }
 
@@ -1550,48 +1442,12 @@ pub fn skill_bless(gs: &mut GameState, cn: usize) {
         if spellcost(gs, cn, 35) != 0 {
             return;
         }
-        if chance(gs, cn, 18) != 0 {
-            if cn != co {
-                let sense = gs.characters[co].skill[SK_SENSE][5];
-                let bless_skill = gs.characters[cn].skill[SK_BLESS][5];
-                if sense > (bless_skill + 5) {
-                    let reference = gs.characters[cn].reference;
-                    gs.do_character_log(
-                        co,
-                        FontColor::Yellow,
-                        &format!(
-                            "{} tried to cast bless on you but failed.\n",
-                            c_string_to_str(&reference)
-                        ),
-                    );
-                }
-            }
-            return;
-        }
         spell_bless(gs, cn, co, i32::from(gs.characters[cn].skill[SK_BLESS][5]));
         add_exhaust(gs, cn, TICKS);
         return;
     }
 
     if spellcost(gs, cn, 35) != 0 {
-        return;
-    }
-    if chance(gs, cn, 18) != 0 {
-        if cn != co {
-            let sense = gs.characters[co].skill[SK_SENSE][5];
-            let bless_skill = gs.characters[cn].skill[SK_BLESS][5];
-            if sense > (bless_skill + 5) {
-                let reference = gs.characters[cn].reference;
-                gs.do_character_log(
-                    co,
-                    FontColor::Yellow,
-                    &format!(
-                        "{} tried to cast bless on you but failed.\n",
-                        c_string_to_str(&reference)
-                    ),
-                );
-            }
-        }
         return;
     }
 
@@ -1848,9 +1704,6 @@ pub fn skill_mshield(gs: &mut GameState, cn: usize) {
     if spellcost(gs, cn, 25) != 0 {
         return;
     }
-    if chance(gs, cn, 18) != 0 {
-        return;
-    }
 
     spell_mshield(
         gs,
@@ -1990,48 +1843,12 @@ pub fn skill_heal(gs: &mut GameState, cn: usize) {
         if spellcost(gs, cn, 25) != 0 {
             return;
         }
-        if chance(gs, cn, 18) != 0 {
-            if cn != co {
-                let sense = gs.characters[co].skill[SK_SENSE][5];
-                let heal_skill = gs.characters[cn].skill[SK_HEAL][5];
-                if sense > (heal_skill + 5) {
-                    let reference = gs.characters[cn].reference;
-                    gs.do_character_log(
-                        co,
-                        FontColor::Green,
-                        &format!(
-                            "{} tried to cast heal on you but failed.\n",
-                            c_string_to_str(&reference)
-                        ),
-                    );
-                }
-            }
-            return;
-        }
         spell_heal(gs, cn, co, i32::from(gs.characters[cn].skill[SK_HEAL][5]));
         add_exhaust(gs, cn, TICKS * 2);
         return;
     }
 
     if spellcost(gs, cn, 25) != 0 {
-        return;
-    }
-    if chance(gs, cn, 18) != 0 {
-        if cn != co {
-            let sense = gs.characters[co].skill[SK_SENSE][5];
-            let heal_skill = gs.characters[cn].skill[SK_HEAL][5];
-            if sense > (heal_skill + 5) {
-                let reference = gs.characters[cn].reference;
-                gs.do_character_log(
-                    co,
-                    FontColor::Green,
-                    &format!(
-                        "{} tried to cast heal on you but failed.\n",
-                        c_string_to_str(&reference)
-                    ),
-                );
-            }
-        }
         return;
     }
 
@@ -3470,10 +3287,6 @@ pub fn skill_recall(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    if chance(gs, cn, 18) != 0 {
-        return;
-    }
-
     let in_opt = God::create_item(gs, 1);
     if in_opt.is_none() {
         gs.do_character_log(cn, core::types::FontColor::Green, "You failed.\n");
@@ -4370,29 +4183,6 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    // Chance check
-    if chance(gs, cn, 15) != 0 {
-        if co != 0 && cn != co {
-            let sense = i32::from(gs.characters[co].skill[SK_SENSE][5]);
-            let ghost_skill = i32::from(gs.characters[cn].skill[SK_GHOST][5]);
-            if sense > ghost_skill + 5 {
-                let cn_ref = gs.characters[cn].reference;
-                gs.do_character_log(
-                    co,
-                    FontColor::Green,
-                    &format!(
-                        "{} tried to cast ghost companion on you but failed.\n",
-                        c_string_to_str(&cn_ref)
-                    ),
-                );
-                if (gs.characters[co].flags & CharacterFlags::SpellIgnore.bits()) == 0 {
-                    gs.do_notify_character(co as u32, i32::from(NT_GOTMISS), cn as i32, 0, 0, 0);
-                }
-            }
-        }
-        return;
-    }
-
     // Create companion
     let cc_opt = populate::pop_create_char(gs, CT_COMPANION as usize, true);
     if cc_opt.is_none() {
@@ -5008,9 +4798,6 @@ pub fn skill_parasite(gs: &mut GameState, cn: usize) {
     if spellcost(gs, cn, 10) != 0 {
         return;
     }
-    if chance(gs, cn, 18) != 0 {
-        return;
-    }
 
     let power = i32::from(gs.characters[cn].skill[SK_PARASITE][5]);
     if !apply_parasitic_dot(
@@ -5163,9 +4950,6 @@ pub fn skill_distract(gs: &mut GameState, cn: usize) {
     if spellcost(gs, cn, 7) != 0 {
         return;
     }
-    if chance(gs, cn, 18) != 0 {
-        return;
-    }
 
     let power = i32::from(gs.characters[cn].skill[SK_DISTRACT][5]);
     if (gs.characters[co].flags & CharacterFlags::Immortal.bits()) != 0 {
@@ -5316,9 +5100,6 @@ pub fn skill_disarm(gs: &mut GameState, cn: usize) {
     if spellcost(gs, cn, 12) != 0 {
         return;
     }
-    if chance(gs, cn, 18) != 0 {
-        return;
-    }
 
     let power = i32::from(gs.characters[cn].skill[SK_DISARM][5]);
     let power = spell_immunity(gs, power, i32::from(gs.characters[co].skill[SK_IMMUN][5]));
@@ -5395,9 +5176,6 @@ pub fn skill_contagion(gs: &mut GameState, cn: usize) {
         return;
     }
     if spellcost(gs, cn, 20) != 0 {
-        return;
-    }
-    if chance(gs, cn, 18) != 0 {
         return;
     }
 

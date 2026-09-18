@@ -863,26 +863,6 @@ pub fn plr_api_login(gs: &mut GameState, nr: usize) {
     gs.players[nr].api_character_id = 0;
 
     log::info!("Player {} api login ticket accepted for resolution", nr);
-
-    send_mod(gs, nr);
-}
-
-/// Port of `send_mod` from `svr_tick.cpp`
-/// Sends mod data to the client (8 packets of 15 bytes each)
-fn send_mod(gs: &mut GameState, nr: usize) {
-    // TODO: Implement mod sending when mod data is available
-    // For now, this is a stub - mod data would be loaded from somewhere
-    // In the original code, this sends 8 SV_MOD packets with mod data
-    let _mod_data: [u8; 120] = [0; 120]; // placeholder
-
-    for n in 0..8u8 {
-        let mut buf: [u8; 16] = [0; 16];
-        buf[0] = ServerCommandType::Mod1 as u8 + n;
-        // Copy 15 bytes of mod data (placeholder zeros for now)
-        // buf[1..16].copy_from_slice(&mod_data[(n as usize * 15)..((n as usize + 1) * 15)]);
-
-        network_manager::csend(gs, nr, &buf, 16);
-    }
 }
 
 #[cfg(test)]
@@ -1197,20 +1177,6 @@ mod tests {
             assert_eq!(gs.players[nr].usnr, 0);
             assert_eq!(gs.players[nr].api_character_id, 0);
             assert_eq!(gs.players[nr].iptr, 16 * 8);
-        });
-    }
-
-    #[test]
-    fn send_mod_queues_all_eight_packets() {
-        with_test_gs(|gs| {
-            let (_, nr) = add_test_player(gs);
-            attach_test_socket(gs, nr);
-
-            send_mod(gs, nr);
-
-            assert_eq!(gs.players[nr].iptr, 16 * 8);
-            assert_eq!(count_obuf_packets(gs, nr, ServerCommandType::Mod1 as u8), 1);
-            assert_eq!(count_obuf_packets(gs, nr, ServerCommandType::Mod8 as u8), 1);
         });
     }
 }
