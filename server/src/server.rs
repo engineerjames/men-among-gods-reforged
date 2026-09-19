@@ -2289,6 +2289,7 @@ impl Server {
             } else {
                 Vec::new()
             };
+            let raw_bytes = format!("{:02x?}", &tbuf_data);
 
             let (olen_i32, header, payload): (i32, [u8; 2], Vec<u8>) = if olen_uncompressed_i32 > 16
             {
@@ -2355,9 +2356,26 @@ impl Server {
                 continue;
             }
 
+            let mut wire_frame = Vec::with_capacity(needed);
+            wire_frame.extend_from_slice(&header);
+            wire_frame.extend_from_slice(&payload);
+            log::info!(
+                "tick_compression tick={} player={} character={} raw_len={} raw_bytes={:02x?} compressed={} payload_len={} payload_bytes={:02x?} wire_len={} wire_bytes={:02x?}",
+                gs.globals.ticker,
+                n,
+                p.usnr,
+                ilen,
+                raw_bytes,
+                olen_i32 & 0x8000 != 0,
+                payload.len(),
+                payload,
+                wire_frame.len(),
+                wire_frame,
+            );
+
             let mut iptr = p.iptr;
             let obuf_len = p.obuf.len();
-            for &b in header.iter().chain(payload.iter()) {
+            for &b in &wire_frame {
                 p.obuf[iptr] = b;
                 iptr += 1;
                 if iptr >= obuf_len {
