@@ -983,7 +983,66 @@ pub fn npc_cityattack_msg(
     }
 }
 
-/// Runs the high-priority tick for Malte's NPC driver.
+/// Runs the high-priority tick for Zoetje's NPC driver (special driver 4).
+///
+/// Placeholder: Zoetje has no behaviour yet.
+///
+/// # Arguments
+///
+/// * `_gs` - Active game state, unused until Zoetje has behaviour.
+/// * `_cn` - Zoetje character index.
+///
+/// # Returns
+///
+/// * Always `false`.
+pub fn npc_zoetje_high(_gs: &mut GameState, _cn: usize) -> bool {
+    false
+}
+
+/// Runs the low-priority tick for Zoetje's NPC driver (special driver 4).
+///
+/// Placeholder: Zoetje has no behaviour yet.
+///
+/// # Arguments
+///
+/// * `_gs` - Active game state, unused until Zoetje has behaviour.
+/// * `_cn` - Zoetje character index.
+///
+/// # Returns
+///
+/// * Always `false`.
+pub fn npc_zoetje_low(_gs: &mut GameState, _cn: usize) -> bool {
+    false
+}
+
+/// Handles incoming messages for Zoetje's NPC driver (special driver 4).
+///
+/// Placeholder: every message is ignored, so Zoetje does not react to attacks yet.
+///
+/// # Arguments
+///
+/// * `_gs` - Active game state, unused until Zoetje has behaviour.
+/// * `_cn` - Zoetje character index receiving the message.
+/// * `_msg_type` - Message type constant.
+/// * `_dat1` - First message payload value.
+/// * `_dat2` - Second message payload value.
+/// * `_dat3` - Third message payload value.
+/// * `_dat4` - Fourth message payload value.
+///
+/// # Returns
+///
+/// * Always `false`.
+pub fn npc_zoetje_msg(
+    _gs: &mut GameState,
+    _cn: usize,
+    _msg_type: i32,
+    _dat1: i32,
+    _dat2: i32,
+    _dat3: i32,
+    _dat4: i32,
+) -> bool {
+    false
+}
 ///
 /// # Arguments
 ///

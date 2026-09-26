@@ -105,8 +105,8 @@ the main "unprovoked aggression" path and layers several independent triggers:
     in the current Rust port, so in practice `data[95] == 1` NPCs behave like
     unconditional territory guards once a player is close enough.
 - **Special driver hooks** (`data[25]` non-zero) bypass all of the above and
-  delegate entirely to `npc_stunrun_msg`, `npc_cityattack_msg`, or `npc_malte_msg`
-  for bespoke scripted NPCs.
+  delegate entirely to `npc_stunrun_msg`, `npc_cityattack_msg`, `npc_malte_msg`, or
+  `npc_zoetje_msg` (driver 4, currently a no-op placeholder) for bespoke scripted NPCs.
 - **City-guard hook** (`data[26]` non-zero, values `1`/`3`) additionally runs
   `npc_cityguard_see` before the group/territory checks.
 - If none of the above fire and the seen character is a player the NPC hasn't

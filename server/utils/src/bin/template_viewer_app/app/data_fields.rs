@@ -118,6 +118,7 @@ const SPECIAL_DRIVER: &[(i64, &str)] = &[
     (1, "Stunrun"),
     (2, "City attack"),
     (3, "Malte"),
+    (4, "Zoetje"),
 ];
 const SPECIAL_SUB_DRIVER: &[(i64, &str)] = &[
     (0, "None"),
