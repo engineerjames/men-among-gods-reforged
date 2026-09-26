@@ -7,11 +7,58 @@ use super::widgets::{
 use super::{TemplateViewerApp, ViewMode};
 use eframe::egui;
 use mag_core::constants::{SERVER_MAPX, USE_EMPTY};
-use mag_core::types::Item;
+use mag_core::types::{Item, Map};
 use mag_core::{ranks, skills};
+use std::collections::HashMap;
+use std::rc::Rc;
 
 /// Maximum rows listed in the "Where used" table.
 const WHERE_USED_LIMIT: usize = 500;
+
+/// One "Where used" row: `(item_id, x, y, area)`.
+type WhereUsedRow = (u32, u16, u16, String);
+
+/// Cached "Where used" lookups so the map isn't rescanned every frame.
+///
+/// Reset via [`TemplateViewerApp::invalidate_where_used`] whenever map tiles or
+/// item instances change.
+#[derive(Default)]
+pub(super) struct WhereUsedCache {
+    /// Map placements `(item_id, x, y)` grouped by template id, from one full-map scan.
+    by_template: Option<HashMap<u16, Vec<(u32, u16, u16)>>>,
+    /// Sorted rows (with area names) for the most recently shown template.
+    rows: Option<(u16, Rc<[WhereUsedRow]>)>,
+}
+
+/// Group every live map item placement by its template id.
+///
+/// # Arguments
+///
+/// * `map_tiles` - Full map, row-major with width `SERVER_MAPX`.
+/// * `items` - Item instances referenced by `Map::it`.
+///
+/// # Returns
+///
+/// * `template_id -> [(item_id, x, y)]` in map scan order.
+fn build_where_used_index(map_tiles: &[Map], items: &[Item]) -> HashMap<u16, Vec<(u32, u16, u16)>> {
+    let tile_w = SERVER_MAPX as usize;
+    let mut index: HashMap<u16, Vec<(u32, u16, u16)>> = HashMap::new();
+    for (tile_idx, tile) in map_tiles.iter().enumerate() {
+        if tile.it == 0 {
+            continue;
+        }
+        let Some(item) = items.get(tile.it as usize) else {
+            continue;
+        };
+        if item.used == USE_EMPTY {
+            continue;
+        }
+        let x = (tile_idx % tile_w) as u16;
+        let y = (tile_idx / tile_w) as u16;
+        index.entry(item.temp).or_default().push((tile.it, x, y));
+    }
+    index
+}
 
 /// Placement dropdown.
 fn placement_combo(ui: &mut egui::Ui, id: u16, placement: &mut u16) {
@@ -292,32 +339,43 @@ impl TemplateViewerApp {
         });
     }
 
-    /// Map tiles holding an instance of `template_id`, as `(item_id, x, y, area)` sorted by area.
-    fn item_template_map_locations(&self, template_id: u16) -> Vec<(u32, u16, u16, String)> {
-        let tile_w = SERVER_MAPX as usize;
-        let mut locations: Vec<(u32, u16, u16, String)> = self
-            .map_tiles
-            .iter()
-            .enumerate()
-            .filter_map(|(tile_idx, tile)| {
-                let item = self.items.get(tile.it as usize)?;
-                if tile.it == 0 || item.used == USE_EMPTY || item.temp != template_id {
-                    return None;
-                }
-                let x = (tile_idx % tile_w) as u16;
-                let y = (tile_idx / tile_w) as u16;
+    /// Drop cached "Where used" results; call after map tiles or item instances change.
+    pub(super) fn invalidate_where_used(&mut self) {
+        self.where_used = WhereUsedCache::default();
+    }
+
+    /// Map placements of `template_id`, sorted by area then position (cached).
+    fn where_used_rows(&mut self, template_id: u16) -> Rc<[WhereUsedRow]> {
+        if let Some((cached_id, rows)) = &self.where_used.rows
+            && *cached_id == template_id
+        {
+            return Rc::clone(rows);
+        }
+
+        let index = self
+            .where_used
+            .by_template
+            .get_or_insert_with(|| build_where_used_index(&self.map_tiles, &self.items));
+        let mut rows: Vec<WhereUsedRow> = index
+            .get(&template_id)
+            .into_iter()
+            .flatten()
+            .map(|&(item_id, x, y)| {
                 let area = mag_core::area::get_area_m(i32::from(x), i32::from(y))
                     .unwrap_or_else(|| "Unknown".to_owned());
-                Some((tile.it, x, y, area))
+                (item_id, x, y, area)
             })
             .collect();
-        locations.sort_by(|a, b| a.3.cmp(&b.3).then(a.2.cmp(&b.2)).then(a.1.cmp(&b.1)));
-        locations
+        rows.sort_by(|a, b| a.3.cmp(&b.3).then(a.2.cmp(&b.2)).then(a.1.cmp(&b.1)));
+
+        let rows: Rc<[WhereUsedRow]> = rows.into();
+        self.where_used.rows = Some((template_id, Rc::clone(&rows)));
+        rows
     }
 
     /// Collapsible table of map placements for an item template.
     fn ui_item_where_used(&mut self, ui: &mut egui::Ui, template_id: u16) {
-        let locations = self.item_template_map_locations(template_id);
+        let locations = self.where_used_rows(template_id);
         let total = locations.len();
 
         egui::CollapsingHeader::new(format!("Where used ({} on map)", total))
@@ -362,6 +420,7 @@ mod tests {
     use super::super::{TemplateViewerApp, ViewMode};
     use mag_core::constants::{SERVER_MAPX, USE_ACTIVE};
     use mag_core::types::{Item, Map};
+    use std::rc::Rc;
 
     #[test]
     fn find_item_template_index_prefers_slot_then_temp() {
@@ -375,8 +434,9 @@ mod tests {
         assert_eq!(app.find_item_template_index(901), None);
     }
 
-    #[test]
-    fn item_template_map_locations_finds_live_instances_of_template() {
+    /// App with item 1 (template 7) at (5, 1), an unused template-7 item at (6, 0),
+    /// and item 3 (template 8) at (7, 0).
+    fn app_with_placements() -> TemplateViewerApp {
         let mut app = TemplateViewerApp {
             items: vec![Item::default(); 4],
             map_tiles: vec![Map::default(); SERVER_MAPX as usize * 2],
@@ -384,16 +444,46 @@ mod tests {
         };
         app.items[1].used = USE_ACTIVE;
         app.items[1].temp = 7;
-        app.items[2].temp = 7; // Unused instance: ignored.
+        app.items[2].temp = 7;
         app.items[3].used = USE_ACTIVE;
         app.items[3].temp = 8;
         app.map_tiles[SERVER_MAPX as usize + 5].it = 1;
         app.map_tiles[6].it = 2;
         app.map_tiles[7].it = 3;
+        app
+    }
 
-        let found = app.item_template_map_locations(7);
+    #[test]
+    fn where_used_rows_finds_live_instances_of_template() {
+        let mut app = app_with_placements();
+        let found = app.where_used_rows(7);
         assert_eq!(found.len(), 1);
         assert_eq!((found[0].0, found[0].1, found[0].2), (1, 5, 1));
+        assert!(app.where_used_rows(9).is_empty());
+    }
+
+    #[test]
+    fn where_used_rows_are_cached_until_invalidated() {
+        let mut app = app_with_placements();
+        let first = app.where_used_rows(7);
+        assert!(Rc::ptr_eq(&first, &app.where_used_rows(7)));
+
+        // Switching templates reuses the map index instead of rescanning.
+        assert_eq!(app.where_used_rows(8).len(), 1);
+        assert!(app.where_used.by_template.is_some());
+
+        app.items[3].temp = 7;
+        app.mark_slot_dirty(ViewMode::Items, 3);
+        assert!(app.where_used.by_template.is_none());
+        assert_eq!(app.where_used_rows(7).len(), 2);
+    }
+
+    #[test]
+    fn template_edits_keep_where_used_cache() {
+        let mut app = app_with_placements();
+        app.where_used_rows(7);
+        app.mark_slot_dirty(ViewMode::ItemTemplates, 7);
+        assert!(app.where_used.rows.is_some());
     }
 
     #[test]

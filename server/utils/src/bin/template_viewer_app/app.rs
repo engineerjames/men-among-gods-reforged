@@ -143,6 +143,8 @@ pub(crate) struct TemplateViewerApp {
     save_status: Option<String>,
     /// Scroll the active list to its selected entry on the next frame.
     scroll_to_selection: bool,
+    /// Cached "Where used" map scan for item templates.
+    where_used: item_details::WhereUsedCache,
     /// Whether the deferred first load has run.
     initial_load_done: bool,
     /// Frames rendered so far; loading waits a couple so the window appears first.
@@ -191,6 +193,9 @@ impl TemplateViewerApp {
     /// * `idx` - Edited slot.
     fn mark_slot_dirty(&mut self, table: ViewMode, idx: usize) {
         self.dirty = true;
+        if table == ViewMode::Items {
+            self.invalidate_where_used();
+        }
         let slots = match table {
             ViewMode::ItemTemplates => &mut self.dirty_item_template_slots,
             ViewMode::CharacterTemplates => &mut self.dirty_character_template_slots,
@@ -234,6 +239,7 @@ impl TemplateViewerApp {
         self.selected_character_instance_index = None;
         self.item_popup_id = None;
         self.clear_dirty();
+        self.invalidate_where_used();
         self.fully_loaded_item_slots.clear();
         self.fully_loaded_char_slots.clear();
     }
@@ -249,6 +255,7 @@ impl TemplateViewerApp {
         self.loaded_world = Some(world);
         self.save_status = Some(status);
         self.clear_dirty();
+        self.invalidate_where_used();
 
         // Snapshot sources carry full template data; LiveApi fills slots lazily on first view.
         if self.data_source.is_live_api() {
