@@ -134,23 +134,25 @@ impl MapViewerApp {
         let Some(cache) = self.graphics_zip.as_mut() else {
             return Err("No graphics zip loaded".to_owned());
         };
-        match cache.texture_for(ctx, sprite as usize) {
-            Ok(Some(_)) => Ok(()),
-            Ok(None) => Err(format!("Sprite {} is not present in graphics zip", sprite)),
-            Err(e) => Err(format!("Sprite {} could not be loaded: {}", sprite, e)),
+        if !cache.contains(sprite as usize) {
+            return Err(format!("Sprite {} is not present in graphics zip", sprite));
         }
+        cache
+            .texture_for(ctx, sprite as usize)
+            .map(|_| ())
+            .map_err(|e| format!("Sprite {} could not be loaded: {}", sprite, e))
     }
 
     /// Whether a texture exists for `sprite + 1`, the frame the real client
     /// substitutes for object sprites in Hide Walls mode.
-    fn has_object_hide_companion(&mut self, ctx: &egui::Context, sprite: u16) -> bool {
+    fn has_object_hide_companion(&self, sprite: u16) -> bool {
         let Some(companion) = sprite.checked_add(1) else {
             return false;
         };
-        let Some(cache) = self.graphics_zip.as_mut() else {
-            return true; // Can't validate without a loaded graphics zip; don't warn.
-        };
-        matches!(cache.texture_for(ctx, companion as usize), Ok(Some(_)))
+        // Can't validate without a loaded graphics zip; don't warn.
+        self.graphics_zip
+            .as_ref()
+            .is_none_or(|cache| cache.contains(companion as usize))
     }
 
     /// Resolve (and lazily load) the preview sprite for a palette entry.
@@ -325,7 +327,7 @@ impl MapViewerApp {
             }
             let layer = self.draft_sprite_layer;
             let status = if layer == SpriteLayer::Object
-                && !self.has_object_hide_companion(ctx, sprite)
+                && !self.has_object_hide_companion(sprite)
             {
                 format!(
                     "Added sprite {sprite} (Object); no companion texture at {} — Hide Walls will show an error texture near this tile.",

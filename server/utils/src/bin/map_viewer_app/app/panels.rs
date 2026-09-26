@@ -1,12 +1,12 @@
 //! Top menu bar and right-hand inspector panel.
 
-use super::MapViewerApp;
 use super::editing::item_map_sprite;
 use super::flags::{
     GAMEPLAY_MAP_FLAG_MASK, MAX_FLAG_VIZ_LEGEND_ENTRIES, flag_checkbox, flag_combo_color,
     flag_names, map_flag_defs,
 };
 use super::geometry::tile_index;
+use super::{LoadPurpose, MapViewerApp};
 use eframe::egui;
 use egui::Vec2;
 use mag_core::constants::{SERVER_MAPX, SERVER_MAPY};
@@ -101,6 +101,18 @@ impl MapViewerApp {
                     ui.colored_label(color, status);
                 }
 
+                let pending_sprites = self
+                    .graphics_zip
+                    .as_ref()
+                    .map_or(0, |cache| cache.pending_count());
+                if self.is_loading_world() || pending_sprites > 0 {
+                    ui.separator();
+                    ui.spinner();
+                    if pending_sprites > 0 {
+                        ui.label(format!("Decoding {pending_sprites} sprite(s)"));
+                    }
+                }
+
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     self.ui_api_buttons(ui);
                 });
@@ -116,7 +128,7 @@ impl MapViewerApp {
         }
 
         if ui.button("Reload snapshot").clicked() {
-            self.load_current_source();
+            self.load_current_source(LoadPurpose::Open);
             ui.close_menu();
         }
 

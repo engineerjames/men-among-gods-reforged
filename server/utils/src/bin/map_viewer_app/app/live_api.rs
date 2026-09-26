@@ -1,7 +1,7 @@
 //! Live admin-API integration: connect dialog, saving tile patches, and server map reloads.
 
 use super::geometry::tile_index;
-use super::{MapViewerApp, PendingItemAction};
+use super::{LoadPurpose, MapViewerApp, PendingItemAction};
 use eframe::egui;
 use mag_core::map_store::MapPatch;
 use mag_core::world_action_store::WorldActionKind;
@@ -156,17 +156,8 @@ impl MapViewerApp {
 
         self.admin_client = Some(client);
         self.data_source = DataSource::LiveApi { base_url, token };
-        self.load_current_source();
-
-        if let Some(err) = self.map_error.clone() {
-            self.connect_dialog_error = Some(format!("Connection test failed: {err}"));
-            self.admin_client = None;
-            return;
-        }
-
-        self.connect_dialog_open = false;
         self.connect_dialog_error = None;
-        self.save_status = Some("Connected to admin API".to_owned());
+        self.load_current_source(LoadPurpose::Connect);
     }
 
     /// Fire a server-side map reload and remember the request id.
@@ -313,9 +304,19 @@ impl MapViewerApp {
                 }
 
                 ui.add_space(10.0);
+                let connecting = self
+                    .pending_world_load
+                    .as_ref()
+                    .is_some_and(|load| load.purpose == LoadPurpose::Connect);
                 ui.horizontal(|ui| {
-                    apply_clicked = ui.button("Connect").clicked();
+                    apply_clicked = ui
+                        .add_enabled(!connecting, egui::Button::new("Connect"))
+                        .clicked();
                     cancel_clicked = ui.button("Cancel").clicked();
+                    if connecting {
+                        ui.spinner();
+                        ui.label("Connecting...");
+                    }
                 });
             });
 

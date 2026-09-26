@@ -23,10 +23,32 @@ use server_utils::admin_client::AdminClient;
 use server_utils::{DataSource, load_world_snapshot, save_world_snapshot};
 use std::collections::{BTreeSet, VecDeque};
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::{self, Receiver, TryRecvError};
+use std::time::Duration;
 use undo::UndoAction;
 
 /// Keyboard pan speed in screen pixels per second.
 const KEYBOARD_PAN_SPEED: f32 = 750.0;
+
+/// How often the UI wakes to check on a background world load.
+const WORLD_LOAD_POLL_INTERVAL: Duration = Duration::from_millis(50);
+
+/// Why a background world load was started; decides how its result is reported.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LoadPurpose {
+    /// Initial load, opening a snapshot, or "Reload snapshot".
+    Open,
+    /// "Revert (discard changes)".
+    Revert,
+    /// Connection test from the connect dialog.
+    Connect,
+}
+
+/// A world load running on a background thread.
+struct PendingWorldLoad {
+    purpose: LoadPurpose,
+    result: Receiver<Result<WorldSnapshot, String>>,
+}
 
 /// Item placement/removal queued locally for the next LiveApi save.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -46,6 +68,8 @@ enum PendingItemAction {
 #[derive(Default)]
 pub(crate) struct MapViewerApp {
     loaded_world: Option<WorldSnapshot>,
+    /// World load in progress on a background thread, if any.
+    pending_world_load: Option<PendingWorldLoad>,
     map_tiles: Vec<Map>,
     map_error: Option<String>,
 
@@ -78,8 +102,6 @@ pub(crate) struct MapViewerApp {
 
     /// Whether the deferred first load has run.
     initial_load_done: bool,
-    /// Frames rendered so far; loading waits a couple so the window appears first.
-    frame_count: u32,
 
     palette: Vec<PaletteEntry>,
     selected_palette_index: Option<usize>,
@@ -181,10 +203,11 @@ impl MapViewerApp {
     }
 
     /// Install a freshly loaded world and report `status`.
-    fn apply_loaded_world(&mut self, world: WorldSnapshot, status: String) {
-        self.map_tiles = world.map.clone();
-        self.items = world.items.clone();
-        self.item_templates = world.item_templates.clone();
+    fn apply_loaded_world(&mut self, mut world: WorldSnapshot, status: String) {
+        // Views own the big vectors; `sync_loaded_world_from_views` puts them back before saving.
+        self.map_tiles = std::mem::take(&mut world.map);
+        self.items = std::mem::take(&mut world.items);
+        self.item_templates = std::mem::take(&mut world.item_templates);
         self.fully_loaded_item_template_slots.clear();
         self.loaded_world = Some(world);
         self.save_status = Some(status);
@@ -192,8 +215,15 @@ impl MapViewerApp {
         self.reset_edit_state();
     }
 
-    /// (Re)load the world from the current data source.
-    fn load_current_source(&mut self) {
+    /// Start (re)loading the world from the current data source on a background thread.
+    ///
+    /// The current world is cleared immediately; [`Self::poll_world_load`]
+    /// installs the result. Starting a new load supersedes any pending one.
+    ///
+    /// # Arguments
+    ///
+    /// * `purpose` - Decides the status/dialog handling once the load finishes.
+    fn load_current_source(&mut self, purpose: LoadPurpose) {
         if matches!(self.data_source, DataSource::NotLoaded) {
             return;
         }
@@ -201,15 +231,57 @@ impl MapViewerApp {
         self.map_error = None;
         self.items_error = None;
         self.item_templates_error = None;
-        self.save_status = None;
+        self.clear_loaded_world();
         self.pan_initialized = false;
+        self.save_status = Some(format!("Loading {}...", self.data_source.display_label()));
 
-        match load_world_snapshot(&self.data_source) {
+        let source = self.data_source.clone();
+        let (tx, rx) = mpsc::channel();
+        let spawned = std::thread::Builder::new()
+            .name("map-viewer-world-load".to_owned())
+            .spawn(move || {
+                let _ = tx.send(load_world_snapshot(&source));
+            });
+        match spawned {
+            Ok(_) => {
+                self.pending_world_load = Some(PendingWorldLoad {
+                    purpose,
+                    result: rx,
+                });
+            }
+            Err(e) => {
+                self.pending_world_load = None;
+                self.finish_world_load(purpose, Err(format!("Failed to start world loader: {e}")));
+            }
+        }
+    }
+
+    /// Whether a background world load is in progress.
+    fn is_loading_world(&self) -> bool {
+        self.pending_world_load.is_some()
+    }
+
+    /// Install the background world load's result once it arrives.
+    fn poll_world_load(&mut self) {
+        let Some(pending) = &self.pending_world_load else {
+            return;
+        };
+        let result = match pending.result.try_recv() {
+            Ok(result) => result,
+            Err(TryRecvError::Empty) => return,
+            Err(TryRecvError::Disconnected) => {
+                Err("World loader thread exited unexpectedly".to_owned())
+            }
+        };
+        let purpose = pending.purpose;
+        self.pending_world_load = None;
+        self.finish_world_load(purpose, result);
+    }
+
+    /// Apply a finished world load, reporting it according to `purpose`.
+    fn finish_world_load(&mut self, purpose: LoadPurpose, result: Result<WorldSnapshot, String>) {
+        match result {
             Ok(world) => {
-                let status = match self.data_source.snapshot_path() {
-                    Some(path) => format!("Loaded snapshot: {}", path.display()),
-                    None => "Loaded world state".to_owned(),
-                };
                 log::info!(
                     "Loaded world for map viewer: map={} items={} templates={} source={}",
                     world.map.len(),
@@ -217,10 +289,27 @@ impl MapViewerApp {
                     world.item_templates.len(),
                     self.data_source.display_label()
                 );
+                let status = match (purpose, self.data_source.snapshot_path()) {
+                    (LoadPurpose::Revert, _) => "Reverted (discarded unsaved changes)".to_owned(),
+                    (LoadPurpose::Connect, _) => "Connected to admin API".to_owned(),
+                    (LoadPurpose::Open, Some(path)) => {
+                        format!("Loaded snapshot: {}", path.display())
+                    }
+                    (LoadPurpose::Open, None) => "Loaded world state".to_owned(),
+                };
                 self.apply_loaded_world(world, status);
+                if purpose == LoadPurpose::Connect {
+                    self.connect_dialog_open = false;
+                    self.connect_dialog_error = None;
+                }
             }
             Err(e) => {
                 self.clear_loaded_world();
+                self.save_status = None;
+                if purpose == LoadPurpose::Connect {
+                    self.connect_dialog_error = Some(format!("Connection test failed: {e}"));
+                    self.admin_client = None;
+                }
                 self.map_error = Some(e);
             }
         }
@@ -274,7 +363,7 @@ impl MapViewerApp {
     /// * `path` - `.wsnap` file to load.
     pub(crate) fn load_from_snapshot(&mut self, path: PathBuf) {
         self.data_source = DataSource::SnapshotFile(path);
-        self.load_current_source();
+        self.load_current_source(LoadPurpose::Open);
     }
 
     /// Pick a `.wsnap` file and load it.
@@ -320,11 +409,7 @@ impl MapViewerApp {
 
     /// Reload from the data source, discarding local edits.
     fn revert_unsaved_changes(&mut self) {
-        self.load_current_source();
-        self.dirty = false;
-        self.dirty_tiles.clear();
-        self.pending_item_actions.clear();
-        self.save_status = Some("Reverted (discarded unsaved changes)".to_owned());
+        self.load_current_source(LoadPurpose::Revert);
     }
 
     /// Mark tile `(x, y)` as having unsaved static-field changes.
@@ -403,16 +488,19 @@ impl MapViewerApp {
 
 impl eframe::App for MapViewerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.frame_count += 1;
+        self.poll_world_load();
+        if self.is_loading_world() {
+            ctx.request_repaint_after(WORLD_LOAD_POLL_INTERVAL);
+        }
 
         self.handle_shortcuts(ctx);
         self.tick_map_reload_poll(ctx);
         self.render_connect_dialog(ctx);
         self.render_reload_confirm_dialog(ctx);
 
-        if !self.initial_load_done && self.frame_count > 2 {
+        if !self.initial_load_done {
             self.initial_load_done = true;
-            self.load_current_source();
+            self.load_current_source(LoadPurpose::Open);
             if let Some(zip_path) = server_utils::graphics_zip_from_args()
                 .or_else(server_utils::default_graphics_zip_path)
             {

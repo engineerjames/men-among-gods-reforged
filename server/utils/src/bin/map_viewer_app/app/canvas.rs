@@ -55,10 +55,12 @@ impl MapViewerApp {
             let painter = ui.painter_at(rect);
             painter.rect_filled(rect, 0.0, egui::Color32::from_rgb(20, 22, 26));
 
-            let message = if self.map_tiles.is_empty() {
-                Some("No map loaded (Open dat dir...) ")
+            let message = if self.is_loading_world() {
+                Some("Loading world...")
+            } else if self.map_tiles.is_empty() {
+                Some("No map loaded (File > Open snapshot...)")
             } else if self.graphics_zip.is_none() {
-                Some("No graphics zip loaded (Open graphics zip...) ")
+                Some("No graphics zip loaded (File > Open graphics zip...)")
             } else {
                 None
             };
