@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use server::keydb::snapshot::WorldSnapshot;
 use server_utils::admin_client::AdminClient;
 use server_utils::{DataSource, load_world_snapshot, save_world_snapshot};
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::VecDeque;
 use std::path::Path;
@@ -160,6 +161,15 @@ pub(crate) struct MapViewerApp {
     reload_confirm_open: bool,
     /// Bounded undo history (most recent action at the back), capped at [`MAX_UNDO_HISTORY`].
     undo_stack: VecDeque<UndoAction>,
+
+    /// Settings: tint each tile by its (filtered) map flag combination.
+    flag_viz_enabled: bool,
+    /// Alpha of the flag tint overlay in `[0, 1]`.
+    flag_viz_opacity: f32,
+    /// Flag bits that participate in the visualization.
+    flag_viz_mask: u64,
+    /// Flag combinations visible in the last rendered frame with tile counts, for the legend.
+    flag_viz_legend: Vec<(u64, usize)>,
 }
 
 impl MapViewerApp {
@@ -176,6 +186,8 @@ impl MapViewerApp {
             data_source,
             admin_client,
             zoom: 1.0,
+            flag_viz_opacity: DEFAULT_FLAG_VIZ_OPACITY,
+            flag_viz_mask: GAMEPLAY_MAP_FLAG_MASK,
             ..Self::default()
         }
     }
@@ -501,6 +513,82 @@ impl MapViewerApp {
             return None;
         };
         Some(entry)
+    }
+
+    /// Append a flags palette entry and select it so the next map click paints it.
+    ///
+    /// # Arguments
+    ///
+    /// * `mask` - Map flag bits the entry sets or clears.
+    /// * `clear` - `true` to clear `mask` on painted tiles, `false` to set it.
+    fn push_flags_palette_entry(&mut self, mask: u64, clear: bool) {
+        self.palette.push(PaletteEntry {
+            kind: PaletteEntryKind::Flags { mask, clear },
+        });
+        self.selected_palette_index = Some(self.palette.len() - 1);
+        self.save_status = Some(format!(
+            "Added {} flags entry to palette: {}",
+            if clear { "clear" } else { "set" },
+            flag_names(mask).join(", ")
+        ));
+    }
+
+    /// Tint visible tiles by their filtered flag combination and refresh the legend.
+    ///
+    /// # Arguments
+    ///
+    /// * `painter` - Painter clipped to the map canvas.
+    /// * `rect` - Map canvas rect in screen space.
+    /// * `x_range` - Inclusive tile x range to scan.
+    /// * `y_range` - Inclusive tile y range to scan.
+    fn paint_flag_overlay(
+        &mut self,
+        painter: &egui::Painter,
+        rect: Rect,
+        x_range: (usize, usize),
+        y_range: (usize, usize),
+    ) {
+        const DIAMOND: [(i32, i32); 4] = [(0, -8), (16, 0), (0, 8), (-16, 0)];
+
+        let mut combos: BTreeMap<u64, usize> = BTreeMap::new();
+        for y in y_range.0..=y_range.1 {
+            for x in x_range.0..=x_range.1 {
+                let Some(tile) = self.map_tiles.get(tile_index(x, y)) else {
+                    continue;
+                };
+                let flags = tile.flags & self.flag_viz_mask;
+                if flags == 0 {
+                    continue;
+                }
+
+                let (cx, cy) = dd_tile_center_screen_pos((x as i32) * 32, (y as i32) * 32);
+                let points: Vec<Pos2> = DIAMOND
+                    .iter()
+                    .map(|(dx, dy)| {
+                        map_to_screen(
+                            rect,
+                            self.pan,
+                            self.zoom,
+                            Vec2::new((cx + dx) as f32, (cy + dy) as f32),
+                        )
+                    })
+                    .collect();
+                if !points.iter().any(|p| rect.contains(*p)) {
+                    continue;
+                }
+
+                painter.add(egui::Shape::convex_polygon(
+                    points,
+                    flag_combo_color(flags).gamma_multiply(self.flag_viz_opacity),
+                    egui::Stroke::NONE,
+                ));
+                *combos.entry(flags).or_default() += 1;
+            }
+        }
+
+        let mut legend: Vec<(u64, usize)> = combos.into_iter().collect();
+        legend.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        self.flag_viz_legend = legend;
     }
 
     /// Ensure a live-API item template slot contains the full template payload.
@@ -1445,16 +1533,11 @@ impl MapViewerApp {
                             ui.selectable_value(&mut self.draft_flag_clear, true, "Clear");
 
                             if ui.small_button("Add").clicked() && self.draft_flag_mask != 0 {
-                                let mask = self.draft_flag_mask;
-                                let clear = self.draft_flag_clear;
-                                self.palette
-                                    .push(PaletteEntry { kind: PaletteEntryKind::Flags { mask, clear } });
-                                self.selected_palette_index = Some(self.palette.len() - 1);
+                                self.push_flags_palette_entry(
+                                    self.draft_flag_mask,
+                                    self.draft_flag_clear,
+                                );
                                 self.draft_flag_mask = 0;
-                                self.save_status = Some(format!(
-                                    "Added {} flags entry to palette",
-                                    if clear { "clear" } else { "set" }
-                                ));
                             }
                         });
 
@@ -1542,15 +1625,24 @@ impl MapViewerApp {
                                             }
                                         } else {
                                             let label = palette_entry_label(entry, None);
-                                            ui.add_sized(
+                                            let response = ui.add_sized(
                                                 icon_size,
                                                 egui::Button::new(label).fill(if selected {
                                                     egui::Color32::from_rgb(70, 110, 70)
                                                 } else {
                                                     egui::Color32::from_rgb(55, 55, 55)
                                                 }),
-                                            )
-                                            .clicked()
+                                            );
+                                            let response = match entry.kind {
+                                                PaletteEntryKind::Flags { mask, clear } => response
+                                                    .on_hover_text(format!(
+                                                        "{}:\n{}\n\nClick map to paint, Shift+click for lines.",
+                                                        if clear { "Clear" } else { "Set" },
+                                                        flag_names(mask).join("\n")
+                                                    )),
+                                                _ => response,
+                                            };
+                                            response.clicked()
                                         };
 
                                         if clicked {
@@ -1678,6 +1770,57 @@ fn map_flag_defs() -> &'static [(u64, &'static str)] {
         (mag_core::constants::MF_GFX_CMAGIC1, "MF_GFX_CMAGIC1"),
     ];
     DEFS
+}
+
+/// Persistent gameplay flag bits; the `MF_GFX_*` bits above 32 are transient visual effects.
+const GAMEPLAY_MAP_FLAG_MASK: u64 = 0xFFFF_FFFF;
+
+/// Default alpha of the map flag tint overlay.
+const DEFAULT_FLAG_VIZ_OPACITY: f32 = 0.45;
+
+/// Maximum number of flag combinations listed in the side-panel legend.
+const MAX_FLAG_VIZ_LEGEND_ENTRIES: usize = 32;
+
+/// Names of every flag definition overlapping `mask`.
+///
+/// # Arguments
+///
+/// * `mask` - Map flag bits to describe.
+///
+/// # Returns
+///
+/// * Flag names in definition order; empty when no definition overlaps.
+fn flag_names(mask: u64) -> Vec<&'static str> {
+    map_flag_defs()
+        .iter()
+        .filter(|(def, _)| mask & def != 0)
+        .map(|(_, name)| *name)
+        .collect()
+}
+
+/// Deterministic, well-spread opaque color for a map flag combination.
+///
+/// Equal combinations always get the same color, so adjacent tiles with matching
+/// flags read as one uniform region.
+///
+/// # Arguments
+///
+/// * `flags` - The (already filtered) flag combination.
+///
+/// # Returns
+///
+/// * An opaque color derived from a hash of `flags`.
+fn flag_combo_color(flags: u64) -> egui::Color32 {
+    // splitmix64 finalizer: nearby bit patterns map to unrelated hues.
+    let mut z = flags.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^= z >> 31;
+
+    let hue = (z & 0xFFFF) as f32 / 65536.0;
+    let sat = 0.6 + ((z >> 16) & 0xFF) as f32 / 255.0 * 0.35;
+    let val = 0.8 + ((z >> 24) & 0xFF) as f32 / 255.0 * 0.2;
+    egui::Color32::from(egui::ecolor::Hsva::new(hue, sat, val, 1.0))
 }
 
 const MIN_ZOOM: f32 = 0.25;
@@ -2011,6 +2154,56 @@ impl eframe::App for MapViewerApp {
                     });
                 });
 
+                ui.menu_button("Settings", |ui| {
+                    if ui
+                        .checkbox(&mut self.flag_viz_enabled, "Visualize map flags")
+                        .on_hover_text(
+                            "Tint each tile by its map flag combination. \
+                             Tiles with identical flags share a color.",
+                        )
+                        .changed()
+                    {
+                        ctx.request_repaint();
+                    }
+
+                    ui.add_enabled_ui(self.flag_viz_enabled, |ui| {
+                        ui.add(
+                            egui::Slider::new(&mut self.flag_viz_opacity, 0.1..=0.9)
+                                .text("Tint opacity"),
+                        );
+
+                        ui.separator();
+                        ui.label("Flags to visualize:");
+                        ui.horizontal(|ui| {
+                            if ui.small_button("Gameplay").clicked() {
+                                self.flag_viz_mask = GAMEPLAY_MAP_FLAG_MASK;
+                            }
+                            if ui.small_button("All").clicked() {
+                                self.flag_viz_mask = u64::MAX;
+                            }
+                            if ui.small_button("None").clicked() {
+                                self.flag_viz_mask = 0;
+                            }
+                        });
+
+                        egui::ScrollArea::vertical()
+                            .id_salt("flag_viz_mask_list")
+                            .max_height(300.0)
+                            .show(ui, |ui| {
+                                for (mask, name) in map_flag_defs() {
+                                    let mut on = (self.flag_viz_mask & *mask) == *mask;
+                                    if ui.checkbox(&mut on, *name).changed() {
+                                        if on {
+                                            self.flag_viz_mask |= *mask;
+                                        } else {
+                                            self.flag_viz_mask &= !*mask;
+                                        }
+                                    }
+                                }
+                            });
+                    });
+                });
+
                 ui.separator();
 
                 if ui.button("Reset view").clicked() {
@@ -2146,6 +2339,47 @@ impl eframe::App for MapViewerApp {
                 ui.label(format!("Zoom: {:.0}%", self.zoom * 100.0));
                 if let Some((x, y)) = self.line_anchor {
                     ui.label(format!("Line anchor: ({}, {})", x, y));
+                }
+
+                if self.flag_viz_enabled {
+                    ui.separator();
+                    ui.label("Map flag legend (in view):");
+                    if self.flag_viz_legend.is_empty() {
+                        ui.label("(no flagged tiles in view)");
+                    } else {
+                        egui::ScrollArea::vertical()
+                            .id_salt("flag_viz_legend")
+                            .max_height(180.0)
+                            .show(ui, |ui| {
+                                for (flags, count) in self
+                                    .flag_viz_legend
+                                    .iter()
+                                    .take(MAX_FLAG_VIZ_LEGEND_ENTRIES)
+                                {
+                                    ui.horizontal(|ui| {
+                                        let (swatch, _) = ui.allocate_exact_size(
+                                            Vec2::splat(14.0),
+                                            egui::Sense::hover(),
+                                        );
+                                        ui.painter().rect_filled(
+                                            swatch,
+                                            2.0,
+                                            flag_combo_color(*flags),
+                                        );
+                                        ui.label(format!(
+                                            "{} ({count})",
+                                            flag_names(*flags).join(", ")
+                                        ));
+                                    });
+                                }
+                                if self.flag_viz_legend.len() > MAX_FLAG_VIZ_LEGEND_ENTRIES {
+                                    ui.label(format!(
+                                        "... {} more",
+                                        self.flag_viz_legend.len() - MAX_FLAG_VIZ_LEGEND_ENTRIES
+                                    ));
+                                }
+                            });
+                    }
                 }
 
                 ui.separator();
@@ -2335,6 +2569,18 @@ impl eframe::App for MapViewerApp {
                                     self.push_undo(undo_snapshot);
                                     ctx.request_repaint();
                                 }
+                            }
+
+                            if ui
+                                .add_enabled(flags != 0, egui::Button::new("Flags → palette"))
+                                .on_hover_text(
+                                    "Add a palette entry that sets this tile's flags, then \
+                                     click/Shift+click the map to paint them. Other flags on \
+                                     painted tiles are left untouched.",
+                                )
+                                .clicked()
+                            {
+                                self.push_flags_palette_entry(flags, false);
                             }
                         }
                     }
@@ -2613,6 +2859,10 @@ impl eframe::App for MapViewerApp {
                 }
             }
 
+            if self.flag_viz_enabled {
+                self.paint_flag_overlay(&painter, rect, (x0, x1), (y0, y1));
+            }
+
             // Highlight hovered tile.
             if let Some((x, y)) = self.hovered_tile {
                 let xpos = (x as i32) * 32;
@@ -2694,9 +2944,10 @@ fn paint_sprite_dd(
 mod tests {
     use super::{
         MapViewerApp, PaletteEntry, PaletteEntryKind, SpriteLayer, dd_tile_center_screen_pos,
-        line_tiles, map_point_to_tile, tile_index,
+        flag_combo_color, flag_names, line_tiles, map_point_to_tile, tile_index,
     };
     use eframe::egui::Vec2;
+    use mag_core::constants::{MF_GFX_TOMB, MF_GFX_TOMB1, MF_INDOORS, MF_MOVEBLOCK};
     use mag_core::constants::{USE_ACTIVE, USE_EMPTY};
     use mag_core::types::Item;
 
@@ -2708,6 +2959,46 @@ mod tests {
             item_templates: vec![Item::default(); 4],
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn flag_names_lists_every_overlapping_definition() {
+        assert!(flag_names(0).is_empty());
+        assert_eq!(
+            flag_names(MF_MOVEBLOCK as u64 | MF_INDOORS as u64),
+            vec!["MF_MOVEBLOCK", "MF_INDOORS"]
+        );
+        assert_eq!(
+            flag_names(MF_GFX_TOMB1),
+            vec!["MF_GFX_TOMB", "MF_GFX_TOMB1"]
+        );
+        assert_eq!(flag_names(MF_GFX_TOMB & !MF_GFX_TOMB1), vec!["MF_GFX_TOMB"]);
+    }
+
+    #[test]
+    fn flag_combo_color_is_deterministic_and_distinguishes_combos() {
+        let a = MF_MOVEBLOCK as u64;
+        let b = MF_INDOORS as u64;
+        assert_eq!(flag_combo_color(a), flag_combo_color(a));
+        assert_ne!(flag_combo_color(a), flag_combo_color(b));
+        assert_ne!(flag_combo_color(a), flag_combo_color(a | b));
+        assert_eq!(flag_combo_color(a).a(), 255);
+    }
+
+    #[test]
+    fn push_flags_palette_entry_appends_and_selects() {
+        let mut app = test_app(4, 4);
+        app.push_flags_palette_entry(0b11, false);
+        app.push_flags_palette_entry(0b100, true);
+        assert_eq!(app.palette.len(), 2);
+        assert_eq!(app.selected_palette_index, Some(1));
+        assert_eq!(
+            app.palette[1].kind,
+            PaletteEntryKind::Flags {
+                mask: 0b100,
+                clear: true
+            }
+        );
     }
 
     #[test]
