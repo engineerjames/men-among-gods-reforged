@@ -114,49 +114,9 @@ pub(super) fn flag_grid<'a>(
         });
 }
 
-/// "Driver Data" section: non-zero `data[i]` fields, or all of them when `show_all` is set.
-///
-/// # Arguments
-///
-/// * `ui` - Target UI.
-/// * `id` - Unique grid id.
-/// * `data` - Driver data slots.
-/// * `show_all` - Persistent "show all fields" toggle.
-/// * `spacing` - Horizontal grid spacing.
-pub(super) fn driver_data_section<T: Numeric + Default + PartialEq>(
-    ui: &mut egui::Ui,
-    id: &str,
-    data: &mut [T],
-    show_all: &mut bool,
-    spacing: f32,
-) {
-    ui.separator();
-    crate::centered_heading(ui, "Driver Data");
-    ui.horizontal(|ui| {
-        ui.checkbox(show_all, "Show all possible data fields");
-    });
-    egui::Grid::new(id)
-        .num_columns(2)
-        .spacing([spacing, 4.0])
-        .striped(true)
-        .show(ui, |ui| {
-            let mut shown_any = false;
-            for (i, value) in data.iter_mut().enumerate() {
-                if !*show_all && *value == T::default() {
-                    continue;
-                }
-                shown_any = true;
-                drag_row(ui, &format!("data[{i}]:"), value);
-            }
-            if !shown_any && let Some(first) = data.first_mut() {
-                drag_row(ui, "data[0]:", first);
-            }
-        });
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{c_string_row, driver_data_section, flag_grid};
+    use super::{c_string_row, flag_grid};
     use eframe::egui;
 
     /// Run `f` inside a headless egui frame.
@@ -178,18 +138,13 @@ mod tests {
         let mut name = [0u8; 8];
         crate::write_c_string(&mut name, "abc");
         name[6] = 0xFF; // Garbage past the terminator must survive a no-op render.
-        let mut data = [0u32, 5, 0];
-        let mut show_all = false;
 
         with_ui(|ui| {
             flag_grid(ui, "flags", &mut bits, [(0b10, "a"), (0b100, "b")], 2, true);
             egui::Grid::new("text").show(ui, |ui| c_string_row(ui, "Name", &mut name, false));
-            driver_data_section(ui, "data", &mut data, &mut show_all, 20.0);
         });
 
         assert_eq!(bits, 0b1010);
         assert_eq!(name[6], 0xFF);
-        assert_eq!(data, [0, 5, 0]);
-        assert!(!show_all);
     }
 }

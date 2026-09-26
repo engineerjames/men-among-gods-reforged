@@ -1,8 +1,8 @@
 //! Item template / item instance detail editor.
 
+use super::data_fields::{item_data_fields, item_driver_info};
 use super::widgets::{
-    ATTRIBUTE_NAMES, c_string_row, drag, drag_cells, drag_pair_row, drag_row, driver_data_section,
-    flag_grid,
+    ATTRIBUTE_NAMES, c_string_row, drag, drag_cells, drag_pair_row, drag_row, flag_grid,
 };
 use super::{TemplateViewerApp, ViewMode};
 use eframe::egui;
@@ -272,7 +272,12 @@ impl TemplateViewerApp {
                     min_rank_combo(ui, id, &mut item.min_rank);
                     ui.end_row();
 
-                    drag_row(ui, "Driver:", &mut item.driver);
+                    ui.label("Driver:");
+                    ui.horizontal(|ui| {
+                        drag(ui, &mut item.driver);
+                        ui.label(item_driver_info(item.driver).0);
+                    });
+                    ui.end_row();
                 });
 
             ui.separator();
@@ -323,13 +328,8 @@ impl TemplateViewerApp {
                     }
                 });
 
-            driver_data_section(
-                ui,
-                "item_driver_data",
-                &mut item.data,
-                &mut self.show_all_data_fields,
-                40.0,
-            );
+            let defs = item_data_fields(item);
+            self.ui_data_fields(ui, "item_driver_data", &mut item.data, &defs);
 
             if table == ViewMode::ItemTemplates {
                 ui.separator();

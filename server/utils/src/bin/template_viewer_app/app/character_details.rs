@@ -1,12 +1,13 @@
 //! Character template / character instance detail editor.
 
+use super::data_fields::character_data_fields;
 use super::widgets::{
     ATTRIBUTE_NAMES, c_string_row, drag, drag_cells, drag_note_row, drag_pair_row, drag_row,
-    driver_data_section, flag_grid,
+    flag_grid,
 };
 use super::{TemplateViewerApp, ViewMode};
 use eframe::egui;
-use mag_core::constants::character_flags_name;
+use mag_core::constants::{CharacterFlags, character_flags_name};
 use mag_core::types::Character;
 use mag_core::{skills, traits};
 
@@ -93,13 +94,18 @@ impl TemplateViewerApp {
             ui_character_stats(ui, character, id);
             ui_character_tables(ui, character);
             self.ui_character_equipment(ui, character);
-            driver_data_section(
-                ui,
-                "character_driver_data",
-                &mut character.data,
-                &mut self.show_all_data_fields,
-                20.0,
-            );
+
+            // Players reuse the same slots for unrelated state, so NPC docs would mislead.
+            let is_player = character.flags & CharacterFlags::Player.bits() != 0;
+            let defs = if is_player {
+                Vec::new()
+            } else {
+                character_data_fields()
+            };
+            self.ui_data_fields(ui, "character_driver_data", &mut character.data, &defs);
+            if is_player {
+                ui.weak("Player characters use data slots differently; slot names are shown for NPCs only.");
+            }
         });
     }
 

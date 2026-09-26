@@ -5,6 +5,7 @@
 //! `widgets` (shared editor widgets), `duplicate`, and `live_api`.
 
 mod character_details;
+mod data_fields;
 mod duplicate;
 mod item_details;
 mod lists;
