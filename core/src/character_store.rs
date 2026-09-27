@@ -36,7 +36,8 @@
 //! * Talent progression: `future1`
 //! * Reserved padding: `unused`, `future2`, `future3` (`future3[2]` is a
 //!   recomputed-every-stats-pass cache of the talent-derived attack/action
-//!   speed row, parallel to `speed`; see `really_update_char`)
+//!   speed row, parallel to `speed`; `future3[5..=6]` stores Zoetje tutorial
+//!   progress and pacing state)
 //!
 //! The watcher overwrites only the patch fields when applying, so the
 //! tick thread keeps full ownership of placement, combat, and per-character

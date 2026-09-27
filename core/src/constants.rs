@@ -186,6 +186,8 @@ pub const NT_SEE: u8 = 12;
 pub const NT_DIED: u8 = 13;
 pub const NT_SHOUT: u8 = 14;
 pub const NT_HITME: u8 = 15;
+/// Internal NPC notification sent after a player manually looks at a character.
+pub const NT_LOOK: u8 = 16;
 
 // =============================================================================
 // Spell Flags (from gendefs.h)

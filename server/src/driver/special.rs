@@ -3,7 +3,7 @@ use crate::game_state::GameState;
 use crate::god::God;
 use crate::{driver, player};
 use core::types::Character;
-use core::{constants::*, skills};
+use core::{constants::*, skills, traits::Class};
 
 struct Seen {
     co: usize,
@@ -985,64 +985,233 @@ pub fn npc_cityattack_msg(
 
 /// Runs the high-priority tick for Zoetje's NPC driver (special driver 4).
 ///
-/// Placeholder: Zoetje has no behaviour yet.
-///
 /// # Arguments
 ///
-/// * `_gs` - Active game state, unused until Zoetje has behaviour.
+/// * `_gs` - Active game state used by this function.
 /// * `_cn` - Zoetje character index.
 ///
 /// # Returns
 ///
-/// * Always `false`.
+/// * Always `false`; Zoetje has no high-priority actions.
 pub fn npc_zoetje_high(_gs: &mut GameState, _cn: usize) -> bool {
     false
 }
 
 /// Runs the low-priority tick for Zoetje's NPC driver (special driver 4).
 ///
-/// Placeholder: Zoetje has no behaviour yet.
-///
 /// # Arguments
 ///
-/// * `_gs` - Active game state, unused until Zoetje has behaviour.
+/// * `_gs` - Active game state used by this function.
 /// * `_cn` - Zoetje character index.
 ///
 /// # Returns
 ///
-/// * Always `false`.
+/// * Always `false`; tutorial progress is driven by player notifications.
 pub fn npc_zoetje_low(_gs: &mut GameState, _cn: usize) -> bool {
     false
 }
 
-/// Handles incoming messages for Zoetje's NPC driver (special driver 4).
-///
-/// Placeholder: every message is ignored, so Zoetje does not react to attacks yet.
+/// Character field used to persist per-player Zoetje tutorial progress.
+const ZOETJE_TUTORIAL_STEP_IDX: usize = 5;
+/// Character field used to rate-limit each player's tutorial messages.
+const ZOETJE_TUTORIAL_NEXT_TICK_IDX: usize = 6;
+/// Minimum interval between consecutive tutorial messages.
+const ZOETJE_TUTORIAL_MESSAGE_INTERVAL: i32 = TICKS * 5;
+
+/// Builds one personalized line of Zoetje's tutorial dialogue.
 ///
 /// # Arguments
 ///
-/// * `_gs` - Active game state, unused until Zoetje has behaviour.
-/// * `_cn` - Zoetje character index receiving the message.
-/// * `_msg_type` - Message type constant.
-/// * `_dat1` - First message payload value.
+/// * `step` - Tutorial dialogue step to produce.
+/// * `player_name` - Name of the player receiving the tutorial.
+/// * `class` - Player's character class, used to select the suggested weapon.
+///
+/// # Returns
+///
+/// * The dialogue for the requested step, or `None` for a wait/completed step.
+fn zoetje_tutorial_dialogue(step: i32, player_name: &str, class: Class) -> Option<String> {
+    let weapon = match class {
+        Class::Harakim => "Harakim Dagger",
+        Class::Templar => "Templar Two-Handed Blade",
+        _ => "Mercenary Sword",
+    };
+
+    match step {
+        0 => Some(format!(
+            "{}, welcome to the Temple of Rebirth. You've come back to our lands- a familiar face, reborn as a stranger.",
+            player_name
+        )),
+        1 => Some("• Templar\n• Mercenary\n• Harakim".to_owned()),
+        2 => Some(format!(
+            "{}, rebirth can be confusing. Are you able to see fully with your new eyes? Please, hold the CTRL key and right-click me to look at me.",
+            player_name
+        )),
+        4 => Some(format!(
+            "You've opened the door, and set yourself on this mortal plain once more. But be ready for the dangers ahead of you- please take the armor and a {}. Open your inventory, and equip for battle.",
+            weapon
+        )),
+        5 => Some(
+            "To do this once the item is in your inventory, hold shift + left-click to grab the item, then place it in the appropriate slot and press left-click again to set it."
+                .to_owned(),
+        ),
+        6 => Some(
+            "Now you're equipped for battle, and moving about! I've given you a flask. Please, take all the flowers from my garden you would like. You can use them with the flask to make a potion."
+                .to_owned(),
+        ),
+        7 => Some("Hold Shift + Left-Click to gather flowers from the garden.".to_owned()),
+        8 => Some(
+            "In the next room, there is a portal to take you from my lands, and an enemy to practice your attacks. You must remember how to fight! Hold Ctrl + Left-Click to attack."
+                .to_owned(),
+        ),
+        _ => None,
+    }
+}
+
+/// Sends the next tutorial line privately and advances that player's state.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing Zoetje and the player.
+/// * `cn` - Zoetje's character index.
+/// * `player` - Character index receiving the tutorial.
+///
+/// # Returns
+///
+/// * `true` when a dialogue line was sent; otherwise `false`.
+fn npc_zoetje_advance_tutorial(gs: &mut GameState, cn: usize, player: usize) -> bool {
+    let step = gs.characters[player].future3[ZOETJE_TUTORIAL_STEP_IDX];
+    let name = gs.characters[player].get_name().to_owned();
+    let class = Class::from(gs.characters[player].kindred);
+    let Some(message) = zoetje_tutorial_dialogue(step, &name, class) else {
+        return false;
+    };
+
+    npc_zoetje_tell_player(gs, cn, player, &message);
+
+    let next_step = match step {
+        2 => 3, // Wait until the player manually looks at Zoetje.
+        8 => 9, // Tutorial complete.
+        _ => step + 1,
+    };
+    gs.characters[player].future3[ZOETJE_TUTORIAL_STEP_IDX] = next_step;
+    gs.characters[player].future3[ZOETJE_TUTORIAL_NEXT_TICK_IDX] =
+        if next_step == 3 || next_step == 9 {
+            0
+        } else {
+            gs.globals
+                .ticker
+                .saturating_add(ZOETJE_TUTORIAL_MESSAGE_INTERVAL)
+        };
+    true
+}
+
+/// Sends tutorial text via Zoetje's private tell, splitting only if the tell
+/// command's 200-character display limit would otherwise truncate the text.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing Zoetje and the recipient.
+/// * `cn` - Zoetje's character index, used as the tell sender.
+/// * `player` - Character index receiving the tutorial.
+/// * `message` - Tutorial line to deliver.
+fn npc_zoetje_tell_player(gs: &mut GameState, cn: usize, player: usize, message: &str) {
+    let player_name = gs.characters[player].get_name().to_owned();
+    for part in zoetje_tell_parts(message) {
+        gs.do_tell(cn, &player_name, &part);
+    }
+}
+
+/// Splits a long private tell into bounded chunks, preferring a sentence break.
+///
+/// # Arguments
+///
+/// * `message` - Full tutorial message to preserve.
+///
+/// # Returns
+///
+/// * One or more strings, each no longer than the tell display limit.
+fn zoetje_tell_parts(message: &str) -> Vec<String> {
+    const TELL_MAX_CHARS: usize = 200;
+    if message.chars().count() <= TELL_MAX_CHARS {
+        return vec![message.to_owned()];
+    }
+
+    if let Some((first_sentence, remainder)) = message.split_once(". ") {
+        let first_sentence = format!("{first_sentence}.");
+        if first_sentence.chars().count() <= TELL_MAX_CHARS
+            && remainder.chars().count() <= TELL_MAX_CHARS
+        {
+            return vec![first_sentence, remainder.to_owned()];
+        }
+    }
+
+    let chars: Vec<char> = message.chars().collect();
+    chars
+        .chunks(TELL_MAX_CHARS)
+        .map(|chunk| chunk.iter().collect())
+        .collect()
+}
+
+/// Handles nearby-player and manual-look notifications for Zoetje's tutorial.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing Zoetje and nearby players.
+/// * `cn` - Zoetje character index receiving the message.
+/// * `msg_type` - Message type constant.
+/// * `dat1` - First message payload value, normally the nearby/looked-at character.
 /// * `_dat2` - Second message payload value.
 /// * `_dat3` - Third message payload value.
 /// * `_dat4` - Fourth message payload value.
 ///
 /// # Returns
 ///
-/// * Always `false`.
+/// * `true` when a tutorial notification was handled, otherwise `false`.
 pub fn npc_zoetje_msg(
-    _gs: &mut GameState,
-    _cn: usize,
-    _msg_type: i32,
-    _dat1: i32,
+    gs: &mut GameState,
+    cn: usize,
+    msg_type: i32,
+    dat1: i32,
     _dat2: i32,
     _dat3: i32,
     _dat4: i32,
 ) -> bool {
-    false
+    let player = dat1 as usize;
+    if player == 0
+        || player >= MAXCHARS
+        || gs.characters[player].used != USE_ACTIVE
+        || gs.characters[player].flags & CharacterFlags::Player.bits() == 0
+    {
+        return false;
+    }
+
+    if msg_type == i32::from(NT_LOOK) {
+        if gs.characters[player].future3[ZOETJE_TUTORIAL_STEP_IDX] != 3 {
+            return false;
+        }
+        gs.characters[player].future3[ZOETJE_TUTORIAL_STEP_IDX] = 4;
+        gs.characters[player].future3[ZOETJE_TUTORIAL_NEXT_TICK_IDX] = gs.globals.ticker;
+        return npc_zoetje_advance_tutorial(gs, cn, player);
+    }
+
+    if msg_type != i32::from(NT_SEE) {
+        return false;
+    }
+
+    let step = gs.characters[player].future3[ZOETJE_TUTORIAL_STEP_IDX];
+    if step == 0 {
+        return npc_zoetje_advance_tutorial(gs, cn, player);
+    }
+    if matches!(step, 3 | 9)
+        || gs.globals.ticker < gs.characters[player].future3[ZOETJE_TUTORIAL_NEXT_TICK_IDX]
+    {
+        return false;
+    }
+
+    npc_zoetje_advance_tutorial(gs, cn, player)
 }
+
+/// Returns the high-priority result for Malte's special NPC driver.
 ///
 /// # Arguments
 ///
@@ -1218,5 +1387,52 @@ pub fn npc_malte_msg(
             log::warn!("Unknown NPC message for {} ({}): {}", cn, name, msg_type);
             false
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{zoetje_tell_parts, zoetje_tutorial_dialogue};
+    use core::traits::Class;
+
+    #[test]
+    fn zoetje_tutorial_dialogue_personalizes_greeting_and_class_weapon() {
+        assert_eq!(
+            zoetje_tutorial_dialogue(0, "Ada", Class::Templar).as_deref(),
+            Some(
+                "Ada, welcome to the Temple of Rebirth. You've come back to our lands- a familiar face, reborn as a stranger."
+            )
+        );
+        assert!(
+            zoetje_tutorial_dialogue(4, "Ada", Class::Harakim)
+                .unwrap()
+                .contains("Harakim Dagger")
+        );
+        assert!(
+            zoetje_tutorial_dialogue(4, "Ada", Class::Mercenary)
+                .unwrap()
+                .contains("Mercenary Sword")
+        );
+        assert!(
+            zoetje_tutorial_dialogue(4, "Ada", Class::Templar)
+                .unwrap()
+                .contains("Templar Two-Handed Blade")
+        );
+    }
+
+    #[test]
+    fn zoetje_tutorial_dialogue_has_no_line_while_waiting_or_after_completion() {
+        assert_eq!(zoetje_tutorial_dialogue(3, "Ada", Class::Mercenary), None);
+        assert_eq!(zoetje_tutorial_dialogue(9, "Ada", Class::Mercenary), None);
+    }
+
+    #[test]
+    fn zoetje_tell_parts_preserve_long_messages_without_exceeding_tell_limit() {
+        let message = zoetje_tutorial_dialogue(4, "Ada", Class::Templar).unwrap();
+        let parts = zoetje_tell_parts(&message);
+
+        assert_eq!(parts.len(), 2);
+        assert!(parts.iter().all(|part| part.chars().count() <= 200));
+        assert_eq!(format!("{} {}", parts[0], parts[1]), message);
     }
 }
