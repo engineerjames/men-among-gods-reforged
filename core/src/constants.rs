@@ -69,6 +69,12 @@ pub const LENDESC: usize = 200;
 pub const HOME_MERCENARY_X: i32 = 512;
 pub const HOME_MERCENARY_Y: i32 = 512;
 
+/// Temple/tavern a brand-new character starts at: the Temple of Rebirth
+/// tutorial area. Leaving through the magic portal (item driver 46) moves
+/// them on to [`HOME_MERCENARY_X`]/[`HOME_MERCENARY_Y`].
+pub const HOME_START_X: i32 = 484;
+pub const HOME_START_Y: i32 = 125;
+
 /// Say constants
 pub const CNTSAY: i32 = TICKS;
 pub const MAXSAY: i32 = TICKS * 7;

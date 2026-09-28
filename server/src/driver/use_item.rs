@@ -9008,6 +9008,42 @@ mod tests {
     }
 
     #[test]
+    fn magic_portal_moves_starting_area_home_to_the_mercenary_temple() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].temple_x = core::constants::HOME_START_X as u16;
+            gs.characters[cn].temple_y = core::constants::HOME_START_Y as u16;
+            gs.characters[cn].tavern_x = core::constants::HOME_START_X as u16;
+            gs.characters[cn].tavern_y = core::constants::HOME_START_Y as u16;
+
+            let item_idx = 1;
+            gs.items[item_idx] = core::types::Item::default();
+            gs.items[item_idx].used = USE_ACTIVE;
+            gs.items[item_idx].data[0] = core::constants::HOME_MERCENARY_X as u32;
+            gs.items[item_idx].data[1] = core::constants::HOME_MERCENARY_Y as u32;
+
+            assert!(teleport3(gs, cn, item_idx));
+
+            assert_eq!(
+                gs.characters[cn].temple_x,
+                core::constants::HOME_MERCENARY_X as u16
+            );
+            assert_eq!(
+                gs.characters[cn].temple_y,
+                core::constants::HOME_MERCENARY_Y as u16
+            );
+            assert_eq!(
+                gs.characters[cn].tavern_x,
+                core::constants::HOME_MERCENARY_X as u16
+            );
+            assert_eq!(
+                gs.characters[cn].tavern_y,
+                core::constants::HOME_MERCENARY_Y as u16
+            );
+        });
+    }
+
+    #[test]
     fn consumed_cursor_potion_becomes_flask_in_cursor() {
         with_test_gs(|gs| {
             let (cn, _nr) = add_test_player(gs);

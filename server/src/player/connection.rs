@@ -452,10 +452,10 @@ fn apply_api_login_character_record(
                 // API login does NOT go through `plr_newlogin`, so first-time characters
                 // need the same baseline initialization (home temple/tavern, base stats).
                 // Without this, `plr_login` can try to drop at (0,0).
-                gs.characters[cn].temple_x = core::constants::HOME_MERCENARY_X as u16;
-                gs.characters[cn].temple_y = core::constants::HOME_MERCENARY_Y as u16;
-                gs.characters[cn].tavern_x = core::constants::HOME_MERCENARY_X as u16;
-                gs.characters[cn].tavern_y = core::constants::HOME_MERCENARY_Y as u16;
+                gs.characters[cn].temple_x = core::constants::HOME_START_X as u16;
+                gs.characters[cn].temple_y = core::constants::HOME_START_Y as u16;
+                gs.characters[cn].tavern_x = core::constants::HOME_START_X as u16;
+                gs.characters[cn].tavern_y = core::constants::HOME_START_Y as u16;
                 gs.characters[cn].points = 0;
                 gs.characters[cn].points_tot = 0;
                 gs.characters[cn].luck = 205;
@@ -870,8 +870,8 @@ mod tests {
     use super::*;
     use core::{
         constants::{
-            CharacterFlags, HOME_MERCENARY_X, HOME_MERCENARY_Y, ST_EXIT, ST_LOGIN, USE_ACTIVE,
-            USE_NONACTIVE,
+            CharacterFlags, HOME_MERCENARY_X, HOME_MERCENARY_Y, HOME_START_X, HOME_START_Y,
+            ST_EXIT, ST_LOGIN, USE_ACTIVE, USE_NONACTIVE,
         },
         string_operations::c_string_to_str,
         traits,
@@ -979,7 +979,10 @@ mod tests {
             assert_eq!(gs.characters[new_cn].player, 0);
             assert_eq!(gs.characters[new_cn].get_name(), "Api Hero");
             assert_eq!(gs.characters[new_cn].get_reference(), "Api Hero");
-            assert_eq!(gs.characters[new_cn].tavern_x, HOME_MERCENARY_X as u16);
+            assert_eq!(gs.characters[new_cn].tavern_x, HOME_START_X as u16);
+            assert_eq!(gs.characters[new_cn].tavern_y, HOME_START_Y as u16);
+            assert_eq!(gs.characters[new_cn].temple_x, HOME_START_X as u16);
+            assert_eq!(gs.characters[new_cn].temple_y, HOME_START_Y as u16);
             assert_eq!(
                 gs.characters[new_cn].flags & CharacterFlags::NewUser.bits(),
                 0

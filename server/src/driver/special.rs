@@ -1165,13 +1165,16 @@ fn zoetje_tutorial_dialogue(
 /// * The reminder text, or `None` for gates that should wait silently.
 fn zoetje_gate_reminder(gate: ZoetjeGate) -> Option<&'static str> {
     match gate {
+        ZoetjeGate::Look => Some(
+            "Take a good look at me first- hold the CTRL key and right-click me. I'll wait for you.",
+        ),
         ZoetjeGate::Equipped => Some(
             "Don't be shy- put the armor on your body and take a weapon in hand. I'll wait for you.",
         ),
         ZoetjeGate::Flower => {
             Some("Go on, pick a flower from my garden. Hold Shift and left-click one.")
         }
-        ZoetjeGate::Pause | ZoetjeGate::Look => None,
+        ZoetjeGate::Pause => None,
     }
 }
 
@@ -1280,7 +1283,15 @@ fn npc_zoetje_advance_tutorial(
         return false;
     };
 
-    if gate_override != Some(gate) && !zoetje_gate_satisfied(gs, player, gate) {
+    // An external event only ever clears the gate it corresponds to; it must
+    // never skip ahead past an unrelated step's pause.
+    let cleared_by_event = match gate_override {
+        Some(cleared) if cleared != gate => return false,
+        Some(_) => true,
+        None => false,
+    };
+
+    if !cleared_by_event && !zoetje_gate_satisfied(gs, player, gate) {
         let Some(reminder) = zoetje_gate_reminder(gate) else {
             return false;
         };
