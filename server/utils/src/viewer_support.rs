@@ -74,6 +74,8 @@ impl DataSource {
 ///
 /// * The resolved [`DataSource`].
 pub fn data_source_from_args() -> DataSource {
+    // Populate `.env` values (e.g. MAG_ADMIN_API_TOKEN) before reading them.
+    crate::load_dotenv();
     data_source_from_iter(std::env::args_os().skip(1))
 }
 
