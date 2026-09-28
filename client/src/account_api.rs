@@ -19,6 +19,21 @@ use mag_core::types::api::{
     ResetPasswordRequestResponse, UploadClientLogRequest, UploadClientLogResponse,
 };
 
+/// Returns `true` when an error string produced by this module represents an
+/// HTTP 401 response (expired or revoked JWT).
+///
+/// All authenticated helpers in this module format their failures as
+/// `"<message> (<status>)"`, so the status code is recoverable from the string.
+///
+/// # Arguments
+/// * `error` - Error message previously returned by one of the API helpers.
+///
+/// # Returns
+/// * `true` if the error came from a 401 response, `false` otherwise.
+pub fn is_unauthorized(error: &str) -> bool {
+    error.contains("(401)")
+}
+
 /// Hashes a password into Argon2 PHC format using a deterministic salt.
 ///
 /// # Arguments
@@ -220,18 +235,17 @@ pub fn create_character(
         .map(|error| error.trim().to_owned())
         .filter(|error| !error.is_empty());
 
-    if let Some(error) = api_error {
-        return Err(error);
-    }
-
-    let message = match status {
-        StatusCode::BAD_REQUEST => "Invalid character details",
-        StatusCode::UNPROCESSABLE_ENTITY => "Character name is already taken",
-        StatusCode::CONFLICT => "You have too many characters",
-        StatusCode::UNAUTHORIZED => "Unauthorized",
-        StatusCode::INTERNAL_SERVER_ERROR => "Server error",
-        _ => "Character creation failed",
-    };
+    let message = api_error.unwrap_or_else(|| {
+        match status {
+            StatusCode::BAD_REQUEST => "Invalid character details",
+            StatusCode::UNPROCESSABLE_ENTITY => "Character name is already taken",
+            StatusCode::CONFLICT => "You have too many characters",
+            StatusCode::UNAUTHORIZED => "Unauthorized",
+            StatusCode::INTERNAL_SERVER_ERROR => "Server error",
+            _ => "Character creation failed",
+        }
+        .to_owned()
+    });
 
     Err(format!("{message} ({})", status.as_u16()))
 }
@@ -391,8 +405,17 @@ pub fn create_game_login_ticket(
     let api_error = resp
         .json::<CreateGameLoginTicketResponse>()
         .ok()
-        .and_then(|b| b.error);
-    Err(api_error.unwrap_or_else(|| format!("{} ({})", fallback, status.as_u16())))
+        .and_then(|b| b.error)
+        .map(|error| error.trim().to_owned())
+        .filter(|error| !error.is_empty());
+
+    // The status code is always appended so callers can detect 401s and bounce
+    // the player back to the login screen.
+    Err(format!(
+        "{} ({})",
+        api_error.unwrap_or_else(|| fallback.to_owned()),
+        status.as_u16()
+    ))
 }
 
 /// Uploads a gzip-compressed client log to the diagnostics API endpoint.
@@ -807,5 +830,14 @@ mod tests {
             login_failure_message(StatusCode::FORBIDDEN, None),
             "Login failed (403)"
         );
+    }
+
+    #[test]
+    fn is_unauthorized_detects_401_errors() {
+        assert!(is_unauthorized("Unauthorized (401)"));
+        assert!(is_unauthorized("Token expired (401)"));
+        assert!(!is_unauthorized("Rate limited (429)"));
+        assert!(!is_unauthorized("Server error (500)"));
+        assert!(!is_unauthorized("Get characters request failed: timeout"));
     }
 }

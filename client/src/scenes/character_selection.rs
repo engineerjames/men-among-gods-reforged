@@ -143,6 +143,27 @@ impl CharacterSelectionScene {
             );
         }
     }
+
+    /// Drops the session and routes back to the login screen when an API call
+    /// failed with 401 (expired or revoked JWT).
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state holding the API session.
+    /// * `error` - Error message returned by an `account_api` helper.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(SceneType::Login)` when the error was a 401, `None` otherwise.
+    fn handle_unauthorized(app_state: &mut AppState<'_>, error: &str) -> Option<SceneType> {
+        if !account_api::is_unauthorized(error) {
+            return None;
+        }
+
+        log::warn!("API session rejected (401); returning to login screen");
+        app_state.api.expire_session();
+        Some(SceneType::Login)
+    }
 }
 
 impl Scene for CharacterSelectionScene {
@@ -328,8 +349,7 @@ impl Scene for CharacterSelectionScene {
                     self.form.set_error(None);
                 }
                 CharacterSelectionFormAction::LogOut => {
-                    app_state.api.token = None;
-                    app_state.api.username = None;
+                    app_state.api.log_out();
                     self.last_error = None;
                     self.pending_scene = Some(SceneType::Login);
                 }
@@ -409,12 +429,8 @@ impl Scene for CharacterSelectionScene {
                         self.form.set_error(Some(error.clone()));
                         self.form.set_status(None);
 
-                        // JWT expired or revoked — clear the stale token and
-                        // send the user back to the login screen.
-                        if error.contains("(401)") {
-                            app_state.api.token = None;
-                            app_state.api.username = None;
-                            return Some(SceneType::Login);
+                        if let Some(scene) = Self::handle_unauthorized(app_state, &error) {
+                            return Some(scene);
                         }
                     }
                 }
@@ -464,7 +480,11 @@ impl Scene for CharacterSelectionScene {
                     Err(error) => {
                         log::error!("Failed to create game login ticket: {}", error);
                         self.last_error = Some(error.clone());
-                        self.form.set_error(Some(error));
+                        self.form.set_error(Some(error.clone()));
+
+                        if let Some(scene) = Self::handle_unauthorized(app_state, &error) {
+                            return Some(scene);
+                        }
                     }
                 }
             }
@@ -511,8 +531,12 @@ impl Scene for CharacterSelectionScene {
                     Err(error) => {
                         log::error!("Failed to delete character: {}", error);
                         self.last_error = Some(error.clone());
-                        self.form.set_error(Some(error));
+                        self.form.set_error(Some(error.clone()));
                         self.delete_dialog.hide();
+
+                        if let Some(scene) = Self::handle_unauthorized(app_state, &error) {
+                            return Some(scene);
+                        }
                     }
                 }
             }
