@@ -111,6 +111,15 @@ the main "unprovoked aggression" path and layers several independent triggers:
   resting-position / resting-direction (`data[29]`/`data[30]`) behaviour for free —
   `npc_zoetje_low` applies `data[30]` itself because `pop_create_char` forces every
   freshly spawned NPC to `DX_DOWN`.
+- **Zoetje's tutorial** (`data[25] == 4`) keeps per-player progress in the *player's*
+  `future3[5]` (step) and `future3[6]` (earliest tick for the next line). Each step
+  carries a `ZoetjeGate` the player must clear before the line is delivered: `Pause`
+  (only the inter-line delay), `Look` (a deliberate Ctrl + right-click, delivered via
+  `NT_LOOK`), `Equipped` (`worn[WN_BODY]` and `worn[WN_RHAND]` both set), or `Flower`
+  (a carried item named like a flower). While a gate is unmet she repeats a nudge on a
+  slower timer instead of advancing. The `Equipped` step also hands over a flask
+  (item template `100`); if the player's inventory is full she asks them to make room
+  and stays on that step.
 - **City-guard hook** (`data[26]` non-zero, values `1`/`3`) additionally runs
   `npc_cityguard_see` before the group/territory checks.
 - If none of the above fire and the seen character is a player the NPC hasn't

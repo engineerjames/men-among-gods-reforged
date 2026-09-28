@@ -1063,7 +1063,28 @@ const ZOETJE_TUTORIAL_STEP_IDX: usize = 5;
 /// Character field used to rate-limit each player's tutorial messages.
 const ZOETJE_TUTORIAL_NEXT_TICK_IDX: usize = 6;
 /// Minimum interval between consecutive tutorial messages.
-const ZOETJE_TUTORIAL_MESSAGE_INTERVAL: i32 = TICKS * 5;
+const ZOETJE_TUTORIAL_MESSAGE_INTERVAL: i32 = TICKS * 12;
+/// Interval between nudges while the player has not met the current gate.
+const ZOETJE_TUTORIAL_REMINDER_INTERVAL: i32 = TICKS * 30;
+/// First tutorial step with no dialogue left; the tutorial is finished here.
+const ZOETJE_TUTORIAL_DONE_STEP: i32 = 7;
+/// Tutorial step whose line also hands the player a flask.
+const ZOETJE_FLASK_STEP: i32 = 4;
+/// Item template Zoetje hands out for potion brewing.
+const ZOETJE_FLASK_TEMPLATE: usize = 100;
+
+/// What the player must do before Zoetje will deliver a given tutorial line.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum ZoetjeGate {
+    /// Nothing beyond the normal pause between lines.
+    Pause,
+    /// Deliberately look at Zoetje (Ctrl + right-click).
+    Look,
+    /// Wear body armor and wield a weapon.
+    Equipped,
+    /// Carry a flower picked from the garden.
+    Flower,
+}
 
 /// Builds one personalized line of Zoetje's tutorial dialogue.
 ///
@@ -1075,8 +1096,13 @@ const ZOETJE_TUTORIAL_MESSAGE_INTERVAL: i32 = TICKS * 5;
 ///
 /// # Returns
 ///
-/// * The dialogue for the requested step, or `None` for a wait/completed step.
-fn zoetje_tutorial_dialogue(step: i32, player_name: &str, class: Class) -> Option<String> {
+/// * The dialogue and the gate that must be cleared before it is delivered,
+///   or `None` once the tutorial is complete.
+fn zoetje_tutorial_dialogue(
+    step: i32,
+    player_name: &str,
+    class: Class,
+) -> Option<(String, ZoetjeGate)> {
     let weapon = match class {
         Class::Harakim => "Harakim Dagger",
         Class::Templar => "Templar Two-Handed Blade",
@@ -1084,71 +1110,209 @@ fn zoetje_tutorial_dialogue(step: i32, player_name: &str, class: Class) -> Optio
     };
 
     match step {
-        0 => Some(format!(
-            "{}, welcome to the Temple of Rebirth. You've come back to our lands- a familiar face, reborn as a stranger.",
-            player_name
+        0 => Some((
+            format!(
+                "{}, welcome to the Temple of Rebirth. You've come back to our lands- a familiar face, reborn as a stranger.",
+                player_name
+            ),
+            ZoetjeGate::Pause,
         )),
-        1 => Some("• Templar\n• Mercenary\n• Harakim".to_owned()),
-        2 => Some(format!(
-            "{}, rebirth can be confusing. Are you able to see fully with your new eyes? Please, hold the CTRL key and right-click me to look at me.",
-            player_name
+        1 => Some((
+            format!(
+                "{}, rebirth can be confusing. Are you able to see fully with your new eyes? Please, hold the CTRL key and right-click me to look at me.",
+                player_name
+            ),
+            ZoetjeGate::Pause,
         )),
-        4 => Some(format!(
-            "You've opened the door, and set yourself on this mortal plain once more. But be ready for the dangers ahead of you- please take the armor and a {}. Open your inventory, and equip for battle.",
-            weapon
+        2 => Some((
+            format!(
+                "You've opened the door, and set yourself on this mortal plain once more. But be ready for the dangers ahead of you- please take the armor and a {}. Open your inventory, and equip for battle.",
+                weapon
+            ),
+            ZoetjeGate::Look,
         )),
-        5 => Some(
+        3 => Some((
             "To do this once the item is in your inventory, hold shift + left-click to grab the item, then place it in the appropriate slot and press left-click again to set it."
                 .to_owned(),
-        ),
-        6 => Some(
-            "Now you're equipped for battle, and moving about! I've given you a flask. Please, take all the flowers from my garden you would like. You can use them with the flask to make a potion."
+            ZoetjeGate::Pause,
+        )),
+        ZOETJE_FLASK_STEP => Some((
+            "Now you're equipped for battle, and moving about! Here, take this flask. Please, take all the flowers from my garden you would like. You can use them with the flask to make a potion."
                 .to_owned(),
-        ),
-        7 => Some("Hold Shift + Left-Click to gather flowers from the garden.".to_owned()),
-        8 => Some(
+            ZoetjeGate::Equipped,
+        )),
+        5 => Some((
+            "Hold Shift + Left-Click to gather flowers from the garden.".to_owned(),
+            ZoetjeGate::Pause,
+        )),
+        6 => Some((
             "In the next room, there is a portal to take you from my lands, and an enemy to practice your attacks. You must remember how to fight! Hold Ctrl + Left-Click to attack."
                 .to_owned(),
-        ),
+            ZoetjeGate::Flower,
+        )),
         _ => None,
     }
 }
 
+/// Returns the nudge Zoetje repeats while the player has not cleared a gate.
+///
+/// # Arguments
+///
+/// * `gate` - Gate currently blocking tutorial progress.
+///
+/// # Returns
+///
+/// * The reminder text, or `None` for gates that should wait silently.
+fn zoetje_gate_reminder(gate: ZoetjeGate) -> Option<&'static str> {
+    match gate {
+        ZoetjeGate::Equipped => Some(
+            "Don't be shy- put the armor on your body and take a weapon in hand. I'll wait for you.",
+        ),
+        ZoetjeGate::Flower => {
+            Some("Go on, pick a flower from my garden. Hold Shift and left-click one.")
+        }
+        ZoetjeGate::Pause | ZoetjeGate::Look => None,
+    }
+}
+
+/// Reports whether the player has done what the current tutorial gate asks.
+///
+/// [`ZoetjeGate::Look`] is never satisfied here; only an explicit `NT_LOOK`
+/// notification clears it.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing the player.
+/// * `player` - Character index being tutored.
+/// * `gate` - Gate to evaluate.
+///
+/// # Returns
+///
+/// * `true` when the gate is cleared, otherwise `false`.
+fn zoetje_gate_satisfied(gs: &GameState, player: usize, gate: ZoetjeGate) -> bool {
+    match gate {
+        ZoetjeGate::Pause => true,
+        ZoetjeGate::Look => false,
+        ZoetjeGate::Equipped => {
+            gs.characters[player].worn[WN_BODY] != 0 && gs.characters[player].worn[WN_RHAND] != 0
+        }
+        ZoetjeGate::Flower => zoetje_player_has_flower(gs, player),
+    }
+}
+
+/// Reports whether the player is holding or carrying a flower.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing the player and item instances.
+/// * `player` - Character index being tutored.
+///
+/// # Returns
+///
+/// * `true` when any carried item is named like a flower, otherwise `false`.
+fn zoetje_player_has_flower(gs: &GameState, player: usize) -> bool {
+    let character = &gs.characters[player];
+    character
+        .item
+        .iter()
+        .copied()
+        .chain(std::iter::once(character.citem))
+        .any(|item| {
+            let item = item as usize;
+            item != 0
+                && item < MAXITEM
+                && gs.items[item]
+                    .get_name()
+                    .to_ascii_lowercase()
+                    .contains("flower")
+        })
+}
+
+/// Creates a flask and places it in the player's inventory.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used to create and hand over the item.
+/// * `player` - Character index receiving the flask.
+///
+/// # Returns
+///
+/// * `true` when the flask reached the player's inventory, otherwise `false`.
+fn zoetje_give_flask(gs: &mut GameState, player: usize) -> bool {
+    let Some(flask) = God::create_item(gs, ZOETJE_FLASK_TEMPLATE) else {
+        log::error!("Zoetje could not create flask template {ZOETJE_FLASK_TEMPLATE}");
+        return false;
+    };
+
+    if God::give_character_item(gs, player, flask) {
+        return true;
+    }
+
+    gs.items[flask].used = USE_EMPTY;
+    false
+}
+
 /// Sends the next tutorial line privately and advances that player's state.
+///
+/// A line is only delivered once its gate is cleared; otherwise the player
+/// gets a periodic nudge and the tutorial stays on the same step.
 ///
 /// # Arguments
 ///
 /// * `gs` - Active game state containing Zoetje and the player.
 /// * `cn` - Zoetje's character index.
 /// * `player` - Character index receiving the tutorial.
+/// * `gate_override` - Gate already cleared by an external event, if any.
 ///
 /// # Returns
 ///
-/// * `true` when a dialogue line was sent; otherwise `false`.
-fn npc_zoetje_advance_tutorial(gs: &mut GameState, cn: usize, player: usize) -> bool {
+/// * `true` when a dialogue line or reminder was sent; otherwise `false`.
+fn npc_zoetje_advance_tutorial(
+    gs: &mut GameState,
+    cn: usize,
+    player: usize,
+    gate_override: Option<ZoetjeGate>,
+) -> bool {
     let step = gs.characters[player].future3[ZOETJE_TUTORIAL_STEP_IDX];
     let name = gs.characters[player].get_name().to_owned();
     let class = Class::from(gs.characters[player].kindred);
-    let Some(message) = zoetje_tutorial_dialogue(step, &name, class) else {
+    let Some((message, gate)) = zoetje_tutorial_dialogue(step, &name, class) else {
         return false;
     };
 
+    if gate_override != Some(gate) && !zoetje_gate_satisfied(gs, player, gate) {
+        let Some(reminder) = zoetje_gate_reminder(gate) else {
+            return false;
+        };
+        npc_zoetje_tell_player(gs, cn, player, reminder);
+        gs.characters[player].future3[ZOETJE_TUTORIAL_NEXT_TICK_IDX] = gs
+            .globals
+            .ticker
+            .saturating_add(ZOETJE_TUTORIAL_REMINDER_INTERVAL);
+        return true;
+    }
+
+    if step == ZOETJE_FLASK_STEP && !zoetje_give_flask(gs, player) {
+        npc_zoetje_tell_player(
+            gs,
+            cn,
+            player,
+            "Your hands are full- make some room and I'll pass you a flask.",
+        );
+        gs.characters[player].future3[ZOETJE_TUTORIAL_NEXT_TICK_IDX] = gs
+            .globals
+            .ticker
+            .saturating_add(ZOETJE_TUTORIAL_REMINDER_INTERVAL);
+        return true;
+    }
+
     npc_zoetje_tell_player(gs, cn, player, &message);
 
-    let next_step = match step {
-        2 => 3, // Wait until the player manually looks at Zoetje.
-        8 => 9, // Tutorial complete.
-        _ => step + 1,
-    };
-    gs.characters[player].future3[ZOETJE_TUTORIAL_STEP_IDX] = next_step;
-    gs.characters[player].future3[ZOETJE_TUTORIAL_NEXT_TICK_IDX] =
-        if next_step == 3 || next_step == 9 {
-            0
-        } else {
-            gs.globals
-                .ticker
-                .saturating_add(ZOETJE_TUTORIAL_MESSAGE_INTERVAL)
-        };
+    gs.characters[player].future3[ZOETJE_TUTORIAL_STEP_IDX] = step + 1;
+    gs.characters[player].future3[ZOETJE_TUTORIAL_NEXT_TICK_IDX] = gs
+        .globals
+        .ticker
+        .saturating_add(ZOETJE_TUTORIAL_MESSAGE_INTERVAL);
     true
 }
 
@@ -1233,12 +1397,7 @@ pub fn npc_zoetje_msg(
     }
 
     if msg_type == i32::from(NT_LOOK) {
-        if gs.characters[player].future3[ZOETJE_TUTORIAL_STEP_IDX] != 3 {
-            return false;
-        }
-        gs.characters[player].future3[ZOETJE_TUTORIAL_STEP_IDX] = 4;
-        gs.characters[player].future3[ZOETJE_TUTORIAL_NEXT_TICK_IDX] = gs.globals.ticker;
-        return npc_zoetje_advance_tutorial(gs, cn, player);
+        return npc_zoetje_advance_tutorial(gs, cn, player, Some(ZoetjeGate::Look));
     }
 
     if msg_type != i32::from(NT_SEE) {
@@ -1246,16 +1405,16 @@ pub fn npc_zoetje_msg(
     }
 
     let step = gs.characters[player].future3[ZOETJE_TUTORIAL_STEP_IDX];
-    if step == 0 {
-        return npc_zoetje_advance_tutorial(gs, cn, player);
+    if step >= ZOETJE_TUTORIAL_DONE_STEP {
+        return false;
     }
-    if matches!(step, 3 | 9)
-        || gs.globals.ticker < gs.characters[player].future3[ZOETJE_TUTORIAL_NEXT_TICK_IDX]
+    // The opening greeting fires as soon as she notices a newcomer.
+    if step != 0 && gs.globals.ticker < gs.characters[player].future3[ZOETJE_TUTORIAL_NEXT_TICK_IDX]
     {
         return false;
     }
 
-    npc_zoetje_advance_tutorial(gs, cn, player)
+    npc_zoetje_advance_tutorial(gs, cn, player, None)
 }
 
 /// Returns the high-priority result for Malte's special NPC driver.
@@ -1439,45 +1598,114 @@ pub fn npc_malte_msg(
 
 #[cfg(test)]
 mod tests {
-    use super::{npc_zoetje_low, zoetje_tell_parts, zoetje_tutorial_dialogue};
+    use super::{
+        ZoetjeGate, npc_zoetje_low, zoetje_gate_satisfied, zoetje_player_has_flower,
+        zoetje_tell_parts, zoetje_tutorial_dialogue,
+    };
     use crate::test_helpers::with_test_gs;
-    use core::constants::{DR_IDLE, DR_TURN, DX_DOWN, DX_UP, USE_ACTIVE};
+    use core::constants::{DR_IDLE, DR_TURN, DX_DOWN, DX_UP, USE_ACTIVE, WN_BODY, WN_RHAND};
+    use core::string_operations::write_ascii_into_fixed;
     use core::traits::Class;
 
     #[test]
     fn zoetje_tutorial_dialogue_personalizes_greeting_and_class_weapon() {
         assert_eq!(
-            zoetje_tutorial_dialogue(0, "Ada", Class::Templar).as_deref(),
+            zoetje_tutorial_dialogue(0, "Ada", Class::Templar).map(|(text, _)| text),
             Some(
                 "Ada, welcome to the Temple of Rebirth. You've come back to our lands- a familiar face, reborn as a stranger."
+                    .to_owned()
             )
         );
         assert!(
-            zoetje_tutorial_dialogue(4, "Ada", Class::Harakim)
+            zoetje_tutorial_dialogue(2, "Ada", Class::Harakim)
                 .unwrap()
+                .0
                 .contains("Harakim Dagger")
         );
         assert!(
-            zoetje_tutorial_dialogue(4, "Ada", Class::Mercenary)
+            zoetje_tutorial_dialogue(2, "Ada", Class::Mercenary)
                 .unwrap()
+                .0
                 .contains("Mercenary Sword")
         );
         assert!(
-            zoetje_tutorial_dialogue(4, "Ada", Class::Templar)
+            zoetje_tutorial_dialogue(2, "Ada", Class::Templar)
                 .unwrap()
+                .0
                 .contains("Templar Two-Handed Blade")
         );
     }
 
     #[test]
-    fn zoetje_tutorial_dialogue_has_no_line_while_waiting_or_after_completion() {
-        assert_eq!(zoetje_tutorial_dialogue(3, "Ada", Class::Mercenary), None);
-        assert_eq!(zoetje_tutorial_dialogue(9, "Ada", Class::Mercenary), None);
+    fn zoetje_tutorial_gates_wait_on_player_actions() {
+        assert_eq!(
+            zoetje_tutorial_dialogue(2, "Ada", Class::Mercenary)
+                .unwrap()
+                .1,
+            ZoetjeGate::Look
+        );
+        assert_eq!(
+            zoetje_tutorial_dialogue(4, "Ada", Class::Mercenary)
+                .unwrap()
+                .1,
+            ZoetjeGate::Equipped
+        );
+        assert_eq!(
+            zoetje_tutorial_dialogue(6, "Ada", Class::Mercenary)
+                .unwrap()
+                .1,
+            ZoetjeGate::Flower
+        );
+    }
+
+    #[test]
+    fn zoetje_tutorial_dialogue_has_no_line_after_completion() {
+        assert!(zoetje_tutorial_dialogue(7, "Ada", Class::Mercenary).is_none());
+    }
+
+    #[test]
+    fn zoetje_equipped_gate_requires_both_armor_and_weapon() {
+        with_test_gs(|gs| {
+            let player = 1;
+            gs.characters[player] = core::types::Character::default();
+            gs.characters[player].used = USE_ACTIVE;
+
+            assert!(!zoetje_gate_satisfied(gs, player, ZoetjeGate::Equipped));
+
+            gs.characters[player].worn[WN_BODY] = 10;
+            assert!(!zoetje_gate_satisfied(gs, player, ZoetjeGate::Equipped));
+
+            gs.characters[player].worn[WN_RHAND] = 11;
+            assert!(zoetje_gate_satisfied(gs, player, ZoetjeGate::Equipped));
+        });
+    }
+
+    #[test]
+    fn zoetje_flower_gate_matches_carried_and_held_flowers() {
+        with_test_gs(|gs| {
+            let player = 1;
+            gs.characters[player] = core::types::Character::default();
+            gs.characters[player].used = USE_ACTIVE;
+            write_ascii_into_fixed(&mut gs.items[20].name, "Red Flower");
+            write_ascii_into_fixed(&mut gs.items[21].name, "Flask");
+
+            assert!(!zoetje_player_has_flower(gs, player));
+
+            gs.characters[player].item[3] = 21;
+            assert!(!zoetje_player_has_flower(gs, player));
+
+            gs.characters[player].item[3] = 20;
+            assert!(zoetje_player_has_flower(gs, player));
+
+            gs.characters[player].item[3] = 0;
+            gs.characters[player].citem = 20;
+            assert!(zoetje_player_has_flower(gs, player));
+        });
     }
 
     #[test]
     fn zoetje_tell_parts_preserve_long_messages_without_exceeding_tell_limit() {
-        let message = zoetje_tutorial_dialogue(4, "Ada", Class::Templar).unwrap();
+        let (message, _) = zoetje_tutorial_dialogue(2, "Ada", Class::Templar).unwrap();
         let parts = zoetje_tell_parts(&message);
 
         assert_eq!(parts.len(), 2);
