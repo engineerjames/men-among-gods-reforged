@@ -999,16 +999,63 @@ pub fn npc_zoetje_high(_gs: &mut GameState, _cn: usize) -> bool {
 
 /// Runs the low-priority tick for Zoetje's NPC driver (special driver 4).
 ///
+/// Tutorial progress is driven entirely by player notifications, so the only
+/// idle behaviour is keeping her facing her configured resting direction.
+///
 /// # Arguments
 ///
-/// * `_gs` - Active game state used by this function.
-/// * `_cn` - Zoetje character index.
+/// * `gs` - Active game state used by this function.
+/// * `cn` - Zoetje character index.
 ///
 /// # Returns
 ///
-/// * Always `false`; tutorial progress is driven by player notifications.
-pub fn npc_zoetje_low(_gs: &mut GameState, _cn: usize) -> bool {
-    false
+/// * `true` when a turn toward the resting direction was queued.
+pub fn npc_zoetje_low(gs: &mut GameState, cn: usize) -> bool {
+    npc_zoetje_face_resting_direction(gs, cn)
+}
+
+/// Queues a turn so Zoetje faces the resting direction from `data[30]`.
+///
+/// `pop_create_char` forces every spawned NPC to `DX_DOWN`, and the generic
+/// low-priority driver (which normally applies `data[30]`) is bypassed by
+/// special drivers, so Zoetje has to apply it herself.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
+/// * `cn` - Zoetje character index.
+///
+/// # Returns
+///
+/// * `true` when a `DR_TURN` action was queued, otherwise `false`.
+fn npc_zoetje_face_resting_direction(gs: &mut GameState, cn: usize) -> bool {
+    let wanted = gs.characters[cn].data[30];
+    if wanted == 0 || i32::from(gs.characters[cn].dir) == wanted {
+        return false;
+    }
+
+    let (dx, dy) = match u8::try_from(wanted) {
+        Ok(DX_UP) => (0, -1),
+        Ok(DX_DOWN) => (0, 1),
+        Ok(DX_LEFT) => (-1, 0),
+        Ok(DX_RIGHT) => (1, 0),
+        Ok(DX_LEFTUP) => (-1, -1),
+        Ok(DX_LEFTDOWN) => (-1, 1),
+        Ok(DX_RIGHTUP) => (1, -1),
+        Ok(DX_RIGHTDOWN) => (1, 1),
+        _ => return false,
+    };
+
+    let target_x = i32::from(gs.characters[cn].x) + dx;
+    let target_y = i32::from(gs.characters[cn].y) + dy;
+    if !(0..SERVER_MAPX).contains(&target_x) || !(0..SERVER_MAPY).contains(&target_y) {
+        return false;
+    }
+
+    gs.characters[cn].misc_action = DR_TURN as u16;
+    gs.characters[cn].misc_target1 = target_x as u16;
+    gs.characters[cn].misc_target2 = target_y as u16;
+    true
 }
 
 /// Character field used to persist per-player Zoetje tutorial progress.
@@ -1392,7 +1439,9 @@ pub fn npc_malte_msg(
 
 #[cfg(test)]
 mod tests {
-    use super::{zoetje_tell_parts, zoetje_tutorial_dialogue};
+    use super::{npc_zoetje_low, zoetje_tell_parts, zoetje_tutorial_dialogue};
+    use crate::test_helpers::with_test_gs;
+    use core::constants::{DR_IDLE, DR_TURN, DX_DOWN, DX_UP, USE_ACTIVE};
     use core::traits::Class;
 
     #[test]
@@ -1434,5 +1483,46 @@ mod tests {
         assert_eq!(parts.len(), 2);
         assert!(parts.iter().all(|part| part.chars().count() <= 200));
         assert_eq!(format!("{} {}", parts[0], parts[1]), message);
+    }
+
+    #[test]
+    fn zoetje_low_turns_toward_resting_direction_then_stops() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            gs.characters[cn] = core::types::Character::default();
+            gs.characters[cn].used = USE_ACTIVE;
+            gs.characters[cn].x = 484;
+            gs.characters[cn].y = 128;
+            gs.characters[cn].dir = DX_DOWN;
+            gs.characters[cn].misc_action = DR_IDLE as u16;
+            gs.characters[cn].data[30] = i32::from(DX_UP);
+
+            assert!(npc_zoetje_low(gs, cn));
+            assert_eq!(gs.characters[cn].misc_action, DR_TURN as u16);
+            assert_eq!(gs.characters[cn].misc_target1, 484);
+            assert_eq!(gs.characters[cn].misc_target2, 127);
+
+            gs.characters[cn].dir = DX_UP;
+            gs.characters[cn].misc_action = DR_IDLE as u16;
+            assert!(!npc_zoetje_low(gs, cn));
+            assert_eq!(gs.characters[cn].misc_action, DR_IDLE as u16);
+        });
+    }
+
+    #[test]
+    fn zoetje_low_does_nothing_without_a_resting_direction() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            gs.characters[cn] = core::types::Character::default();
+            gs.characters[cn].used = USE_ACTIVE;
+            gs.characters[cn].x = 484;
+            gs.characters[cn].y = 128;
+            gs.characters[cn].dir = DX_DOWN;
+            gs.characters[cn].misc_action = DR_IDLE as u16;
+            gs.characters[cn].data[30] = 0;
+
+            assert!(!npc_zoetje_low(gs, cn));
+            assert_eq!(gs.characters[cn].misc_action, DR_IDLE as u16);
+        });
     }
 }

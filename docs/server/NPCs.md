@@ -106,7 +106,11 @@ the main "unprovoked aggression" path and layers several independent triggers:
     unconditional territory guards once a player is close enough.
 - **Special driver hooks** (`data[25]` non-zero) bypass all of the above and
   delegate entirely to `npc_stunrun_msg`, `npc_cityattack_msg`, `npc_malte_msg`, or
-  `npc_zoetje_msg` (driver 4, currently a no-op placeholder) for bespoke scripted NPCs.
+  `npc_zoetje_msg` (driver 4, the starting-area tutorial) for bespoke scripted NPCs.
+  Special drivers also bypass the generic low-priority driver, so they do not get the
+  resting-position / resting-direction (`data[29]`/`data[30]`) behaviour for free —
+  `npc_zoetje_low` applies `data[30]` itself because `pop_create_char` forces every
+  freshly spawned NPC to `DX_DOWN`.
 - **City-guard hook** (`data[26]` non-zero, values `1`/`3`) additionally runs
   `npc_cityguard_see` before the group/territory checks.
 - If none of the above fire and the seen character is a player the NPC hasn't
