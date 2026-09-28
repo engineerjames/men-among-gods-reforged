@@ -2359,7 +2359,7 @@ impl Server {
             let mut wire_frame = Vec::with_capacity(needed);
             wire_frame.extend_from_slice(&header);
             wire_frame.extend_from_slice(&payload);
-            log::info!(
+            log::trace!(
                 "tick_compression tick={} player={} character={} raw_len={} raw_bytes={:02x?} compressed={} payload_len={} payload_bytes={:02x?} wire_len={} wire_bytes={:02x?}",
                 gs.globals.ticker,
                 n,
