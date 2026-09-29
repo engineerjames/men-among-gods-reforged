@@ -784,6 +784,16 @@ impl Server {
 
         // Send changes to players in normal state
         core::measure!("player.send_normal_state_updates", {
+            // Per-call `measure!` would emit one log line per player per tick
+            // (tens of thousands per second at load) and dominate the very
+            // profile it is meant to inform, so accumulate and log once.
+            #[cfg(feature = "measure-time")]
+            let mut getmap_total = std::time::Duration::ZERO;
+            #[cfg(feature = "measure-time")]
+            let mut change_total = std::time::Duration::ZERO;
+            #[cfg(feature = "measure-time")]
+            let mut players_updated = 0u32;
+
             for n in 1..gs.players.len() {
                 if gs.players[n].sock.is_none() {
                     continue;
@@ -792,8 +802,38 @@ impl Server {
                     continue;
                 }
 
-                player::map::plr_getmap(gs, n);
-                player::tick::plr_change(gs, n);
+                #[cfg(feature = "measure-time")]
+                {
+                    let started = Instant::now();
+                    player::map::plr_getmap(gs, n);
+                    getmap_total += started.elapsed();
+
+                    let started = Instant::now();
+                    player::tick::plr_change(gs, n);
+                    change_total += started.elapsed();
+
+                    players_updated += 1;
+                }
+
+                #[cfg(not(feature = "measure-time"))]
+                {
+                    player::map::plr_getmap(gs, n);
+                    player::tick::plr_change(gs, n);
+                }
+            }
+
+            #[cfg(feature = "measure-time")]
+            if players_updated > 0 {
+                log::info!(
+                    target: "perf",
+                    "[measure-time] player.getmap took {:?}",
+                    getmap_total
+                );
+                log::info!(
+                    target: "perf",
+                    "[measure-time] player.change took {:?}",
+                    change_total
+                );
             }
         });
 

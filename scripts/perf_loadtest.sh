@@ -53,6 +53,7 @@ LOADTEST_CONFIG="loadtest/loadtest.toml"
 SKIP_BUILD=0
 KEEP_STACK=1
 SKIP_STACK=0
+RESET_WORLD=0
 RUN_SAMPLE=1
 ANALYZE_ONLY=""
 
@@ -77,6 +78,11 @@ Options:
   --out-dir DIR          Root directory for run artifacts     (default perf-runs)
   --skip-build           Reuse an already-built server/loadtest binary
   --skip-stack           Assume KeyDB + API are already up
+  --reset-world          Wipe the KeyDB volume and re-seed before running.
+                         Use this when previous runs have left hundreds of
+                         characters crowding the spawn point (the server then
+                         logs "could not drop new character"). Bot accounts
+                         are recreated, so the bootstrap phase is slower.
   --down-stack           Run `docker compose down` when finished
   --analyze-only DIR     Skip the run; just re-analyze an existing run dir
   -h, --help             Show this help
@@ -99,6 +105,7 @@ while [[ $# -gt 0 ]]; do
         --out-dir)        OUT_ROOT="${2:?}";       shift 2 ;;
         --skip-build)     SKIP_BUILD=1;            shift   ;;
         --skip-stack)     SKIP_STACK=1;            shift   ;;
+        --reset-world)    RESET_WORLD=1;           shift   ;;
         --down-stack)     KEEP_STACK=0;            shift   ;;
         --analyze-only)   ANALYZE_ONLY="${2:?}";   shift 2 ;;
         -h|--help)        usage; exit 0 ;;
@@ -202,10 +209,21 @@ trap cleanup EXIT INT TERM
 
 if [[ "${SKIP_STACK}" -eq 0 ]]; then
     command -v docker >/dev/null || die "docker not found on PATH (use --skip-stack to bypass)"
+
+    if [[ "${RESET_WORLD}" -eq 1 ]]; then
+        # Game data and API account/character records live in the same KeyDB.
+        # Re-importing only the world snapshot would leave the API pointing at
+        # characters the game server no longer knows about, and every login
+        # would fail, so reset both together.
+        log "Wiping KeyDB volume for a clean world (--reset-world)..."
+        docker compose down -v > "${RUN_DIR}/compose.log" 2>&1 \
+            || { tail -30 "${RUN_DIR}/compose.log" >&2; die "docker compose down -v failed"; }
+    fi
+
     log "Starting KeyDB + account API (docker compose)..."
     # Only keydb/api/certgen are started: the game server runs natively so we
     # can profile it, and seeding is done with a host-built world-snapshot.
-    docker compose up -d --wait keydb api > "${RUN_DIR}/compose.log" 2>&1 \
+    docker compose up -d --wait keydb api >> "${RUN_DIR}/compose.log" 2>&1 \
         || { tail -30 "${RUN_DIR}/compose.log" >&2; die "docker compose failed to start keydb/api"; }
 
     # Every bot shares one source IP, so a leftover per-IP request bucket from
@@ -378,21 +396,12 @@ SERVER_PID=""
 
 # The steady-state window should begin only once every bot is actually in the
 # world. Prefer the load test's own periodic report over a guess: find the
-# first `[ Xs] clients=N/N` line that reaches the requested client count.
+# first `[ Xs] clients=<active>/<connected>` line whose *active* count reaches
+# the requested client count. (BSD awk lacks gawk's 3-argument `match`.)
 RAMP_COMPLETE_SECS="$(
-    awk -v target="${CLIENTS}" '
-        match($0, /^\[ *([0-9.]+)s\] clients=([0-9]+)\/([0-9]+)/, m) {
-            if (m[3] + 0 >= target) { print int(m[1]); exit }
-        }
-    ' "${RUN_DIR}/loadtest.log" 2>/dev/null
-)"
-if [[ -z "${RAMP_COMPLETE_SECS}" ]]; then
-    # gawk-style `match(..., arr)` is unavailable (BSD awk); fall back to sed.
-    RAMP_COMPLETE_SECS="$(
-        sed -n "s/^\[ *\([0-9]*\)\.[0-9]*s\] clients=[0-9]*\/${CLIENTS} .*/\1/p" \
-            "${RUN_DIR}/loadtest.log" | head -1
-    )"
-fi
+    sed -n "s/^\[ *\([0-9]*\)\.[0-9]*s\] clients=${CLIENTS}\/.*/\1/p" \
+        "${RUN_DIR}/loadtest.log" 2>/dev/null | head -1
+)" || true
 
 if [[ -n "${RAMP_COMPLETE_SECS}" ]]; then
     log "All ${CLIENTS} clients were connected by T+${RAMP_COMPLETE_SECS}s"

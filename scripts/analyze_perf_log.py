@@ -91,6 +91,10 @@ CHILDREN = {
     "aura.tick": [
         "aura.tile_scan",
     ],
+    "player.send_normal_state_updates": [
+        "player.getmap",
+        "player.change",
+    ],
 }
 
 ROOT_LABEL = "server.tick(&mut gs)"
