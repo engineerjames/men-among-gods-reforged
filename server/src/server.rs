@@ -9,8 +9,8 @@ use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, Shutdown, SocketAddrV4, TcpListener};
-use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::effect::EffectManager;
@@ -19,8 +19,8 @@ use crate::god::God;
 use crate::player::map::CMap;
 use crate::tls::{self, GameStream};
 use crate::{driver, player, populate};
-use flate2::Compression;
 use flate2::write::ZlibEncoder;
+use flate2::Compression;
 use server::keydb::background_saver::{self, BackgroundSaver, SaveCompletion, SaveJob};
 use server::keydb::tick_worker::{
     ActionStatusRequest, AdminReloadRequest, AdminReloadResult, AdminStatusKind, BanWriteAction,

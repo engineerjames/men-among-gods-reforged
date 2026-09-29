@@ -1,7 +1,7 @@
 use core::{
     constants::{
-        CharacterFlags, DANGER_GLYPH_MASK, DangerGlyph, INFRARED, INJURED, INJURED1, INJURED2,
-        INVIS, IS_GRAVE, ISCHAR, ISITEM, ISUSABLE, ItemFlags, MF_GFX_CMAGIC, MF_GFX_DEATH,
+        CharacterFlags, DangerGlyph, ItemFlags, DANGER_GLYPH_MASK, INFRARED, INJURED, INJURED1,
+        INJURED2, INVIS, ISCHAR, ISITEM, ISUSABLE, IS_GRAVE, MF_GFX_CMAGIC, MF_GFX_DEATH,
         MF_GFX_EMAGIC, MF_GFX_GMAGIC, MF_GFX_INJURED, MF_GFX_INJURED1, MF_GFX_INJURED2,
         MF_GFX_TOMB, MF_UWATER, STONED, STUNNED, UWATER,
     },
@@ -628,8 +628,7 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
                     tile.ch_id = helpers::char_id(&char_co) as u16;
 
                     if tmp_see <= 75 && char_co.hp[5] > 0 {
-                        tile.ch_proz =
-                            (((char_co.a_hp + 5) / 10) / i32::from(char_co.hp[5])) as u8;
+                        tile.ch_proz = (((char_co.a_hp + 5) / 10) / i32::from(char_co.hp[5])) as u8;
                     } else {
                         tile.ch_proz = 0;
                     }
