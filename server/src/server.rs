@@ -33,6 +33,13 @@ const GAME_SERVER_PORT: u16 = 5555;
 const GAME_LISTEN_BACKLOG: i32 = 5;
 const LOGIN_RESOLUTION_TIMEOUT_TICKS: u32 = (core::constants::TICKS * 5) as u32;
 
+/// zlib level for per-player tick payloads.
+///
+/// These packets are small and highly repetitive, so the extra search effort
+/// of higher levels buys very little ratio while costing a measurable share of
+/// the tick budget once several hundred players are online.
+const TICK_COMPRESSION_LEVEL: Compression = Compression::new(1);
+
 // Server side player data
 pub struct ServerPlayer {
     pub sock: Option<GameStream>,
@@ -2509,7 +2516,7 @@ impl Server {
         gs.players[n] = ServerPlayer::new();
         gs.players[n].sock = Some(stream);
         gs.players[n].addr = addr_u32;
-        gs.players[n].zs = Some(ZlibEncoder::new(Vec::new(), Compression::best()));
+        gs.players[n].zs = Some(ZlibEncoder::new(Vec::new(), TICK_COMPRESSION_LEVEL));
         gs.players[n].state = core::constants::ST_CONNECT;
         gs.players[n].lasttick = ticker;
         gs.players[n].lasttick2 = ticker;

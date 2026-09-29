@@ -1,19 +1,73 @@
 # Server performance analysis — 400 concurrent players
 
 Measured with `scripts/perf_loadtest.sh` (see
-[PERFORMANCE_HARNESS.md](PERFORMANCE_HARNESS.md)) on 2026-09-28.
+[PERFORMANCE_HARNESS.md](PERFORMANCE_HARNESS.md)) on 2026-09-28/29.
 
 | Run | Clients | Steady window | Artifacts |
 | --- | --- | --- | --- |
-| A | 400 | 590 s | `perf-runs/2026-09-28_22-18-28` |
+| A (baseline) | 400 | 590 s | `perf-runs/2026-09-28_22-18-28` |
 | B | 130 | 350 s | `perf-runs/2026-09-28_22-40-05` (finer `getmap`/`change` split) |
+| C (after fixes) | 400 | 450 s | `perf-runs/2026-09-29_07-33-10` |
 
 Host: Apple Silicon, 12 cores, 36 GB. Server built with `--profile profiling
 --features measure-time`; KeyDB and the account API in Docker.
 
-## Verdict
+## Results after the first round of fixes
 
-At 400 players the server is **saturated on a single core** and can no longer
+| Metric | Before (A) | After (C) | |
+| --- | --- | --- | --- |
+| Mean tick time | 30.89 ms | **27.07 ms** | −12% |
+| Tick p95 / p99 | 32.80 / 36.00 ms | **28.49 / 30.09 ms** | |
+| Ticks over the 27.78 ms budget | 899 / 899 (100%) | **124 / 785 (15.8%)** | |
+| Delivered tick rate | 30.59 TPS | **34.93 TPS** | +14% |
+| Reported load p50 / p95 | 111% / 118% | **96% / 102%** | |
+| `send_normal_state_updates` | 27.82 ms/tick | **24.19 ms/tick** | −13% |
+| `compress_ticks` | 0.532 ms/tick | **0.196 ms/tick** | −63% |
+| `miniz` in the sampled profile | 5.1% | **absent** | |
+| `_platform_memmove` sampled self | 3311 samples | **1932 samples** | −42% |
+
+The server is still CPU-bound at 400 players, but it now very nearly holds its
+tick rate instead of missing every single tick.
+
+> **Caveat on comparability.** Run C used `--reset-world`, so its world had a
+> different character/item layout and player dispersion than run A. The
+> `compress_ticks` and `miniz` numbers are unambiguous (same workload shape,
+> direct consequence of the compression-level change); the
+> `send_normal_state_updates` delta is directionally right but carries some
+> world-layout noise. A controlled A/B on an identical world would tighten it.
+
+### What changed
+
+1. **Removed the per-player `smap` copy** — `plr_getmap_complete` cloned the
+   whole `[CMap; 6400]` (~180 KB) into a local and wrote it back element by
+   element. It now uses a single 28-byte scratch tile. This was over 2 GB/s of
+   pure memcpy at 400 players.
+2. **Dropped zlib from level 9 to level 1** for per-player tick payloads
+   (`TICK_COMPRESSION_LEVEL` in `server/src/server.rs`). These packets are
+   small and repetitive, so the extra search effort bought almost no ratio.
+3. **Hoisted per-player light constants** out of the ~5.8k-iteration tile loop
+   and reused the already-copied map tile instead of re-indexing `gs.map[mi]`
+   and re-reading the character on every tile.
+4. **Made `do_area_notify` a tight row-slice scan** that collects occupants
+   first and dispatches second, so the hot 25×25 walk is no longer interleaved
+   with calls into `driver_msg`.
+
+### Where the remaining time goes (run C)
+
+| Phase | % busy | ms / tick |
+| --- | --- | --- |
+| `player.getmap` | 49.4% | 14.14 |
+| `player.change` | 34.7% | 9.93 |
+| `character.main_tick` | 8.3% | 2.37 |
+| `handle_network_io` | 5.0% | 1.44 |
+| `compress_ticks` | 0.7% | 0.20 |
+
+`plr_getmap` is now clearly the single thing worth attacking next, and the
+cheap wins there are used up — what is left is the structural problem below.
+
+## Original analysis (baseline, run A)
+
+At 400 players the server was **saturated on a single core** and could not
 hold its tick rate.
 
 | Metric | Value | Target |
@@ -73,6 +127,9 @@ inlining folds callees into `Server::game_tick`):
 
 ### 1. `plr_getmap_complete` rebuilds an 80×80 view from scratch, every player, every tick
 
+**Status: partially addressed** (items 1 and 3 above). The remaining
+structural problem is unchanged.
+
 `server/src/player/map.rs` walks a 76×76 window (after the edge cuts) for each
 player on every tick, regardless of whether anything in it changed. At 400
 players and 30 TPS that is **~69 million tile evaluations per second**, and
@@ -91,7 +148,13 @@ Directions worth exploring:
 * Stagger full refreshes across ticks so each player gets a full rebuild every
   N ticks and a delta otherwise.
 
+Note that `plr_change` has the same shape — it diffs all 6400 tiles twice
+(once in `plr_change_light`, once in `plr_change_map`) — so a dirty-region
+scheme would pay off on both halves.
+
 ### 2. The same function copies ~180 KB per player per tick for no reason
+
+**Status: fixed.**
 
 ```rust
 let mut smap = gs.players[nr].smap;   // copies [CMap; 6400] by value
@@ -99,60 +162,54 @@ let mut smap = gs.players[nr].smap;   // copies [CMap; 6400] by value
 gs.players[nr].smap[n] = smap[n];     // ...then writes each tile back
 ```
 
-`CMap` is 28 bytes and `TILEX * TILEY` is 6400, so this copies about 180 KB
-into a local, mutates it, and copies it back element by element. At 400
-players × 30 TPS that is **over 2 GB/s of pure memcpy**, which is almost
-certainly the 9.2% `_platform_memmove`.
-
-This one is nearly free to fix: the copy exists only to dodge a borrow-checker
-conflict with `gs`. Splitting the borrow (or indexing `gs.players[nr].smap`
-directly where possible) removes it outright.
+`CMap` is 28 bytes and `TILEX * TILEY` is 6400, so this copied about 180 KB
+into a local, mutated it, and copied it back element by element. At 400
+players × 30 TPS that was **over 2 GB/s of pure memcpy**.
 
 ### 3. Outgoing tick data is zlib-compressed at level 9
 
-`server/src/server.rs` creates every player's encoder with
-`ZlibEncoder::new(Vec::new(), Compression::best())`. Level 9 is the slowest
-setting in the library and buys very little on the small, repetitive packets
-this protocol sends — that is 5.1% of the game thread in `compress_inner`.
-
-`Compression::new(1)` or `new(6)` should cut most of that cost for a marginal
-change in bandwidth. Worth measuring both ratio and time before picking.
+**Status: fixed** — now level 1 via `TICK_COMPRESSION_LEVEL`.
 
 ### 4. `act_idle` broadcasts over a 25×25 tile block for every character
 
+**Status: partially addressed** — the scan is tighter, but it is still a
+625-tile walk.
+
 `server/src/driver/generic.rs::act_idle` calls `do_area_notify` whenever
 `(ticker & 15) == (cn & 15)`, and `do_area_notify` scans
-`(2 × AREA_SIZE + 1)² = 625` tiles, dispatching `driver_msg` to each occupant.
-Every character does this every 16 ticks — 6.6% of the game thread, and it
-grows with both character count and crowding.
+`(2 × AREA_SIZE + 1)² = 625` tiles. Every character does this every 16 ticks,
+and it grows with both character count and crowding.
 
 A spatial index of occupied tiles (or a per-area occupant list) would replace
 the 625-tile scan with an iteration over actual occupants, which is usually a
-handful.
+handful. That was not attempted here because `map[..].ch` is written from
+~30 call sites with no single choke point, so maintaining an index safely is a
+larger refactor.
 
 ### 5. Per-player file logging is unbudgeted I/O on the game thread
 
+**Status: not addressed.**
+
 Run A produced **400 log files of roughly 550 KB each — about 220 MB in 15
 minutes** — written synchronously from the tick loop. `write`/`writev` account
-for 3.7% of sampled game-thread time, and `log4rs` pattern encoding shows up
+for ~4% of sampled game-thread time, and `log4rs` pattern encoding shows up
 on other threads too.
 
 This is worth either sampling down, buffering, or moving to a dedicated writer
 thread.
 
-## Suggested order of work
+## Suggested next steps
 
-1. **Remove the `smap` copy** (#2) — smallest change, immediate ~9% win.
-2. **Lower the zlib level** (#3) — one-line change, ~5% win.
-3. **Make `plr_getmap` incremental/conditional** (#1) — by far the biggest
-   prize; ~40% of busy time and the thing that makes cost linear in players.
-4. **Index `do_area_notify`** (#4) — ~7%, and it also helps crowded areas.
-5. **Get logging off the tick thread** (#5) — ~4%, plus less disk pressure.
+1. **Make `plr_getmap` and `plr_change` incremental** — by far the biggest
+   remaining prize at 84% of busy time, and the thing that makes cost linear
+   in players.
+2. **Index `do_area_notify`** — ~14% of sampled game-thread self time.
+3. **Get logging off the tick thread** — ~4%, plus less disk pressure.
 
-Items 1–3 alone would plausibly bring the 400-player tick back inside budget.
 Beyond that, the structural ceiling is that the tick loop is single threaded:
 per-player view building is embarrassingly parallel and is the obvious
 candidate if the game needs to scale past ~500 players.
+
 
 ## Two defects found while building the harness
 
