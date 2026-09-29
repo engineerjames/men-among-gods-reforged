@@ -75,6 +75,10 @@ struct Cli {
     #[arg(long)]
     api_rps: Option<u64>,
 
+    /// Override: maximum concurrent account API requests (default 1).
+    #[arg(long)]
+    api_concurrency: Option<usize>,
+
     /// Override: enable one-shot login dispersion (god password + `/goto`).
     #[arg(long)]
     enable_dispersion: Option<bool>,
@@ -150,7 +154,10 @@ async fn main() -> anyhow::Result<()> {
     let http = Arc::new(api_bootstrap::build_http_client()?);
     // Every simulated client shares one source IP, and the API public limiter
     // uses a fixed one-second KeyDB counter. Keep bootstrap deliberately slow.
-    let rate_limiter = Arc::new(RateLimiter::new(config.api.requests_per_second));
+    let rate_limiter = Arc::new(RateLimiter::new(
+        config.api.requests_per_second,
+        config.api.max_in_flight,
+    ));
     // Serializes actual game-server logins so recently spawned characters
     // have time to move out of the crowded spawn area before the next one.
     let login_gate = Arc::new(LoginGate::new(config.run.login_stagger_secs));
@@ -284,6 +291,9 @@ fn apply_overrides(config: &mut LoadTestConfig, cli: &Cli) {
     if let Some(rps) = cli.api_rps {
         config.api.requests_per_second = rps.max(1);
     }
+    if let Some(c) = cli.api_concurrency {
+        config.api.max_in_flight = c.max(1);
+    }
     if let Some(d) = cli.enable_dispersion {
         config.movement.enable_dispersion = d;
     }
@@ -342,6 +352,7 @@ mod tests {
             server_port: Some(5556),
             api_url: None,
             api_rps: Some(2),
+            api_concurrency: Some(8),
             enable_dispersion: Some(true),
         };
         apply_overrides(&mut cfg, &cli);
@@ -351,6 +362,7 @@ mod tests {
         assert_eq!(cfg.server.host, "10.0.0.1");
         assert_eq!(cfg.server.port, 5556);
         assert_eq!(cfg.api.requests_per_second, 2);
+        assert_eq!(cfg.api.max_in_flight, 8);
         assert!(cfg.movement.enable_dispersion);
     }
 

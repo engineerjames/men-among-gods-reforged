@@ -25,6 +25,24 @@ use crate::ApiState;
 /// Per-IP sliding burst: requests allowed in any 1 second window.
 const PUBLIC_RATE_PER_SECOND: u32 = 30;
 
+/// Width of the per-IP request counter bucket, in seconds.
+const PUBLIC_RATE_WINDOW_SECS: u64 = 1;
+
+/// Atomically increments the per-IP counter and attaches its TTL on creation.
+///
+/// Doing both in one script guarantees the counter can never outlive its
+/// window, which would otherwise lock the IP out until the key was deleted
+/// by hand.
+static PUBLIC_RATE_SCRIPT: std::sync::LazyLock<redis::Script> = std::sync::LazyLock::new(|| {
+    redis::Script::new(
+        r"local count = redis.call('INCR', KEYS[1])
+          if count == 1 then
+              redis.call('EXPIRE', KEYS[1], ARGV[1])
+          end
+          return count",
+    )
+});
+
 /// Maximum number of failed login attempts allowed per IP within the
 /// observation window before the IP is locked out.
 const LOGIN_FAILURE_THRESHOLD: u32 = 10;
@@ -90,20 +108,21 @@ pub(crate) async fn per_ip_rate_limit(
     let mut con = state.con.clone();
     let key = public_rate_key(ip);
 
-    let count: redis::RedisResult<u32> = con.incr(&key, 1_i64).await;
+    // INCR and EXPIRE must be atomic. Issuing them as two round trips means a
+    // dropped/timed-out EXPIRE leaves the counter with no TTL, which locks the
+    // IP out permanently once it climbs past the threshold.
+    let count: redis::RedisResult<u32> = PUBLIC_RATE_SCRIPT
+        .key(&key)
+        .arg(PUBLIC_RATE_WINDOW_SECS)
+        .invoke_async(&mut con)
+        .await;
     let count = match count {
         Ok(value) => value,
         Err(err) => {
-            warn!("rate-limit INCR failed for {ip}: {err}");
+            warn!("rate-limit counter failed for {ip}: {err}");
             return next.run(request).await;
         }
     };
-
-    if count == 1
-        && let Err(err) = con.expire::<_, ()>(&key, 1).await
-    {
-        warn!("rate-limit EXPIRE failed for {ip}: {err}");
-    }
 
     if count > PUBLIC_RATE_PER_SECOND {
         warn!("per-IP rate limit exceeded for {ip} (count={count})");

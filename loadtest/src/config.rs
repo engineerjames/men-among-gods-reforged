@@ -57,6 +57,13 @@ pub struct ApiConfig {
     /// below the API's per-IP public limiter. Use `1` when running against the
     /// local Docker stack unless you have deliberately raised the API limit.
     pub requests_per_second: u64,
+    /// Maximum number of account-API requests outstanding at any one time.
+    ///
+    /// The default of `1` makes real throughput `1 / request_latency`, which
+    /// the API's server-side Argon2 hashing pins to well under 1 req/s. Raise
+    /// this (e.g. 16) to bootstrap hundreds of bots in reasonable time against
+    /// a throwaway environment.
+    pub max_in_flight: usize,
 }
 
 impl Default for ApiConfig {
@@ -64,6 +71,7 @@ impl Default for ApiConfig {
         Self {
             base_url: "https://127.0.0.1:5554".into(),
             requests_per_second: 1,
+            max_in_flight: 1,
         }
     }
 }
