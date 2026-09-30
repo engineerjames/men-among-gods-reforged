@@ -1,0 +1,78 @@
+# create_account_and_play.uiscript — end-to-end scripted client session.
+#
+# Registers a brand-new account, logs in, creates a character, enters the
+# world, captures a render profile, and quits. Driven by the client's
+# automation module (see client/src/automation.rs for the command reference);
+# run it with MAG_AUTOMATION_SCRIPT=<this file>, normally via
+# scripts/perf_client.sh which also provides the variables below:
+#
+#   MAG_AUTO_USERNAME      account username (must be unique per run)
+#   MAG_AUTO_PASSWORD      account password
+#   MAG_AUTO_EMAIL         account e-mail (any syntactically valid address)
+#   MAG_AUTO_CHARACTER     character name (beware banned substrings, e.g. "the")
+#   MAG_AUTO_SETTLE_SECS   seconds to idle in the world before profiling
+#   MAG_AUTO_PROFILE_SECS  render-profiler capture window
+#   MAG_AUTO_RUN_DIR       directory receiving screenshots
+#
+# Coordinates are never hard-coded: every click uses a @scene.target name that
+# the corresponding form exposes through Scene::automation_targets().
+
+wait_scene login 30
+wait 1
+screenshot ${MAG_AUTO_RUN_DIR}/screens/01-login.png
+
+# --- Register -----------------------------------------------------------------
+click @login.new_account
+wait_scene new_account
+click @new_account.email
+type ${MAG_AUTO_EMAIL}
+click @new_account.username
+type ${MAG_AUTO_USERNAME}
+click @new_account.password
+type ${MAG_AUTO_PASSWORD}
+click @new_account.confirm_password
+type ${MAG_AUTO_PASSWORD}
+screenshot ${MAG_AUTO_RUN_DIR}/screens/02-new-account.png
+click @new_account.create
+# Client-side Argon2 + API round-trip; the scene returns to login on success.
+wait_scene login 90
+
+# --- Log in -------------------------------------------------------------------
+click @login.username
+type ${MAG_AUTO_USERNAME}
+click @login.password
+type ${MAG_AUTO_PASSWORD}
+click @login.login
+wait_scene char_select 90
+
+# --- Create a character -------------------------------------------------------
+# Give the character list request time to complete before pressing anything.
+wait 2
+click @char_select.create
+wait_scene char_create
+click @char_create.name
+type ${MAG_AUTO_CHARACTER}
+click @char_create.class_mercenary
+screenshot ${MAG_AUTO_RUN_DIR}/screens/03-char-create.png
+click @char_create.create
+wait_scene char_select 90
+# The list reloads after creation; the new character is auto-selected.
+wait 3
+screenshot ${MAG_AUTO_RUN_DIR}/screens/04-char-select.png
+
+# --- Enter the world ----------------------------------------------------------
+click @char_select.continue
+wait_scene game 90
+wait 5
+screenshot ${MAG_AUTO_RUN_DIR}/screens/05-in-game.png
+
+# --- Steady state + render profile ------------------------------------------
+log settling before profile
+wait ${MAG_AUTO_SETTLE_SECS}
+log starting render profiler
+profile ${MAG_AUTO_PROFILE_SECS}
+wait ${MAG_AUTO_PROFILE_SECS}
+# Let the profiler flush its summary to the log before quitting.
+wait 2
+screenshot ${MAG_AUTO_RUN_DIR}/screens/06-after-profile.png
+quit

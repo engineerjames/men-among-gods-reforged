@@ -96,6 +96,8 @@ struct FrameSample {
 pub(super) struct PerfProfiler {
     active: bool,
     start_time: Option<Instant>,
+    /// Length of the current capture window.
+    duration: Duration,
     frame_samples: Vec<FrameSample>,
     /// Start timestamp set by `begin_frame`, consumed by `end_frame`.
     frame_start: Option<Instant>,
@@ -121,6 +123,7 @@ impl PerfProfiler {
         Self {
             active: false,
             start_time: None,
+            duration: PROFILE_DURATION,
             frame_samples: Vec::new(),
             frame_start: None,
             pending_sample: None,
@@ -128,18 +131,30 @@ impl PerfProfiler {
         }
     }
 
-    /// Start (or restart) a profiling session.
+    /// Start (or restart) a profiling session with the default window.
     pub fn start(&mut self) {
+        self.start_with_duration(PROFILE_DURATION);
+    }
+
+    /// Start (or restart) a profiling session that captures for `duration`.
+    ///
+    /// # Arguments
+    ///
+    /// * `duration` - Length of the capture window.
+    pub fn start_with_duration(&mut self, duration: Duration) {
         self.active = true;
         self.start_time = Some(Instant::now());
+        self.duration = duration;
         self.frame_samples.clear();
-        self.frame_samples.reserve(700); // ~600 frames in 10 s at 60 FPS
+        // ~60 frames per second of capture.
+        self.frame_samples
+            .reserve((duration.as_secs() as usize + 1) * 70);
         self.frame_start = None;
         self.pending_sample = None;
         self.current_times.clear();
         log::info!(
             "Performance profiling started ({}s window)",
-            PROFILE_DURATION.as_secs()
+            duration.as_secs()
         );
     }
 
@@ -160,7 +175,7 @@ impl PerfProfiler {
     pub fn remaining_secs(&self) -> u64 {
         self.start_time
             .map(|t| {
-                PROFILE_DURATION
+                self.duration
                     .checked_sub(t.elapsed())
                     .unwrap_or(Duration::ZERO)
                     .as_secs()
@@ -173,7 +188,7 @@ impl PerfProfiler {
     pub fn check_expired(&mut self) {
         if self.active
             && let Some(start) = self.start_time
-            && start.elapsed() >= PROFILE_DURATION
+            && start.elapsed() >= self.duration
         {
             self.finish();
         }
@@ -244,7 +259,7 @@ impl PerfProfiler {
         let elapsed_secs = self
             .start_time
             .map(|t| t.elapsed().as_secs_f64())
-            .unwrap_or(PROFILE_DURATION.as_secs_f64());
+            .unwrap_or(self.duration.as_secs_f64());
 
         // Collect durations per label.
         let mut per_label: [Vec<Duration>; PerfLabel::ALL.len()] =

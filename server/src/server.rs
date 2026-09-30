@@ -9,8 +9,8 @@ use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, Shutdown, SocketAddrV4, TcpListener};
-use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::effect::EffectManager;
@@ -19,8 +19,8 @@ use crate::god::God;
 use crate::player::map::CMap;
 use crate::tls::{self, GameStream};
 use crate::{driver, player, populate};
-use flate2::Compression;
 use flate2::write::ZlibEncoder;
+use flate2::Compression;
 use server::keydb::background_saver::{self, BackgroundSaver, SaveCompletion, SaveJob};
 use server::keydb::tick_worker::{
     ActionStatusRequest, AdminReloadRequest, AdminReloadResult, AdminStatusKind, BanWriteAction,
@@ -32,6 +32,13 @@ use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 const GAME_SERVER_PORT: u16 = 5555;
 const GAME_LISTEN_BACKLOG: i32 = 5;
 const LOGIN_RESOLUTION_TIMEOUT_TICKS: u32 = (core::constants::TICKS * 5) as u32;
+
+/// zlib level for per-player tick payloads.
+///
+/// These packets are small and highly repetitive, so the extra search effort
+/// of higher levels buys very little ratio while costing a measurable share of
+/// the tick budget once several hundred players are online.
+const TICK_COMPRESSION_LEVEL: Compression = Compression::new(1);
 
 // Server side player data
 pub struct ServerPlayer {
@@ -784,6 +791,16 @@ impl Server {
 
         // Send changes to players in normal state
         core::measure!("player.send_normal_state_updates", {
+            // Per-call `measure!` would emit one log line per player per tick
+            // (tens of thousands per second at load) and dominate the very
+            // profile it is meant to inform, so accumulate and log once.
+            #[cfg(feature = "measure-time")]
+            let mut getmap_total = std::time::Duration::ZERO;
+            #[cfg(feature = "measure-time")]
+            let mut change_total = std::time::Duration::ZERO;
+            #[cfg(feature = "measure-time")]
+            let mut players_updated = 0u32;
+
             for n in 1..gs.players.len() {
                 if gs.players[n].sock.is_none() {
                     continue;
@@ -792,8 +809,38 @@ impl Server {
                     continue;
                 }
 
-                player::map::plr_getmap(gs, n);
-                player::tick::plr_change(gs, n);
+                #[cfg(feature = "measure-time")]
+                {
+                    let started = Instant::now();
+                    player::map::plr_getmap(gs, n);
+                    getmap_total += started.elapsed();
+
+                    let started = Instant::now();
+                    player::tick::plr_change(gs, n);
+                    change_total += started.elapsed();
+
+                    players_updated += 1;
+                }
+
+                #[cfg(not(feature = "measure-time"))]
+                {
+                    player::map::plr_getmap(gs, n);
+                    player::tick::plr_change(gs, n);
+                }
+            }
+
+            #[cfg(feature = "measure-time")]
+            if players_updated > 0 {
+                log::info!(
+                    target: "perf",
+                    "[measure-time] player.getmap took {:?}",
+                    getmap_total
+                );
+                log::info!(
+                    target: "perf",
+                    "[measure-time] player.change took {:?}",
+                    change_total
+                );
             }
         });
 
@@ -2487,7 +2534,7 @@ impl Server {
         gs.players[n] = ServerPlayer::new();
         gs.players[n].sock = Some(stream);
         gs.players[n].addr = addr_u32;
-        gs.players[n].zs = Some(ZlibEncoder::new(Vec::new(), Compression::best()));
+        gs.players[n].zs = Some(ZlibEncoder::new(Vec::new(), TICK_COMPRESSION_LEVEL));
         gs.players[n].state = core::constants::ST_CONNECT;
         gs.players[n].lasttick = ticker;
         gs.players[n].lasttick2 = ticker;

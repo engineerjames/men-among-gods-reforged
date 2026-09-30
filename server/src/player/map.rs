@@ -1,7 +1,7 @@
 use core::{
     constants::{
-        CharacterFlags, DANGER_GLYPH_MASK, DangerGlyph, INFRARED, INJURED, INJURED1, INJURED2,
-        INVIS, IS_GRAVE, ISCHAR, ISITEM, ISUSABLE, ItemFlags, MF_GFX_CMAGIC, MF_GFX_DEATH,
+        CharacterFlags, DangerGlyph, ItemFlags, DANGER_GLYPH_MASK, INFRARED, INJURED, INJURED1,
+        INJURED2, INVIS, ISCHAR, ISITEM, ISUSABLE, IS_GRAVE, MF_GFX_CMAGIC, MF_GFX_DEATH,
         MF_GFX_EMAGIC, MF_GFX_GMAGIC, MF_GFX_INJURED, MF_GFX_INJURED1, MF_GFX_INJURED2,
         MF_GFX_TOMB, MF_UWATER, STONED, STUNNED, UWATER,
     },
@@ -338,9 +338,6 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
     let cn = gs.players[nr].usnr;
     let daylight_changed = gs.players[nr].last_dlight != gs.globals.dlight;
 
-    // We copy it out here so we HAVE to write it back.
-    let mut smap = gs.players[nr].smap;
-
     const YSCUT: i32 = 3;
     const YECUT: i32 = 1;
     const XSCUT: i32 = 2;
@@ -388,6 +385,13 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
         ..core::types::Map::default()
     };
 
+    // Light depends on the viewer only through these three values, so resolve
+    // them once instead of re-reading the character on all ~5.8k tiles.
+    let dlight = gs.globals.dlight;
+    let percept = i32::from(gs.characters[cn].skill[core::skills::SK_PERCEPT][5]);
+    let infrared = gs.characters[cn].flags & CharacterFlags::Infrared.bits() != 0;
+    let percept_scale = std::cmp::min(percept, 10);
+
     let mut n = (YSCUT * core::constants::TILEX as i32 + XSCUT) as usize;
     let mut y = ys;
     let mut infra;
@@ -430,15 +434,30 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
                 continue;
             }
 
-            let tmp = gs.check_dlightm(mi);
+            let tmp = if map_m.flags & u64::from(core::constants::MF_INDOORS) == 0 {
+                dlight
+            } else {
+                (dlight * i32::from(map_m.dlight)) / 256
+            };
 
-            let mut light = std::cmp::max(i32::from(gs.map[mi].light), tmp);
-            light = gs.do_character_calculate_light(cn, light);
+            let mut light = std::cmp::max(i32::from(map_m.light), tmp);
 
-            infra = light <= 5 && (gs.characters[cn].flags & CharacterFlags::Infrared.bits()) != 0;
+            // Inlined `do_character_calculate_light` using the hoisted values.
+            if light == 0 && percept > 150 {
+                light = 1;
+            }
+            light = light * percept_scale / 10;
+            if light > 255 {
+                light = 255;
+            }
+            if infrared && light < 5 {
+                light = 5;
+            }
+
+            infra = light <= 5 && infrared;
 
             // Everyone sees themselves at least
-            if light == 0 && gs.map[mi].ch as usize == cn {
+            if light == 0 && map_m.ch as usize == cn {
                 light = 1;
             }
 
@@ -453,11 +472,16 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
                 continue;
             }
 
+            // Scratch copy of just this tile; committed below. Cloning the
+            // player's whole 6400-tile map here instead would cost ~180 KB of
+            // memcpy per player per tick.
+            let mut tile = gs.players[nr].smap[n];
+
             // Begin of flags
-            smap[n].flags = 0;
+            tile.flags = 0;
 
             {
-                let map_flags = gs.map[mi].flags;
+                let map_flags = map_m.flags;
                 if map_flags
                     & (MF_GFX_INJURED
                         | MF_GFX_INJURED1
@@ -471,53 +495,53 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
                     != 0
                 {
                     if map_flags & core::constants::MF_GFX_INJURED != 0 {
-                        smap[n].flags |= INJURED;
+                        tile.flags |= INJURED;
                     }
 
                     if map_flags & core::constants::MF_GFX_INJURED1 != 0 {
-                        smap[n].flags |= INJURED1;
+                        tile.flags |= INJURED1;
                     }
 
                     if map_flags & core::constants::MF_GFX_INJURED2 != 0 {
-                        smap[n].flags |= INJURED2;
+                        tile.flags |= INJURED2;
                     }
 
                     if map_flags & core::constants::MF_GFX_DEATH != 0 {
                         // TODO: Confirm shift
-                        smap[n].flags |= ((map_flags & MF_GFX_DEATH) >> 23) as u32;
+                        tile.flags |= ((map_flags & MF_GFX_DEATH) >> 23) as u32;
                     }
 
                     if map_flags & core::constants::MF_GFX_TOMB != 0 {
-                        smap[n].flags |= ((map_flags & MF_GFX_TOMB) >> 23) as u32;
+                        tile.flags |= ((map_flags & MF_GFX_TOMB) >> 23) as u32;
                     }
 
                     if map_flags & core::constants::MF_GFX_EMAGIC != 0 {
-                        smap[n].flags |= ((map_flags & MF_GFX_EMAGIC) >> 23) as u32;
+                        tile.flags |= ((map_flags & MF_GFX_EMAGIC) >> 23) as u32;
                     }
 
                     if map_flags & core::constants::MF_GFX_GMAGIC != 0 {
-                        smap[n].flags |= ((map_flags & MF_GFX_GMAGIC) >> 23) as u32;
+                        tile.flags |= ((map_flags & MF_GFX_GMAGIC) >> 23) as u32;
                     }
 
                     if map_flags & core::constants::MF_GFX_CMAGIC != 0 {
-                        smap[n].flags |= ((map_flags & MF_GFX_CMAGIC) >> 23) as u32;
+                        tile.flags |= ((map_flags & MF_GFX_CMAGIC) >> 23) as u32;
                     }
 
                     if map_flags & u64::from(core::constants::MF_UWATER) != 0 {
-                        smap[n].flags |= UWATER;
+                        tile.flags |= UWATER;
                     }
                 }
 
                 if infra {
-                    smap[n].flags |= INFRARED;
+                    tile.flags |= INFRARED;
                 }
 
                 // Low 32 bits of the raw map flags (MF_MOVEBLOCK, MF_INDOORS,
                 // MF_TAVERN, etc.) forwarded verbatim so the client can key
                 // rendering/effects off them; GFX_* bits (>=32) are dropped by
-                // the truncation and are already surfaced via `smap[n].flags`
+                // the truncation and are already surfaced via `tile.flags`
                 // above.
-                smap[n].flags2 = (map_flags as u32) & !DANGER_GLYPH_MASK;
+                tile.flags2 = (map_flags as u32) & !DANGER_GLYPH_MASK;
 
                 let rel_x = x - current_x + core::constants::VISI_CENTER;
                 let rel_y = y - current_y + core::constants::VISI_CENTER;
@@ -540,45 +564,45 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
                 };
 
                 if !visible {
-                    smap[n].flags |= INVIS;
+                    tile.flags |= INVIS;
                 }
 
                 // Begin of the light bucketing
                 if light > 64 {
-                    smap[n].light = 0;
+                    tile.light = 0;
                 } else if light > 52 {
-                    smap[n].light = 1;
+                    tile.light = 1;
                 } else if light > 40 {
-                    smap[n].light = 2;
+                    tile.light = 2;
                 } else if light > 32 {
-                    smap[n].light = 3;
+                    tile.light = 3;
                 } else if light > 28 {
-                    smap[n].light = 4;
+                    tile.light = 4;
                 } else if light > 24 {
-                    smap[n].light = 5;
+                    tile.light = 5;
                 } else if light > 20 {
-                    smap[n].light = 6;
+                    tile.light = 6;
                 } else if light > 16 {
-                    smap[n].light = 7;
+                    tile.light = 7;
                 } else if light > 14 {
-                    smap[n].light = 8;
+                    tile.light = 8;
                 } else if light > 12 {
-                    smap[n].light = 9;
+                    tile.light = 9;
                 } else if light > 10 {
-                    smap[n].light = 10;
+                    tile.light = 10;
                 } else if light > 8 {
-                    smap[n].light = 11;
+                    tile.light = 11;
                 } else if light > 6 {
-                    smap[n].light = 12;
+                    tile.light = 12;
                 } else if light > 4 {
-                    smap[n].light = 13;
+                    tile.light = 13;
                 } else if light > 2 {
-                    smap[n].light = 14;
+                    tile.light = 14;
                 } else {
-                    smap[n].light = 15;
+                    tile.light = 15;
                 }
 
-                smap[n].ba_sprite = map_m.sprite as i16;
+                tile.ba_sprite = map_m.sprite as i16;
 
                 // Begin of character
                 let co = map_m.ch as usize;
@@ -590,45 +614,44 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
 
                 if tmp_see != 0 {
                     let char_co = gs.characters[co];
-                    smap[n].flags2 |= danger_glyph_for(&gs.characters[cn], &char_co).bits();
+                    tile.flags2 |= danger_glyph_for(&gs.characters[cn], &char_co).bits();
                     if char_co.sprite_override != 0 {
-                        smap[n].ch_sprite = char_co.sprite_override;
+                        tile.ch_sprite = char_co.sprite_override;
                     } else {
-                        smap[n].ch_sprite = char_co.sprite as i16;
+                        tile.ch_sprite = char_co.sprite as i16;
                     }
-                    smap[n].ch_status = char_co.status as u8;
-                    smap[n].ch_status2 = char_co.status2 as u8;
-                    smap[n].ch_speed = char_co.speed as u8;
-                    smap[n].ch_aspeed = char_co.future3[2] as u8;
-                    smap[n].ch_nr = co as u16;
-                    smap[n].ch_id = helpers::char_id(&char_co) as u16;
+                    tile.ch_status = char_co.status as u8;
+                    tile.ch_status2 = char_co.status2 as u8;
+                    tile.ch_speed = char_co.speed as u8;
+                    tile.ch_aspeed = char_co.future3[2] as u8;
+                    tile.ch_nr = co as u16;
+                    tile.ch_id = helpers::char_id(&char_co) as u16;
 
                     if tmp_see <= 75 && char_co.hp[5] > 0 {
-                        smap[n].ch_proz =
-                            (((char_co.a_hp + 5) / 10) / i32::from(char_co.hp[5])) as u8;
+                        tile.ch_proz = (((char_co.a_hp + 5) / 10) / i32::from(char_co.hp[5])) as u8;
                     } else {
-                        smap[n].ch_proz = 0;
+                        tile.ch_proz = 0;
                     }
 
-                    smap[n].flags |= ISCHAR;
+                    tile.flags |= ISCHAR;
 
                     if char_co.stunned != 0 {
-                        smap[n].flags |= STUNNED;
+                        tile.flags |= STUNNED;
                     }
 
                     if char_co.flags & CharacterFlags::Stoned.bits() != 0 {
-                        smap[n].flags |= STUNNED | STONED;
+                        tile.flags |= STUNNED | STONED;
                     }
                 } else {
                     // Just clear character flags
-                    smap[n].ch_sprite = 0;
-                    smap[n].ch_status = 0;
-                    smap[n].ch_status2 = 0;
-                    smap[n].ch_speed = 0;
-                    smap[n].ch_aspeed = 0;
-                    smap[n].ch_nr = 0;
-                    smap[n].ch_id = 0;
-                    smap[n].ch_proz = 0;
+                    tile.ch_sprite = 0;
+                    tile.ch_status = 0;
+                    tile.ch_status2 = 0;
+                    tile.ch_speed = 0;
+                    tile.ch_aspeed = 0;
+                    tile.ch_nr = 0;
+                    tile.ch_id = 0;
+                    tile.ch_proz = 0;
                 }
 
                 // Begin of item
@@ -638,45 +661,45 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
                     Some(gs.items[map_m.it as usize])
                 };
                 if map_m.fsprite != 0 {
-                    smap[n].it_sprite = map_m.fsprite as i16;
-                    smap[n].it_status = 0;
+                    tile.it_sprite = map_m.fsprite as i16;
+                    tile.it_status = 0;
                 } else if item_on_m.is_some()
                     && (item_on_m.unwrap().flags & ItemFlags::IF_HIDDEN.bits()) == 0
                 {
                     let item = item_on_m.unwrap();
 
                     if item.active != 0 {
-                        smap[n].it_sprite = item.sprite[1];
-                        smap[n].it_status = item.status[1];
+                        tile.it_sprite = item.sprite[1];
+                        tile.it_status = item.status[1];
                     } else {
-                        smap[n].it_sprite = item.sprite[0];
-                        smap[n].it_status = item.status[0];
+                        tile.it_sprite = item.sprite[0];
+                        tile.it_status = item.status[0];
                     }
 
                     if item.flags & ItemFlags::IF_LOOK.bits() != 0
                         || item.flags & ItemFlags::IF_LOOKSPECIAL.bits() != 0
                     {
-                        smap[n].flags |= ISITEM;
+                        tile.flags |= ISITEM;
                     }
 
                     if item.flags & ItemFlags::IF_TAKE.bits() == 0
                         && item.flags & (ItemFlags::IF_USE.bits() | ItemFlags::IF_USESPECIAL.bits())
                             != 0
                     {
-                        smap[n].flags |= ISUSABLE;
+                        tile.flags |= ISUSABLE;
                     }
 
                     if item.temp == core::constants::IT_TOMBSTONE as u16 {
-                        smap[n].flags |= IS_GRAVE;
+                        tile.flags |= IS_GRAVE;
                     }
                 } else {
                     // Just clear item flags
-                    smap[n].it_sprite = 0;
-                    smap[n].it_status = 0;
+                    tile.it_sprite = 0;
+                    tile.it_status = 0;
                 }
             }
 
-            gs.players[nr].smap[n] = smap[n];
+            gs.players[nr].smap[n] = tile;
 
             x += 1;
             n += 1;

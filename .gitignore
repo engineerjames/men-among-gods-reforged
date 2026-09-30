@@ -48,3 +48,5 @@ certs/
 mag_known_hosts.json
 
 /server/backups/**
+# Performance harness run artifacts
+perf-runs/

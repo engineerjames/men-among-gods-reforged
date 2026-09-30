@@ -381,6 +381,24 @@ impl LoginForm {
         std::mem::take(&mut self.actions)
     }
 
+    /// Named clickable regions for the UI automation driver.
+    ///
+    /// # Returns
+    ///
+    /// * `(name, bounds)` pairs for every interactive element of the form.
+    pub fn automation_targets(&self) -> Vec<(&'static str, Bounds)> {
+        vec![
+            ("server", *self.server_dropdown.bounds()),
+            ("username", *self.username_input.bounds()),
+            ("password", *self.password_input.bounds()),
+            ("music", *self.music_checkbox.bounds()),
+            ("login", *self.login_button.bounds()),
+            ("new_account", *self.create_button.bounds()),
+            ("reset_password", *self.reset_button.bounds()),
+            ("quit", *self.quit_button.bounds()),
+        ]
+    }
+
     /// Pushes a Login action with the current field values.
     fn push_login_action(&mut self) {
         self.actions.push(LoginFormAction::Login {

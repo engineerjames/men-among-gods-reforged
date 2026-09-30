@@ -2112,6 +2112,31 @@ impl Default for GameScene {
 // ---------------------------------------------------------------------------
 
 impl Scene for GameScene {
+    /// Supported actions: `profile [secs]` starts the render profiler.
+    fn automation_action(
+        &mut self,
+        _app_state: &mut AppState<'_>,
+        action: &str,
+        args: &[String],
+    ) -> Result<(), String> {
+        match action {
+            "profile" => {
+                let secs = match args.first() {
+                    Some(raw) => raw
+                        .parse::<u64>()
+                        .map_err(|_| format!("profile: invalid duration `{raw}`"))?,
+                    None => 10,
+                };
+                self.perf_profiler
+                    .start_with_duration(Duration::from_secs(secs.max(1)));
+                Ok(())
+            }
+            other => Err(format!(
+                "action `{other}` is not supported by the game scene"
+            )),
+        }
+    }
+
     /// Initialise the game scene: reset all transient state, establish a TCP
     /// connection to the game server via the login ticket, and load the
     /// player's saved profile (skill-button assignments, volume, etc.).

@@ -35,26 +35,64 @@ impl GameState {
         dat3: i32,
         dat4: i32,
     ) {
-        for y in std::cmp::max(0, ys - core::constants::AREA_SIZE)
-            ..std::cmp::min(
-                core::constants::SERVER_MAPY,
-                ys + core::constants::AREA_SIZE + 1,
-            )
-        {
-            let m = y * core::constants::SERVER_MAPX;
-            for x in std::cmp::max(0, xs - core::constants::AREA_SIZE)
-                ..std::cmp::min(
-                    core::constants::SERVER_MAPX,
-                    xs + core::constants::AREA_SIZE + 1,
-                )
+        // Collect first, dispatch second: `driver_msg` is large enough that
+        // calling it inside the scan stops the row walk from staying a tight
+        // loop, and this area scan is one of the hottest paths on the server.
+        for cc in self.area_occupants(cn, co, xs, ys) {
+            // A previous notification may have removed this character.
+            if self
+                .characters
+                .get(cc as usize)
+                .is_none_or(|c| c.used == core::constants::USE_EMPTY)
             {
-                let cc = self.map[(x + m) as usize].ch;
+                continue;
+            }
+            self.do_notify_character(cc, notify_type, dat1, dat2, dat3, dat4);
+        }
+    }
 
+    /// Collects the characters standing within `AREA_SIZE` tiles of a point.
+    ///
+    /// `cn` and `co` are excluded, as is the empty-tile marker `0`. Tiles
+    /// outside the map are skipped rather than clamped.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Character to exclude from the result.
+    /// * `co` - Second character to exclude from the result.
+    /// * `xs`, `ys` - Center coordinates of the area.
+    ///
+    /// # Returns
+    ///
+    /// * Character ids in row-major order, with duplicates preserved.
+    fn area_occupants(&self, cn: i32, co: i32, xs: i32, ys: i32) -> Vec<u32> {
+        let y_start = std::cmp::max(0, ys - core::constants::AREA_SIZE);
+        let y_end = std::cmp::min(
+            core::constants::SERVER_MAPY,
+            ys + core::constants::AREA_SIZE + 1,
+        );
+        let x_start = std::cmp::max(0, xs - core::constants::AREA_SIZE);
+        let x_end = std::cmp::min(
+            core::constants::SERVER_MAPX,
+            xs + core::constants::AREA_SIZE + 1,
+        );
+
+        let mut occupants = Vec::new();
+        if y_start >= y_end || x_start >= x_end {
+            return occupants;
+        }
+
+        for y in y_start..y_end {
+            let row = y as usize * core::constants::SERVER_MAPX as usize;
+            for tile in &self.map[row + x_start as usize..row + x_end as usize] {
+                let cc = tile.ch;
                 if cc != 0 && cc != cn as u32 && cc != co as u32 {
-                    self.do_notify_character(cc, notify_type, dat1, dat2, dat3, dat4);
+                    occupants.push(cc);
                 }
             }
         }
+
+        occupants
     }
 
     /// Sends a notification message to a specific character.
@@ -1752,6 +1790,11 @@ impl GameState {
 #[cfg(test)]
 mod tests {
     use crate::test_helpers::{add_test_player, with_test_gs};
+    use core::constants::{AREA_SIZE, SERVER_MAPX, SERVER_MAPY};
+
+    fn put(gs: &mut crate::game_state::GameState, x: i32, y: i32, cc: u32) {
+        gs.map[x as usize + y as usize * SERVER_MAPX as usize].ch = cc;
+    }
 
     #[test]
     fn do_give_exp_adds_exact_amount_without_multiplier() {
@@ -1764,6 +1807,49 @@ mod tests {
 
             assert_eq!(gs.characters[cn].points, 225);
             assert_eq!(gs.characters[cn].points_tot, 225);
+        });
+    }
+
+    #[test]
+    fn area_occupants_collects_within_radius_and_excludes_both_anchors() {
+        with_test_gs(|gs| {
+            put(gs, 500, 500, 11); // center
+            put(gs, 500 + AREA_SIZE, 500, 12); // on the edge, included
+            put(gs, 500, 500 - AREA_SIZE, 13); // on the edge, included
+            put(gs, 500 + AREA_SIZE + 1, 500, 14); // just outside
+            put(gs, 500, 500 + AREA_SIZE + 1, 15); // just outside
+
+            let mut found = gs.area_occupants(11, 13, 500, 500);
+            found.sort_unstable();
+
+            assert_eq!(found, vec![12]);
+        });
+    }
+
+    #[test]
+    fn area_occupants_clamps_at_map_corners_without_wrapping_rows() {
+        with_test_gs(|gs| {
+            // A tile on the far-right edge of row 0 must not be picked up by a
+            // scan centered on the left edge of row 1.
+            put(gs, SERVER_MAPX - 1, 0, 21);
+            put(gs, 1, 1, 22);
+
+            let found = gs.area_occupants(0, 0, 0, 1);
+
+            assert_eq!(found, vec![22]);
+        });
+    }
+
+    #[test]
+    fn area_occupants_is_empty_when_area_lies_off_map() {
+        with_test_gs(|gs| {
+            put(gs, 5, 5, 31);
+
+            assert!(gs.area_occupants(0, 0, -AREA_SIZE - 1, 5).is_empty());
+            assert!(
+                gs.area_occupants(0, 0, 5, SERVER_MAPY + AREA_SIZE)
+                    .is_empty()
+            );
         });
     }
 }

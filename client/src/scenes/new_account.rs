@@ -135,6 +135,10 @@ impl NewAccountScene {
 }
 
 impl Scene for NewAccountScene {
+    fn automation_targets(&self) -> Vec<(&'static str, crate::ui::widget::Bounds)> {
+        self.form.automation_targets()
+    }
+
     fn handle_event(&mut self, app_state: &mut AppState<'_>, event: &Event) -> Option<SceneType> {
         if let Event::MouseMotion { x, y, .. } = event {
             self.mouse_x = *x;

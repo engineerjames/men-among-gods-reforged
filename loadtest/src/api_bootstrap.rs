@@ -20,7 +20,7 @@ use mag_core::types::api::{
     CreateGameLoginTicketResponse, GetCharactersResponse, LoginRequest, LoginResponse,
 };
 use reqwest::StatusCode;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Semaphore};
 
 use crate::config::LoadTestConfig;
 
@@ -48,27 +48,33 @@ const BOT_NAME_RETRY_STRIDE: usize = 104_729;
 /// Unlike a token bucket, this limiter cannot accumulate burst capacity while
 /// clients are busy hashing passwords or waiting on network I/O. Every acquire
 /// reserves one send slot separated by `spacing` from the previous slot.
+///
+/// `in_flight` additionally caps how many requests may be outstanding at once.
+/// It defaults to 1, which makes effective throughput `1 / request_latency` —
+/// a hard ceiling of well under 1 req/s once server-side Argon2 hashing is in
+/// the path. Raise it for load generation against a throwaway environment.
 pub struct RateLimiter {
     next_allowed: Mutex<Instant>,
     spacing: Duration,
-    send_lock: Mutex<()>,
+    in_flight: Semaphore,
 }
 
 impl RateLimiter {
-    /// Creates a new rate limiter allowing at most `per_second` acquisitions per second.
+    /// Creates a rate limiter with a request spacing and a concurrency cap.
     ///
     /// # Arguments
     ///
-    /// * `per_second` - Maximum allowed requests per second.
+    /// * `per_second` - Maximum allowed request starts per second.
+    /// * `max_in_flight` - Maximum simultaneously outstanding requests (min 1).
     ///
     /// # Returns
     ///
-    /// * A new [`RateLimiter`] that serializes request starts.
-    pub fn new(per_second: u64) -> Self {
+    /// * A new [`RateLimiter`] that paces and caps request starts.
+    pub fn new(per_second: u64, max_in_flight: usize) -> Self {
         Self {
             next_allowed: Mutex::new(Instant::now()),
             spacing: Duration::from_micros(1_000_000u64 / per_second.max(1)),
-            send_lock: Mutex::new(()),
+            in_flight: Semaphore::new(max_in_flight.max(1)),
         }
     }
 
@@ -107,11 +113,11 @@ impl RateLimiter {
         }
     }
 
-    /// Executes a single API request under this limiter's global send lock.
+    /// Executes a single API request under this limiter's concurrency cap.
     ///
-    /// Only one request is in flight at a time.  That is intentionally
-    /// conservative: the API's public limit is keyed only by source IP, so all
-    /// simulated clients share the same bucket.
+    /// At most `max_in_flight` requests are outstanding at a time. The default
+    /// of 1 is intentionally conservative: the API's public limit is keyed only
+    /// by source IP, so all simulated clients share the same bucket.
     ///
     /// # Arguments
     ///
@@ -125,7 +131,11 @@ impl RateLimiter {
         &self,
         builder: reqwest::RequestBuilder,
     ) -> anyhow::Result<reqwest::Response> {
-        let _guard = self.send_lock.lock().await;
+        let _permit = self
+            .in_flight
+            .acquire()
+            .await
+            .context("rate limiter semaphore closed")?;
         self.acquire().await;
         builder.send().await.context("HTTP send")
     }

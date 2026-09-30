@@ -13,6 +13,11 @@ base_url = "https://127.0.0.1:5554"
 # Shared account-API request rate for all simulated clients.
 # The local Docker stack sees all bots as one source IP, so keep this very low.
 requests_per_second = 30
+# Maximum account-API requests outstanding at once. The default of 1 caps real
+# throughput at 1/request_latency, and the API's server-side Argon2 hashing
+# makes each request ~1s, so bootstrapping hundreds of bots takes many minutes.
+# Raise this (e.g. 16) when running against a throwaway local stack.
+max_in_flight = 1
 
 [run]
 # Number of bot clients to simulate concurrently.
