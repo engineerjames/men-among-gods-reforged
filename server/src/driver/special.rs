@@ -1072,6 +1072,12 @@ const ZOETJE_TUTORIAL_DONE_STEP: i32 = 7;
 const ZOETJE_FLASK_STEP: i32 = 4;
 /// Item template Zoetje hands out for potion brewing.
 const ZOETJE_FLASK_TEMPLATE: usize = 100;
+/// Tutorial step whose line sends the player on to the portal room.
+const ZOETJE_POTION_STEP: i32 = 6;
+/// Garden room the player is sent to once they are equipped.
+const ZOETJE_GARDEN_POS: (usize, usize) = (491, 125);
+/// Portal/practice room the player is sent to once they have brewed a potion.
+const ZOETJE_PORTAL_ROOM_POS: (usize, usize) = (498, 125);
 
 /// What the player must do before Zoetje will deliver a given tutorial line.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -1082,8 +1088,8 @@ enum ZoetjeGate {
     Look,
     /// Wear body armor and wield a weapon.
     Equipped,
-    /// Carry a flower picked from the garden.
-    Flower,
+    /// Carry a potion brewed from a garden flower.
+    Potion,
 }
 
 /// Builds one personalized line of Zoetje's tutorial dialogue.
@@ -1145,10 +1151,10 @@ fn zoetje_tutorial_dialogue(
             "Hold Shift + Left-Click to gather flowers from the garden.".to_owned(),
             ZoetjeGate::Pause,
         )),
-        6 => Some((
+        ZOETJE_POTION_STEP => Some((
             "In the next room, there is a portal to take you from my lands, and an enemy to practice your attacks. You must remember how to fight! Hold Ctrl + Left-Click to attack."
                 .to_owned(),
-            ZoetjeGate::Flower,
+            ZoetjeGate::Potion,
         )),
         _ => None,
     }
@@ -1166,14 +1172,14 @@ fn zoetje_tutorial_dialogue(
 fn zoetje_gate_reminder(gate: ZoetjeGate) -> Option<&'static str> {
     match gate {
         ZoetjeGate::Look => Some(
-            "Take a good look at me first- hold the CTRL key and right-click me. I'll wait for you.",
+            "Take a good look at me first: hold the CTRL key and right-click me. I'll wait for you.",
         ),
         ZoetjeGate::Equipped => Some(
-            "Don't be shy- put the armor on your body and take a weapon in hand. I'll wait for you.",
+            "Don't be shy: put the armor on your body and take a weapon in hand. I'll wait for you.",
         ),
-        ZoetjeGate::Flower => {
-            Some("Go on, pick a flower from my garden. Hold Shift and left-click one.")
-        }
+        ZoetjeGate::Potion => Some(
+            "Go on, pick a flower from my garden and use it with your flask to brew a potion. I'll send you onward once it's done.",
+        ),
         ZoetjeGate::Pause => None,
     }
 }
@@ -1199,11 +1205,11 @@ fn zoetje_gate_satisfied(gs: &GameState, player: usize, gate: ZoetjeGate) -> boo
         ZoetjeGate::Equipped => {
             gs.characters[player].worn[WN_BODY] != 0 && gs.characters[player].worn[WN_RHAND] != 0
         }
-        ZoetjeGate::Flower => zoetje_player_has_flower(gs, player),
+        ZoetjeGate::Potion => zoetje_player_has_potion(gs, player),
     }
 }
 
-/// Reports whether the player is holding or carrying a flower.
+/// Reports whether the player is holding or carrying a flask potion.
 ///
 /// # Arguments
 ///
@@ -1212,8 +1218,8 @@ fn zoetje_gate_satisfied(gs: &GameState, player: usize, gate: ZoetjeGate) -> boo
 ///
 /// # Returns
 ///
-/// * `true` when any carried item is named like a flower, otherwise `false`.
-fn zoetje_player_has_flower(gs: &GameState, player: usize) -> bool {
+/// * `true` when any carried item is a potion template, otherwise `false`.
+fn zoetje_player_has_potion(gs: &GameState, player: usize) -> bool {
     let character = &gs.characters[player];
     character
         .item
@@ -1224,11 +1230,47 @@ fn zoetje_player_has_flower(gs: &GameState, player: usize) -> bool {
             let item = item as usize;
             item != 0
                 && item < MAXITEM
-                && gs.items[item]
-                    .get_name()
-                    .to_ascii_lowercase()
-                    .contains("flower")
+                && POTION_TEMPLATE_IDS.contains(&usize::from(gs.items[item].temp))
         })
+}
+
+/// Reports whether the player just cleared an action gate, so Zoetje can
+/// answer straight away instead of waiting out the pause or reminder timer.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing the player.
+/// * `player` - Character index being tutored.
+/// * `step` - Tutorial step the player is on.
+/// * `gate` - Gate guarding that step's line.
+///
+/// # Returns
+///
+/// * `true` when the line can be delivered immediately, otherwise `false`.
+fn zoetje_action_gate_just_cleared(
+    gs: &GameState,
+    player: usize,
+    step: i32,
+    gate: ZoetjeGate,
+) -> bool {
+    gate != ZoetjeGate::Pause
+        && zoetje_gate_satisfied(gs, player, gate)
+        // A full inventory would otherwise repeat the "make room" nudge every notify.
+        && (step != ZOETJE_FLASK_STEP
+            || gs.characters[player].get_next_inventory_slot().is_some())
+}
+
+/// Moves the player to a tutorial room, logging when no free tile is found.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing the player.
+/// * `player` - Character index being moved.
+/// * `(x, y)` - Destination tile.
+fn zoetje_transfer_player(gs: &mut GameState, player: usize, (x, y): (usize, usize)) {
+    if !God::transfer_char(gs, player, x, y) {
+        log::warn!("Zoetje could not transfer character {player} to ({x}, {y})");
+    }
 }
 
 /// Creates a flask and places it in the player's inventory.
@@ -1266,6 +1308,8 @@ fn zoetje_give_flask(gs: &mut GameState, player: usize) -> bool {
 /// * `cn` - Zoetje's character index.
 /// * `player` - Character index receiving the tutorial.
 /// * `gate_override` - Gate already cleared by an external event, if any.
+/// * `throttled` - The pause/reminder timer has not elapsed yet; only a freshly
+///   cleared action gate may advance.
 ///
 /// # Returns
 ///
@@ -1275,6 +1319,7 @@ fn npc_zoetje_advance_tutorial(
     cn: usize,
     player: usize,
     gate_override: Option<ZoetjeGate>,
+    throttled: bool,
 ) -> bool {
     let step = gs.characters[player].future3[ZOETJE_TUTORIAL_STEP_IDX];
     let name = gs.characters[player].get_name().to_owned();
@@ -1290,6 +1335,10 @@ fn npc_zoetje_advance_tutorial(
         Some(_) => true,
         None => false,
     };
+
+    if throttled && !zoetje_action_gate_just_cleared(gs, player, step, gate) {
+        return false;
+    }
 
     if !cleared_by_event && !zoetje_gate_satisfied(gs, player, gate) {
         let Some(reminder) = zoetje_gate_reminder(gate) else {
@@ -1318,6 +1367,12 @@ fn npc_zoetje_advance_tutorial(
     }
 
     npc_zoetje_tell_player(gs, cn, player, &message);
+
+    match step {
+        ZOETJE_FLASK_STEP => zoetje_transfer_player(gs, player, ZOETJE_GARDEN_POS),
+        ZOETJE_POTION_STEP => zoetje_transfer_player(gs, player, ZOETJE_PORTAL_ROOM_POS),
+        _ => {}
+    }
 
     gs.characters[player].future3[ZOETJE_TUTORIAL_STEP_IDX] = step + 1;
     gs.characters[player].future3[ZOETJE_TUTORIAL_NEXT_TICK_IDX] = gs
@@ -1408,7 +1463,7 @@ pub fn npc_zoetje_msg(
     }
 
     if msg_type == i32::from(NT_LOOK) {
-        return npc_zoetje_advance_tutorial(gs, cn, player, Some(ZoetjeGate::Look));
+        return npc_zoetje_advance_tutorial(gs, cn, player, Some(ZoetjeGate::Look), false);
     }
 
     if msg_type != i32::from(NT_SEE) {
@@ -1420,12 +1475,10 @@ pub fn npc_zoetje_msg(
         return false;
     }
     // The opening greeting fires as soon as she notices a newcomer.
-    if step != 0 && gs.globals.ticker < gs.characters[player].future3[ZOETJE_TUTORIAL_NEXT_TICK_IDX]
-    {
-        return false;
-    }
+    let throttled = step != 0
+        && gs.globals.ticker < gs.characters[player].future3[ZOETJE_TUTORIAL_NEXT_TICK_IDX];
 
-    npc_zoetje_advance_tutorial(gs, cn, player, None)
+    npc_zoetje_advance_tutorial(gs, cn, player, None, throttled)
 }
 
 /// Returns the high-priority result for Malte's special NPC driver.
@@ -1610,12 +1663,15 @@ pub fn npc_malte_msg(
 #[cfg(test)]
 mod tests {
     use super::{
-        ZoetjeGate, npc_zoetje_low, zoetje_gate_satisfied, zoetje_player_has_flower,
-        zoetje_tell_parts, zoetje_tutorial_dialogue,
+        ZOETJE_FLASK_STEP, ZoetjeGate, npc_zoetje_low, zoetje_action_gate_just_cleared,
+        zoetje_gate_satisfied, zoetje_player_has_potion, zoetje_tell_parts,
+        zoetje_tutorial_dialogue,
     };
     use crate::test_helpers::with_test_gs;
-    use core::constants::{DR_IDLE, DR_TURN, DX_DOWN, DX_UP, USE_ACTIVE, WN_BODY, WN_RHAND};
-    use core::string_operations::write_ascii_into_fixed;
+    use core::constants::{
+        DR_IDLE, DR_TURN, DX_DOWN, DX_UP, IT_FLASK, IT_HEALING_POTION, IT_RED_FLOWER, USE_ACTIVE,
+        WN_BODY, WN_RHAND,
+    };
     use core::traits::Class;
 
     #[test]
@@ -1665,7 +1721,7 @@ mod tests {
             zoetje_tutorial_dialogue(6, "Ada", Class::Mercenary)
                 .unwrap()
                 .1,
-            ZoetjeGate::Flower
+            ZoetjeGate::Potion
         );
     }
 
@@ -1692,25 +1748,83 @@ mod tests {
     }
 
     #[test]
-    fn zoetje_flower_gate_matches_carried_and_held_flowers() {
+    fn zoetje_potion_gate_matches_carried_and_held_potions() {
         with_test_gs(|gs| {
             let player = 1;
             gs.characters[player] = core::types::Character::default();
             gs.characters[player].used = USE_ACTIVE;
-            write_ascii_into_fixed(&mut gs.items[20].name, "Red Flower");
-            write_ascii_into_fixed(&mut gs.items[21].name, "Flask");
+            gs.items[20].temp = IT_HEALING_POTION as u16;
+            gs.items[21].temp = IT_FLASK as u16;
+            gs.items[22].temp = IT_RED_FLOWER as u16;
 
-            assert!(!zoetje_player_has_flower(gs, player));
+            assert!(!zoetje_player_has_potion(gs, player));
 
             gs.characters[player].item[3] = 21;
-            assert!(!zoetje_player_has_flower(gs, player));
+            gs.characters[player].item[4] = 22;
+            assert!(!zoetje_player_has_potion(gs, player));
 
-            gs.characters[player].item[3] = 20;
-            assert!(zoetje_player_has_flower(gs, player));
+            gs.characters[player].item[5] = 20;
+            assert!(zoetje_player_has_potion(gs, player));
 
-            gs.characters[player].item[3] = 0;
+            gs.characters[player].item[5] = 0;
             gs.characters[player].citem = 20;
-            assert!(zoetje_player_has_flower(gs, player));
+            assert!(zoetje_player_has_potion(gs, player));
+        });
+    }
+
+    #[test]
+    fn zoetje_action_gate_skips_timer_only_when_cleared() {
+        with_test_gs(|gs| {
+            let player = 1;
+            gs.characters[player] = core::types::Character::default();
+            gs.characters[player].used = USE_ACTIVE;
+
+            assert!(!zoetje_action_gate_just_cleared(
+                gs,
+                player,
+                0,
+                ZoetjeGate::Pause
+            ));
+            assert!(!zoetje_action_gate_just_cleared(
+                gs,
+                player,
+                2,
+                ZoetjeGate::Look
+            ));
+            assert!(!zoetje_action_gate_just_cleared(
+                gs,
+                player,
+                ZOETJE_FLASK_STEP,
+                ZoetjeGate::Equipped
+            ));
+
+            gs.characters[player].worn[WN_BODY] = 10;
+            gs.characters[player].worn[WN_RHAND] = 11;
+            assert!(zoetje_action_gate_just_cleared(
+                gs,
+                player,
+                ZOETJE_FLASK_STEP,
+                ZoetjeGate::Equipped
+            ));
+        });
+    }
+
+    #[test]
+    fn zoetje_flask_step_waits_on_timer_when_inventory_is_full() {
+        with_test_gs(|gs| {
+            let player = 1;
+            gs.characters[player] = core::types::Character::default();
+            gs.characters[player].used = USE_ACTIVE;
+            gs.characters[player].worn[WN_BODY] = 10;
+            gs.characters[player].worn[WN_RHAND] = 11;
+            gs.characters[player].item.fill(30);
+
+            assert!(!zoetje_action_gate_just_cleared(
+                gs,
+                player,
+                ZOETJE_FLASK_STEP,
+                ZoetjeGate::Equipped
+            ));
         });
     }
 
