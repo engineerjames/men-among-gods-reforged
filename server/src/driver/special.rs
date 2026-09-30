@@ -1078,6 +1078,14 @@ const ZOETJE_POTION_STEP: i32 = 6;
 const ZOETJE_GARDEN_POS: (usize, usize) = (491, 125);
 /// Portal/practice room the player is sent to once they have brewed a potion.
 const ZOETJE_PORTAL_ROOM_POS: (usize, usize) = (498, 125);
+/// Character template spawned beside the player as a practice enemy.
+const ZOETJE_PRACTICE_ENEMY_TEMPLATE: usize = 12;
+/// Relative `data[64]` self-destruct delay so an ignored practice enemy despawns.
+const ZOETJE_PRACTICE_ENEMY_LIFETIME: i32 = TICKS * 60 * 10;
+/// Fallback destination (Aston's Temple of Skua) when the tutorial cannot continue.
+const ZOETJE_FALLBACK_POS: (usize, usize) = (HOME_MERCENARY_X as usize, HOME_MERCENARY_Y as usize);
+/// What Zoetje tells the player before sending them to Aston early.
+const ZOETJE_FALLBACK_MESSAGE: &str = "The weave of the Temple of Rebirth is fraying- I cannot hold these halls together around you any longer. I will send you to the Temple of Skua in Aston instead. Go with the gods!";
 
 /// What the player must do before Zoetje will deliver a given tutorial line.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -1267,9 +1275,83 @@ fn zoetje_action_gate_just_cleared(
 /// * `gs` - Active game state containing the player.
 /// * `player` - Character index being moved.
 /// * `(x, y)` - Destination tile.
-fn zoetje_transfer_player(gs: &mut GameState, player: usize, (x, y): (usize, usize)) {
-    if !God::transfer_char(gs, player, x, y) {
+///
+/// # Returns
+///
+/// * `true` when the player was moved, otherwise `false`.
+fn zoetje_transfer_player(gs: &mut GameState, player: usize, (x, y): (usize, usize)) -> bool {
+    let moved = God::transfer_char(gs, player, x, y);
+    if !moved {
         log::warn!("Zoetje could not transfer character {player} to ({x}, {y})");
+    }
+    moved
+}
+
+/// Spawns a practice enemy beside the player that only fights back once attacked.
+///
+/// `God::create_char` zeroes the template's `data[]`, which clears its kill
+/// groups, door and rest-position duties, so the enemy stays passive until hit.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing the player.
+/// * `player` - Character index the enemy is placed next to.
+///
+/// # Returns
+///
+/// * The spawned character index, or `None` when it could not be created or placed.
+fn zoetje_spawn_practice_enemy(gs: &mut GameState, player: usize) -> Option<usize> {
+    let Some(cc) = God::create_char(gs, ZOETJE_PRACTICE_ENEMY_TEMPLATE, false) else {
+        log::error!(
+            "Zoetje could not create practice enemy template {ZOETJE_PRACTICE_ENEMY_TEMPLATE}"
+        );
+        return None;
+    };
+    let cc = cc as usize;
+
+    // create_char assigns a random name; restore the template's.
+    let name = gs.character_templates[ZOETJE_PRACTICE_ENEMY_TEMPLATE].name;
+    gs.characters[cc].name = name;
+    gs.characters[cc].reference = name;
+    // Otherwise its death would respawn another copy at the template's home tile.
+    gs.characters[cc].flags &= !CharacterFlags::Respawn.bits();
+    gs.characters[cc].data[64] = ZOETJE_PRACTICE_ENEMY_LIFETIME;
+
+    let (x, y) = (
+        gs.characters[player].x as usize,
+        gs.characters[player].y as usize,
+    );
+    if !God::drop_char_fuzzy(gs, cc, x, y) {
+        log::warn!("Zoetje could not place a practice enemy near character {player}");
+        God::destroy_items(gs, cc);
+        gs.characters[cc].used = USE_EMPTY;
+        return None;
+    }
+
+    Some(cc)
+}
+
+/// Ends the tutorial early when it cannot continue, sending the player to Aston
+/// and binding their temple and tavern there.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing Zoetje and the player.
+/// * `cn` - Zoetje's character index, used as the tell sender.
+/// * `player` - Character index being sent on.
+fn zoetje_send_to_aston(gs: &mut GameState, cn: usize, player: usize) {
+    npc_zoetje_tell_player(gs, cn, player, ZOETJE_FALLBACK_MESSAGE);
+
+    let (x, y) = ZOETJE_FALLBACK_POS;
+    let character = &mut gs.characters[player];
+    character.temple_x = x as u16;
+    character.temple_y = y as u16;
+    character.tavern_x = x as u16;
+    character.tavern_y = y as u16;
+    character.future3[ZOETJE_TUTORIAL_STEP_IDX] = ZOETJE_TUTORIAL_DONE_STEP;
+
+    if !God::transfer_char(gs, player, x, y) {
+        log::error!("Zoetje could not send character {player} to Aston ({x}, {y})");
     }
 }
 
@@ -1352,7 +1434,7 @@ fn npc_zoetje_advance_tutorial(
         return true;
     }
 
-    if step == ZOETJE_FLASK_STEP && !zoetje_give_flask(gs, player) {
+    if step == ZOETJE_FLASK_STEP && gs.characters[player].get_next_inventory_slot().is_none() {
         npc_zoetje_tell_player(
             gs,
             cn,
@@ -1366,12 +1448,24 @@ fn npc_zoetje_advance_tutorial(
         return true;
     }
 
+    if step == ZOETJE_FLASK_STEP && !zoetje_give_flask(gs, player) {
+        zoetje_send_to_aston(gs, cn, player);
+        return true;
+    }
+
     npc_zoetje_tell_player(gs, cn, player, &message);
 
-    match step {
+    let room_ready = match step {
         ZOETJE_FLASK_STEP => zoetje_transfer_player(gs, player, ZOETJE_GARDEN_POS),
-        ZOETJE_POTION_STEP => zoetje_transfer_player(gs, player, ZOETJE_PORTAL_ROOM_POS),
-        _ => {}
+        ZOETJE_POTION_STEP => {
+            zoetje_transfer_player(gs, player, ZOETJE_PORTAL_ROOM_POS)
+                && zoetje_spawn_practice_enemy(gs, player).is_some()
+        }
+        _ => true,
+    };
+    if !room_ready {
+        zoetje_send_to_aston(gs, cn, player);
+        return true;
     }
 
     gs.characters[player].future3[ZOETJE_TUTORIAL_STEP_IDX] = step + 1;
@@ -1663,14 +1757,16 @@ pub fn npc_malte_msg(
 #[cfg(test)]
 mod tests {
     use super::{
-        ZOETJE_FLASK_STEP, ZoetjeGate, npc_zoetje_low, zoetje_action_gate_just_cleared,
-        zoetje_gate_satisfied, zoetje_player_has_potion, zoetje_tell_parts,
-        zoetje_tutorial_dialogue,
+        ZOETJE_FALLBACK_POS, ZOETJE_FLASK_STEP, ZOETJE_PRACTICE_ENEMY_LIFETIME,
+        ZOETJE_PRACTICE_ENEMY_TEMPLATE, ZOETJE_TUTORIAL_DONE_STEP, ZOETJE_TUTORIAL_STEP_IDX,
+        ZoetjeGate, npc_zoetje_low, zoetje_action_gate_just_cleared, zoetje_gate_satisfied,
+        zoetje_player_has_potion, zoetje_send_to_aston, zoetje_spawn_practice_enemy,
+        zoetje_tell_parts, zoetje_tutorial_dialogue,
     };
     use crate::test_helpers::with_test_gs;
     use core::constants::{
-        DR_IDLE, DR_TURN, DX_DOWN, DX_UP, IT_FLASK, IT_HEALING_POTION, IT_RED_FLOWER, USE_ACTIVE,
-        WN_BODY, WN_RHAND,
+        CharacterFlags, DR_IDLE, DR_TURN, DX_DOWN, DX_UP, IT_FLASK, IT_HEALING_POTION,
+        IT_RED_FLOWER, SERVER_MAPX, USE_ACTIVE, WN_BODY, WN_RHAND,
     };
     use core::traits::Class;
 
@@ -1825,6 +1921,68 @@ mod tests {
                 ZOETJE_FLASK_STEP,
                 ZoetjeGate::Equipped
             ));
+        });
+    }
+
+    #[test]
+    fn zoetje_practice_enemy_spawns_passive_beside_player() {
+        with_test_gs(|gs| {
+            let player = 1;
+            gs.characters[player] = core::types::Character::default();
+            gs.characters[player].used = USE_ACTIVE;
+            gs.characters[player].x = 10;
+            gs.characters[player].y = 10;
+            gs.map[10 + 10 * SERVER_MAPX as usize].ch = player as u32;
+
+            let template = &mut gs.character_templates[ZOETJE_PRACTICE_ENEMY_TEMPLATE];
+            *template = core::types::Character::default();
+            template.used = USE_ACTIVE;
+            template.flags = CharacterFlags::Respawn.bits();
+            template.data[43] = 1;
+            template.data[44] = 2;
+            template.data[29] = 556556;
+            template.set_name("Thief");
+
+            let cc = zoetje_spawn_practice_enemy(gs, player).expect("enemy spawned");
+            let enemy = &gs.characters[cc];
+
+            assert_eq!(enemy.get_name(), "Thief");
+            assert_eq!(enemy.flags & CharacterFlags::Respawn.bits(), 0);
+            assert_eq!(enemy.data[43], 0);
+            assert_eq!(enemy.data[44], 0);
+            assert_eq!(enemy.data[29], 0);
+            assert_eq!(enemy.data[64], ZOETJE_PRACTICE_ENEMY_LIFETIME);
+            assert_ne!((enemy.x, enemy.y), (10, 10));
+            assert!((i32::from(enemy.x) - 10).abs() <= 2 && (i32::from(enemy.y) - 10).abs() <= 2);
+        });
+    }
+
+    #[test]
+    fn zoetje_send_to_aston_rebinds_home_and_ends_tutorial() {
+        with_test_gs(|gs| {
+            let (zoetje, player) = (2, 1);
+            gs.characters[zoetje] = core::types::Character::default();
+            gs.characters[zoetje].used = USE_ACTIVE;
+            gs.characters[player] = core::types::Character::default();
+            gs.characters[player].used = USE_ACTIVE;
+            gs.characters[player].flags = CharacterFlags::Player.bits();
+            gs.characters[player].x = 10;
+            gs.characters[player].y = 10;
+            gs.characters[player].future3[ZOETJE_TUTORIAL_STEP_IDX] = 6;
+            gs.characters[player].set_name("Ada");
+
+            zoetje_send_to_aston(gs, zoetje, player);
+
+            let (x, y) = ZOETJE_FALLBACK_POS;
+            let ch = &gs.characters[player];
+            assert_eq!((ch.temple_x, ch.temple_y), (x as u16, y as u16));
+            assert_eq!((ch.tavern_x, ch.tavern_y), (x as u16, y as u16));
+            assert_eq!(
+                ch.future3[ZOETJE_TUTORIAL_STEP_IDX],
+                ZOETJE_TUTORIAL_DONE_STEP
+            );
+            assert!((i32::from(ch.x) - x as i32).abs() <= 3);
+            assert!((i32::from(ch.y) - y as i32).abs() <= 3);
         });
     }
 
