@@ -1,0 +1,28 @@
+# login_and_play.uiscript — log in with an existing account and profile.
+#
+# Same variables as create_account_and_play.uiscript minus the registration
+# step; the account must already have at least one character (the first row
+# is auto-selected).
+
+wait_scene login 30
+wait 1
+
+click @login.username
+type ${MAG_AUTO_USERNAME}
+click @login.password
+type ${MAG_AUTO_PASSWORD}
+click @login.login
+wait_scene char_select 90
+wait 2
+screenshot ${MAG_AUTO_RUN_DIR}/screens/01-char-select.png
+
+click @char_select.continue
+wait_scene game 90
+wait 5
+screenshot ${MAG_AUTO_RUN_DIR}/screens/02-in-game.png
+
+wait ${MAG_AUTO_SETTLE_SECS}
+profile ${MAG_AUTO_PROFILE_SECS}
+wait ${MAG_AUTO_PROFILE_SECS}
+wait 2
+quit

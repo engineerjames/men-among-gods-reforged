@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::process;
 use std::time::{Duration, Instant};
 
@@ -5,8 +6,11 @@ use sdl2::event::WindowEvent;
 use sdl2::gfx::framerate::FPSManager;
 use sdl2::image::InitFlag;
 use sdl2::mixer::{AUDIO_S16LSB, DEFAULT_CHANNELS};
+use sdl2::pixels::PixelFormatEnum;
+use sdl2::surface::Surface;
 use sdl2::video::FullscreenType;
 
+use client::automation::AutomationDriver;
 use client::font_cache::TextEngine;
 use client::gfx_cache::GraphicsCache;
 use client::platform::PlatformProfile;
@@ -17,6 +21,7 @@ use client::state::{ApiTokenState, AppState, DisplayCommand};
 use client::ui::visuals::panning_background::PanningBackground;
 use client::ui::widget::Bounds;
 use client::{constants, dpi_scaling, filepaths, hosts, preferences, scenes};
+use mag_core::measure;
 
 /// Application entry point.
 ///
@@ -42,6 +47,13 @@ fn main() -> Result<(), String> {
         eprintln!("Failed to initialize logger: {}. Exiting.", e);
         process::exit(1);
     });
+
+    // Optional scripted UI session (MAG_AUTOMATION_SCRIPT). A malformed
+    // script is a hard error so automated runs fail fast.
+    let mut automation = AutomationDriver::from_env().map_err(|e| {
+        log::error!("{e}");
+        e
+    })?;
 
     let platform = PlatformProfile::detect();
     let is_first_run = !preferences::profile_exists();
@@ -255,91 +267,113 @@ fn main() -> Result<(), String> {
         let dt = now.duration_since(last_frame);
         last_frame = now;
 
+        #[cfg(feature = "measure-time")]
+        log::info!(target: "perf", "[measure-time] client.frame took {:?}", dt);
+
         // Poll events
-        for event in event_pump.poll_iter() {
-            if let sdl2::event::Event::Quit { .. } = event {
-                scene_manager.request_scene_change(SceneType::Exit, &mut app_state);
-            }
-
-            if matches!(
-                event,
-                sdl2::event::Event::Window {
-                    win_event: WindowEvent::Resized(_, _) | WindowEvent::SizeChanged(_, _),
-                    ..
+        measure!(
+            "client.handle_events",
+            for event in event_pump.poll_iter() {
+                if let sdl2::event::Event::Quit { .. } = event {
+                    scene_manager.request_scene_change(SceneType::Exit, &mut app_state);
                 }
-            ) && should_fit_pixel_perfect_window(
-                app_state.settings.display_mode,
-                app_state.settings.pixel_perfect_scaling,
-                window_occupies_display(canvas.window()),
-            ) {
-                pixel_perfect_resize_deadline = Some(Instant::now() + Duration::from_millis(200));
-            }
 
-            // --- Controller input mode detection --------------------------
-            // Any gamepad input switches to controller mode; any
-            // keyboard/mouse input switches back.
-            match &event {
-                sdl2::event::Event::ControllerButtonDown { .. } if !app_state.controller_active => {
-                    log::info!("Controller input detected — switching to controller mode");
-                    app_state.controller_active = true;
+                if matches!(
+                    event,
+                    sdl2::event::Event::Window {
+                        win_event: WindowEvent::Resized(_, _) | WindowEvent::SizeChanged(_, _),
+                        ..
+                    }
+                ) && should_fit_pixel_perfect_window(
+                    app_state.settings.display_mode,
+                    app_state.settings.pixel_perfect_scaling,
+                    window_occupies_display(canvas.window()),
+                ) {
+                    pixel_perfect_resize_deadline =
+                        Some(Instant::now() + Duration::from_millis(200));
                 }
-                sdl2::event::Event::ControllerAxisMotion { value, .. } => {
-                    // Ignore small axis values inside the deadzone.
-                    // Use saturating_abs to avoid overflow on i16::MIN (-32768).
-                    const DEADZONE: i16 = 8000;
-                    if value.saturating_abs() > DEADZONE && !app_state.controller_active {
+
+                // --- Controller input mode detection --------------------------
+                // Any gamepad input switches to controller mode; any
+                // keyboard/mouse input switches back.
+                match &event {
+                    sdl2::event::Event::ControllerButtonDown { .. }
+                        if !app_state.controller_active =>
+                    {
                         log::info!("Controller input detected — switching to controller mode");
                         app_state.controller_active = true;
                     }
-                }
-                sdl2::event::Event::ControllerDeviceAdded { which, .. } => {
-                    if let Ok(ref gc_subsystem) = game_controller_subsystem {
-                        match gc_subsystem.open(*which) {
-                            Ok(controller) => {
-                                log::info!(
-                                    "Game controller connected: \"{}\" (index {which})",
-                                    controller.name()
-                                );
-                                _open_controllers.push(controller);
-                            }
-                            Err(e) => {
-                                log::warn!(
-                                    "Failed to open newly connected controller {which}: {e}"
-                                );
+                    sdl2::event::Event::ControllerAxisMotion { value, .. } => {
+                        // Ignore small axis values inside the deadzone.
+                        // Use saturating_abs to avoid overflow on i16::MIN (-32768).
+                        const DEADZONE: i16 = 8000;
+                        if value.saturating_abs() > DEADZONE && !app_state.controller_active {
+                            log::info!("Controller input detected — switching to controller mode");
+                            app_state.controller_active = true;
+                        }
+                    }
+                    sdl2::event::Event::ControllerDeviceAdded { which, .. } => {
+                        if let Ok(ref gc_subsystem) = game_controller_subsystem {
+                            match gc_subsystem.open(*which) {
+                                Ok(controller) => {
+                                    log::info!(
+                                        "Game controller connected: \"{}\" (index {which})",
+                                        controller.name()
+                                    );
+                                    _open_controllers.push(controller);
+                                }
+                                Err(e) => {
+                                    log::warn!(
+                                        "Failed to open newly connected controller {which}: {e}"
+                                    );
+                                }
                             }
                         }
                     }
+                    sdl2::event::Event::ControllerDeviceRemoved { which, .. } => {
+                        log::info!("Game controller disconnected (instance id {which})");
+                        _open_controllers.retain(|c| c.instance_id() != *which);
+                    }
+                    sdl2::event::Event::KeyDown { .. }
+                    | sdl2::event::Event::KeyUp { .. }
+                    | sdl2::event::Event::MouseButtonDown { .. }
+                    | sdl2::event::Event::MouseButtonUp { .. }
+                    | sdl2::event::Event::MouseMotion { .. }
+                    | sdl2::event::Event::MouseWheel { .. }
+                    | sdl2::event::Event::TextInput { .. }
+                        if app_state.controller_active =>
+                    {
+                        log::info!("Keyboard/mouse input detected — leaving controller mode");
+                        app_state.controller_active = false;
+                    }
+                    _ => {}
                 }
-                sdl2::event::Event::ControllerDeviceRemoved { which, .. } => {
-                    log::info!("Game controller disconnected (instance id {which})");
-                    _open_controllers.retain(|c| c.instance_id() != *which);
+                // --------------------------------------------------------------
+
+                let event = dpi_scaling::adjust_mouse_event_for_hidpi(
+                    event,
+                    canvas.window(),
+                    constants::TARGET_WIDTH,
+                    constants::TARGET_HEIGHT,
+                    app_state.settings.pixel_perfect_scaling,
+                );
+
+                scene_manager.handle_event(&mut app_state, &event);
+
+                if scene_manager.get_scene() == SceneType::Exit {
+                    break 'running;
                 }
-                sdl2::event::Event::KeyDown { .. }
-                | sdl2::event::Event::KeyUp { .. }
-                | sdl2::event::Event::MouseButtonDown { .. }
-                | sdl2::event::Event::MouseButtonUp { .. }
-                | sdl2::event::Event::MouseMotion { .. }
-                | sdl2::event::Event::MouseWheel { .. }
-                | sdl2::event::Event::TextInput { .. }
-                    if app_state.controller_active =>
-                {
-                    log::info!("Keyboard/mouse input detected — leaving controller mode");
-                    app_state.controller_active = false;
-                }
-                _ => {}
             }
-            // --------------------------------------------------------------
+        );
 
-            let event = dpi_scaling::adjust_mouse_event_for_hidpi(
-                event,
-                canvas.window(),
-                constants::TARGET_WIDTH,
-                constants::TARGET_HEIGHT,
-                app_state.settings.pixel_perfect_scaling,
-            );
-
-            scene_manager.handle_event(&mut app_state, &event);
-
+        if let Some(driver) = automation.as_mut() {
+            if let Err(err) = driver.step(&mut scene_manager, &mut app_state) {
+                log::error!("Automation script failed: {err}");
+                return Err(err);
+            }
+            if driver.is_finished() {
+                automation = None;
+            }
             if scene_manager.get_scene() == SceneType::Exit {
                 break 'running;
             }
@@ -360,7 +394,7 @@ fn main() -> Result<(), String> {
             prev_controller_active = app_state.controller_active;
         }
 
-        scene_manager.update(&mut app_state, dt);
+        measure!("client.update", scene_manager.update(&mut app_state, dt));
 
         // --- Apply any pending display commands from the UI ---------------
         if let Some(cmd) = app_state.display_command.take() {
@@ -409,13 +443,28 @@ fn main() -> Result<(), String> {
             continue;
         }
 
+        // Taken only on frames that actually render, so a request made on a
+        // skipped frame is honoured by the next drawn one.
+        let mut screenshot_request = automation
+            .as_mut()
+            .and_then(AutomationDriver::take_pending_screenshot);
+
         let _ = canvas.set_logical_size(constants::TARGET_WIDTH_INT, constants::TARGET_HEIGHT_INT);
         // Integer scale --> pixel-perfect (nearest integer multiplier) when on.
         let _ = canvas.set_integer_scale(app_state.settings.pixel_perfect_scaling);
-        scene_manager.render_world(&mut app_state, &mut canvas);
+        measure!(
+            "client.render_world",
+            scene_manager.render_world(&mut app_state, &mut canvas)
+        );
         // Logical size off --> raw physical pixels.
         let _ = canvas.set_integer_scale(false);
         let _ = canvas.set_logical_size(0, 0);
+
+        if let Some(path) = screenshot_request.take()
+            && let Err(err) = save_screenshot(&canvas, &path)
+        {
+            log::error!("Failed to save screenshot {}: {err}", path.display());
+        }
 
         if scene_manager.get_scene() == SceneType::Exit {
             break 'running;
@@ -424,7 +473,7 @@ fn main() -> Result<(), String> {
         if let FramePresentation::PresentAt(deadline) = frame_presentation {
             wait_until(deadline, &mut event_pump);
         }
-        canvas.present();
+        measure!("client.present", canvas.present());
 
         if frame_presentation == FramePresentation::Immediate && !effective_vsync_enabled {
             fps_manager.delay();
@@ -601,6 +650,39 @@ fn save_global_display_settings(app_state: &AppState<'_>) {
     if let Err(e) = preferences::save_global_settings(&app_state.settings) {
         log::error!("Failed to persist display settings: {e}");
     }
+}
+
+/// Writes the current (not yet presented) back buffer to `path` as PNG.
+///
+/// # Arguments
+///
+/// * `canvas` - Renderer whose back buffer holds the finished frame.
+/// * `path` - Destination file; parent directories are created.
+///
+/// # Returns
+///
+/// * `Err` with the SDL or I/O error message on failure.
+fn save_screenshot(
+    canvas: &sdl2::render::Canvas<sdl2::video::Window>,
+    path: &Path,
+) -> Result<(), String> {
+    use sdl2::image::SaveSurface;
+
+    let (width, height) = canvas.output_size()?;
+    let mut pixels = canvas.read_pixels(None, PixelFormatEnum::RGBA32)?;
+    let surface = Surface::from_data(
+        &mut pixels,
+        width,
+        height,
+        width * 4,
+        PixelFormatEnum::RGBA32,
+    )?;
+    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    surface.save(path)?;
+    log::info!("Saved screenshot to {}", path.display());
+    Ok(())
 }
 
 #[cfg(test)]

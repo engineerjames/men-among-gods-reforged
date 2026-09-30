@@ -322,9 +322,13 @@ def exclusive_ms(label: str, stats_by_label: dict[str, dict]) -> float:
 # ---------------------------------------------------------------------------
 
 
-def read_resources(run_dir: Path, window: tuple[float, float] | None) -> dict | None:
+def read_resources(
+    run_dir: Path,
+    window: tuple[float, float] | None,
+    filename: str = "server_resources.csv",
+) -> dict | None:
     """Summarise the CPU/RSS sampler CSV, if present."""
-    path = run_dir / "server_resources.csv"
+    path = run_dir / filename
     if not path.exists():
         return None
     cpu: list[float] = []
