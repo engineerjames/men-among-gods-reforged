@@ -1,13 +1,16 @@
 //! Settings / options panel.
 //!
 //! Presents a compact main menu with category buttons (Display Settings,
-//! Diagnostics, Controls), an inline volume slider, and session controls.
+//! Diagnostics, Controls, Controller, Mouse Settings, Autoloot Settings), an
+//! inline volume slider, and session controls.
 //! Each category button opens a sub-panel that overlaps the main panel
 //! content. Only one sub-panel is visible at a time.
 
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
+
+use mag_core::autoloot::AutolootConfig;
 
 use crate::font_cache;
 use crate::preferences::DisplayMode;
@@ -27,18 +30,20 @@ use crate::ui::widgets::label::Label;
 use crate::ui::widgets::slider::Slider;
 use crate::ui::widgets::title_bar::{TITLE_BAR_H, TitleBar, clamp_to_viewport};
 
+use super::autoloot_settings_panel::{AL_PANEL_H, AutolootSettingsSubPanel};
+
 // ---------------------------------------------------------------------------
 // Layout constants — main panel
 // ---------------------------------------------------------------------------
 
 /// Row height for controls.
-const ROW_H: i32 = 14;
+pub(super) const ROW_H: i32 = 14;
 /// Horizontal inset from panel edges for controls.
-const H_INSET: i32 = 10;
+pub(super) const H_INSET: i32 = 10;
 /// Width available for controls inside the panel.
-const CONTROL_W: u32 = 280;
+pub(super) const CONTROL_W: u32 = 280;
 /// Height of a button row.
-const BTN_H: u32 = 16;
+pub(super) const BTN_H: u32 = 16;
 
 // Y offsets from main panel top (relative, added to bounds.y).
 const Y_DISPLAY_BTN: i32 = TITLE_BAR_H + 8;
@@ -46,7 +51,8 @@ const Y_DIAG_BTN: i32 = Y_DISPLAY_BTN + BTN_H as i32 + 6;
 const Y_CONTROLS_BTN: i32 = Y_DIAG_BTN + BTN_H as i32 + 6;
 const Y_CONTROLLER_BTN: i32 = Y_CONTROLS_BTN + BTN_H as i32 + 6;
 const Y_MOUSE_BTN: i32 = Y_CONTROLLER_BTN + BTN_H as i32 + 6;
-const Y_VOLUME: i32 = Y_MOUSE_BTN + BTN_H as i32 + 10;
+const Y_AUTOLOOT_BTN: i32 = Y_MOUSE_BTN + BTN_H as i32 + 6;
+const Y_VOLUME: i32 = Y_AUTOLOOT_BTN + BTN_H as i32 + 10;
 const Y_SEPARATOR: i32 = Y_VOLUME + ROW_H + 8;
 const Y_SESSION_BTNS: i32 = Y_SEPARATOR + 10;
 const Y_RETURN_BTN: i32 = Y_SESSION_BTNS + BTN_H as i32 + 6;
@@ -157,6 +163,8 @@ enum SettingsSubPanel {
     Controller,
     /// Mouse side-button modifier bindings.
     Mouse,
+    /// Grave auto-loot category configuration.
+    Autoloot,
 }
 
 // ---------------------------------------------------------------------------
@@ -164,12 +172,12 @@ enum SettingsSubPanel {
 // ---------------------------------------------------------------------------
 
 /// Standard button background used in the settings UI.
-fn btn_bg() -> Background {
+pub(super) fn btn_bg() -> Background {
     Background::SolidColor(Color::RGBA(40, 40, 60, 200))
 }
 
 /// Standard button border used in the settings UI.
-fn btn_border() -> Border {
+pub(super) fn btn_border() -> Border {
     Border {
         color: Color::RGBA(120, 120, 140, 200),
         width: 1,
@@ -177,21 +185,21 @@ fn btn_border() -> Border {
 }
 
 /// Semi-transparent dark background used by sub-panels.
-const SUB_PANEL_BG: Color = Color::RGBA(10, 10, 30, 220);
+pub(super) const SUB_PANEL_BG: Color = Color::RGBA(10, 10, 30, 220);
 /// Border color shared by all panels.
-const BORDER_COLOR: Color = Color::RGBA(120, 120, 140, 200);
+pub(super) const BORDER_COLOR: Color = Color::RGBA(120, 120, 140, 200);
 /// Grey-out overlay applied to the main settings panel while a sub-panel is open.
 const SUB_PANEL_DIM_OVERLAY: Color = Color::RGBA(90, 90, 100, 120);
 
 /// Shorthand to shift a widget by a pixel delta.
-fn shift(w: &mut impl Widget, dx: i32, dy: i32) {
+pub(super) fn shift(w: &mut impl Widget, dx: i32, dy: i32) {
     let b = w.bounds();
     let (nx, ny) = (b.x + dx, b.y + dy);
     w.set_position(nx, ny);
 }
 
 /// Returns `Consumed` for mouse events inside `bounds` to block pass-through.
-fn consume_mouse_events_in_bounds(bounds: &Bounds, event: &UiEvent) -> EventResponse {
+pub(super) fn consume_mouse_events_in_bounds(bounds: &Bounds, event: &UiEvent) -> EventResponse {
     match event {
         UiEvent::MouseClick { x, y, .. }
         | UiEvent::MouseDown { x, y, .. }
@@ -227,7 +235,7 @@ fn keybinding_button_label(bindings: &KeyBindings, action: GameAction) -> String
 }
 
 /// Draw a sub-panel background and border rectangle.
-fn draw_sub_panel_frame(
+pub(super) fn draw_sub_panel_frame(
     ctx: &mut RenderContext,
     bounds: &Bounds,
     bg_color: Color,
@@ -2134,6 +2142,10 @@ pub struct SettingsPanelData {
     pub controller_bindings: ControllerBindings,
     /// Current mouse button modifier bindings.
     pub mouse_modifier_bindings: MouseModifierBindings,
+    /// Whether grave auto-loot is enabled for the active character.
+    pub autoloot_enabled: bool,
+    /// Grave auto-loot category configuration for the active character.
+    pub autoloot: AutolootConfig,
 }
 
 // ===========================================================================
@@ -2162,6 +2174,7 @@ pub struct SettingsPanel {
     btn_controls: RectButton,
     btn_controller: RectButton,
     btn_mouse: RectButton,
+    btn_autoloot: RectButton,
 
     // --- Inline volume ---
     sld_volume: Slider,
@@ -2180,13 +2193,14 @@ pub struct SettingsPanel {
     sub_controls: ControlsSubPanel,
     sub_controller: ControllerBindingsSubPanel,
     sub_mouse: MouseSettingsSubPanel,
+    sub_autoloot: AutolootSettingsSubPanel,
 
     /// Controller focus index into the focusable elements list, if any.
     /// Order: 0=Display, 1=Diagnostics, 2=Controls, 3=Controller,
-    ///        4=Mouse, 5=Volume, 6=Disconnect, 7=Quit, 8=Return.
+    ///        4=Mouse, 5=Autoloot, 6=Volume, 7=Disconnect, 8=Quit, 9=Return.
     controller_focused: Option<usize>,
     /// `true` when the controller is actively adjusting the volume slider
-    /// (entered via NavConfirm on index 4, exited via NavConfirm or NavBack).
+    /// (entered via NavConfirm on index 6, exited via NavConfirm or NavBack).
     volume_adjusting: bool,
 }
 
@@ -2214,6 +2228,10 @@ impl SettingsPanel {
         let (controller_x, controller_y) =
             centered_sub_panel_origin(&bounds, bounds.width, CB_PANEL_H);
         let (mouse_x, mouse_y) = centered_sub_panel_origin(&bounds, bounds.width, MS_PANEL_H);
+        let (autoloot_x, autoloot_y) = {
+            let (cx, cy) = centered_sub_panel_origin(&bounds, bounds.width, AL_PANEL_H);
+            clamp_to_viewport(cx, cy, bounds.width, AL_PANEL_H)
+        };
 
         Self {
             bounds,
@@ -2255,6 +2273,13 @@ impl SettingsPanel {
             btn_mouse: RectButton::new(Bounds::new(x, bounds.y + Y_MOUSE_BTN, w, BTN_H), btn_bg())
                 .with_label("Mouse Settings", 0)
                 .with_border(btn_border()),
+
+            btn_autoloot: RectButton::new(
+                Bounds::new(x, bounds.y + Y_AUTOLOOT_BTN, w, BTN_H),
+                btn_bg(),
+            )
+            .with_label("Autoloot Settings", 0)
+            .with_border(btn_border()),
 
             sld_volume: Slider::new(
                 Bounds::new(x, bounds.y + Y_VOLUME, w, ROW_H as u32),
@@ -2300,6 +2325,7 @@ impl SettingsPanel {
                 bounds.width,
             ),
             sub_mouse: MouseSettingsSubPanel::new(mouse_x, mouse_y, bounds.width),
+            sub_autoloot: AutolootSettingsSubPanel::new(autoloot_x, autoloot_y, bounds.width),
 
             controller_focused: None,
             volume_adjusting: false,
@@ -2348,6 +2374,8 @@ impl SettingsPanel {
         self.sub_controls.sync_state(data);
         self.sub_controller.sync_state(&data.controller_bindings);
         self.sub_mouse.sync_state(&data.mouse_modifier_bindings);
+        self.sub_autoloot
+            .sync_state(data.autoloot_enabled, &data.autoloot);
     }
 
     /// Updates the ping readout label.
@@ -2447,6 +2475,7 @@ impl SettingsPanel {
             SettingsSubPanel::Controls => self.sub_controls.show(),
             SettingsSubPanel::Controller => self.sub_controller.show(),
             SettingsSubPanel::Mouse => self.sub_mouse.show(),
+            SettingsSubPanel::Autoloot => self.sub_autoloot.show(),
         }
     }
 
@@ -2459,12 +2488,13 @@ impl SettingsPanel {
                 SettingsSubPanel::Controls => self.sub_controls.hide(),
                 SettingsSubPanel::Controller => self.sub_controller.hide(),
                 SettingsSubPanel::Mouse => self.sub_mouse.hide(),
+                SettingsSubPanel::Autoloot => self.sub_autoloot.hide(),
             }
         }
     }
 
     /// Number of focusable elements on the main panel.
-    const MAIN_FOCUSABLE_COUNT: usize = 9;
+    const MAIN_FOCUSABLE_COUNT: usize = 10;
 
     /// Applies controller focus highlighting to the main panel widgets.
     fn apply_controller_focus(&mut self) {
@@ -2474,11 +2504,12 @@ impl SettingsPanel {
         self.btn_controls.set_hovered(f == Some(2));
         self.btn_controller.set_hovered(f == Some(3));
         self.btn_mouse.set_hovered(f == Some(4));
-        self.sld_volume.set_hovered(f == Some(5));
+        self.btn_autoloot.set_hovered(f == Some(5));
+        self.sld_volume.set_hovered(f == Some(6));
         self.sld_volume.set_active(self.volume_adjusting);
-        self.btn_disconnect.set_hovered(f == Some(6));
-        self.btn_quit.set_hovered(f == Some(7));
-        self.btn_return.set_hovered(f == Some(8));
+        self.btn_disconnect.set_hovered(f == Some(7));
+        self.btn_quit.set_hovered(f == Some(8));
+        self.btn_return.set_hovered(f == Some(9));
     }
 
     /// Resets the controller focus (e.g. when mouse takes over).
@@ -2507,6 +2538,8 @@ impl SettingsPanel {
         self.pending_actions
             .extend(self.sub_controller.take_actions());
         self.pending_actions.extend(self.sub_mouse.take_actions());
+        self.pending_actions
+            .extend(self.sub_autoloot.take_actions());
     }
 }
 
@@ -2527,6 +2560,7 @@ impl Widget for SettingsPanel {
         shift(&mut self.btn_controls, dx, dy);
         shift(&mut self.btn_controller, dx, dy);
         shift(&mut self.btn_mouse, dx, dy);
+        shift(&mut self.btn_autoloot, dx, dy);
         shift(&mut self.sld_volume, dx, dy);
         shift(&mut self.btn_disconnect, dx, dy);
         shift(&mut self.btn_quit, dx, dy);
@@ -2538,6 +2572,7 @@ impl Widget for SettingsPanel {
         self.sub_controls.shift_all(dx, dy);
         self.sub_controller.shift_all(dx, dy);
         self.sub_mouse.shift_all(dx, dy);
+        self.sub_autoloot.shift_all(dx, dy);
     }
 
     fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
@@ -2570,6 +2605,7 @@ impl Widget for SettingsPanel {
                 SettingsSubPanel::Controls => self.sub_controls.handle_event(event),
                 SettingsSubPanel::Controller => self.sub_controller.handle_event(event),
                 SettingsSubPanel::Mouse => self.sub_mouse.handle_event(event),
+                SettingsSubPanel::Autoloot => self.sub_autoloot.handle_event(event),
             };
             self.collect_sub_panel_actions();
 
@@ -2579,6 +2615,7 @@ impl Widget for SettingsPanel {
                 SettingsSubPanel::Controls => !self.sub_controls.visible,
                 SettingsSubPanel::Controller => !self.sub_controller.visible,
                 SettingsSubPanel::Mouse => !self.sub_mouse.visible,
+                SettingsSubPanel::Autoloot => !self.sub_autoloot.visible,
             };
             if closed {
                 self.active_sub_panel = None;
@@ -2642,20 +2679,21 @@ impl Widget for SettingsPanel {
                     Some(2) => self.open_sub_panel(SettingsSubPanel::Controls),
                     Some(3) => self.open_sub_panel(SettingsSubPanel::Controller),
                     Some(4) => self.open_sub_panel(SettingsSubPanel::Mouse),
-                    Some(5) => {
+                    Some(5) => self.open_sub_panel(SettingsSubPanel::Autoloot),
+                    Some(6) => {
                         // Volume slider: enter adjust mode so NavNext/NavPrev
                         // will increase/decrease volume until confirmed.
                         self.volume_adjusting = true;
                         self.sld_volume.set_active(true);
                     }
-                    Some(6) => {
+                    Some(7) => {
                         self.pending_actions.push(WidgetAction::Disconnect);
                     }
-                    Some(7) => {
+                    Some(8) => {
                         self.quit_dialog.center_on(&self.bounds);
                         self.quit_dialog.show();
                     }
-                    Some(8) => {
+                    Some(9) => {
                         self.visible = false;
                         self.close_active_sub_panel();
                         self.pending_actions
@@ -2741,6 +2779,14 @@ impl Widget for SettingsPanel {
             }
             return EventResponse::Consumed;
         }
+        if self.btn_autoloot.handle_event(event) == EventResponse::Consumed {
+            if self.active_sub_panel == Some(SettingsSubPanel::Autoloot) {
+                self.close_active_sub_panel();
+            } else {
+                self.open_sub_panel(SettingsSubPanel::Autoloot);
+            }
+            return EventResponse::Consumed;
+        }
 
         // 5. Volume slider.
         if self.sld_volume.handle_event(event) == EventResponse::Consumed {
@@ -2806,6 +2852,7 @@ impl Widget for SettingsPanel {
         self.btn_controls.render(ctx)?;
         self.btn_controller.render(ctx)?;
         self.btn_mouse.render(ctx)?;
+        self.btn_autoloot.render(ctx)?;
 
         // Volume slider
         self.sld_volume.render(ctx)?;
@@ -2835,6 +2882,7 @@ impl Widget for SettingsPanel {
         self.sub_controls.render(ctx)?;
         self.sub_controller.render(ctx)?;
         self.sub_mouse.render(ctx)?;
+        self.sub_autoloot.render(ctx)?;
 
         // Quit confirmation rendered topmost.
         self.quit_dialog.render(ctx)?;
@@ -2887,6 +2935,8 @@ mod tests {
             key_bindings: KeyBindings::default(),
             controller_bindings: ControllerBindings::default(),
             mouse_modifier_bindings: MouseModifierBindings::default(),
+            autoloot_enabled: true,
+            autoloot: AutolootConfig::default(),
         }
     }
 
@@ -3154,6 +3204,46 @@ mod tests {
         assert!(!panel.sub_display.visible);
         assert!(panel.sub_diagnostics.visible);
         assert_eq!(panel.active_sub_panel, Some(SettingsSubPanel::Diagnostics));
+    }
+
+    #[test]
+    fn autoloot_settings_button_opens_sub_panel_and_forwards_actions() {
+        let mut panel = make_panel();
+        panel.toggle();
+        panel.sync_state(&make_data());
+
+        let resp = panel.handle_event(&left_click(15, Y_AUTOLOOT_BTN + 5));
+        assert_eq!(resp, EventResponse::Consumed);
+        assert_eq!(panel.active_sub_panel, Some(SettingsSubPanel::Autoloot));
+        assert!(panel.sub_autoloot.visible);
+        let _ = panel.take_actions();
+
+        // Toggle the master enable checkbox (first row of the sub-panel).
+        let sub_b = *panel.sub_autoloot.bounds();
+        let resp = panel.handle_event(&left_click(
+            sub_b.x + H_INSET + 5,
+            sub_b.y + TITLE_BAR_H + 8 + ROW_H / 2,
+        ));
+        assert_eq!(resp, EventResponse::Consumed);
+        let actions = panel.take_actions();
+        assert!(
+            actions
+                .iter()
+                .any(|a| matches!(a, WidgetAction::SetAutolootEnabled(false))),
+            "Expected SetAutolootEnabled action, got {:?}",
+            actions
+        );
+    }
+
+    #[test]
+    fn controller_nav_can_open_autoloot_sub_panel() {
+        let mut panel = make_panel();
+        panel.toggle();
+        for _ in 0..6 {
+            panel.handle_event(&UiEvent::NavNext);
+        }
+        panel.handle_event(&UiEvent::NavConfirm);
+        assert_eq!(panel.active_sub_panel, Some(SettingsSubPanel::Autoloot));
     }
 
     #[test]

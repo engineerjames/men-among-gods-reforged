@@ -148,6 +148,7 @@ impl GameScene {
                         net.logged_in = true;
                     }
                     log::info!("Logged in to game server");
+                    self.send_autoloot_config(app_state);
                 }
                 NetworkEvent::TickBatch(batch) => {
                     self.pending_tick_batches.push_back(batch);
@@ -191,6 +192,23 @@ impl GameScene {
                 net.send(ClientCommand::new_autolook(lookat));
             }
             self.look_step = 0;
+        }
+    }
+
+    /// Uploads the active character's auto-loot configuration to the server.
+    ///
+    /// Sent once after login and again whenever the player edits the
+    /// configuration, so the server-side session always mirrors the local
+    /// profile.  A no-op while disconnected.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state (settings + network).
+    pub(super) fn send_autoloot_config(&self, app_state: &AppState<'_>) {
+        if let Some(net) = app_state.network.as_ref() {
+            net.send(ClientCommand::new_autoloot_config(
+                &app_state.settings.character.autoloot,
+            ));
         }
     }
 

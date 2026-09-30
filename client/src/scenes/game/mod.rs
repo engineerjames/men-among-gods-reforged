@@ -1029,6 +1029,8 @@ impl GameScene {
             key_bindings: app_state.settings.character.key_bindings.clone(),
             controller_bindings: app_state.settings.character.controller_bindings.clone(),
             mouse_modifier_bindings: app_state.settings.character.mouse_modifier_bindings.clone(),
+            autoloot_enabled: app_state.settings.character.auto_loot_graves,
+            autoloot: app_state.settings.character.autoloot,
         }
     }
 
@@ -1228,6 +1230,18 @@ impl GameScene {
                 }
                 WidgetAction::SetShowPositions(v) => {
                     app_state.settings.show_positions = v;
+                    profile_changed = true;
+                }
+                WidgetAction::SetAutolootEnabled(v) => {
+                    app_state.settings.character.auto_loot_graves = v;
+                    self.autoloot_visited.clear();
+                    profile_changed = true;
+                }
+                WidgetAction::SetAutolootConfig(cfg) => {
+                    app_state.settings.character.autoloot = cfg;
+                    self.send_autoloot_config(app_state);
+                    // Let adjacent graves be re-scanned with the new categories.
+                    self.autoloot_visited.clear();
                     profile_changed = true;
                 }
                 WidgetAction::SetMasterVolume(v) => {

@@ -9,8 +9,8 @@ use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, Shutdown, SocketAddrV4, TcpListener};
-use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::effect::EffectManager;
@@ -19,8 +19,8 @@ use crate::god::God;
 use crate::player::map::CMap;
 use crate::tls::{self, GameStream};
 use crate::{driver, player, populate};
-use flate2::write::ZlibEncoder;
 use flate2::Compression;
+use flate2::write::ZlibEncoder;
 use server::keydb::background_saver::{self, BackgroundSaver, SaveCompletion, SaveJob};
 use server::keydb::tick_worker::{
     ActionStatusRequest, AdminReloadRequest, AdminReloadResult, AdminStatusKind, BanWriteAction,
@@ -131,6 +131,11 @@ pub struct ServerPlayer {
     /// Wire flags currently applied to the active weather, including the
     /// admin-override bit (`core::weather::WEATHER_FLAG_OVERRIDE`).
     pub weather_flags: u8,
+
+    /// Grave auto-loot preferences most recently uploaded by the client via
+    /// `CmdAutolootConfig`. Transient per-session state; the client owns the
+    /// persisted copy and re-sends it after every login.
+    pub autoloot: core::autoloot::AutolootConfig,
 }
 
 impl ServerPlayer {
@@ -195,6 +200,7 @@ impl ServerPlayer {
             weather_expire_tick: 0,
             weather_tint: [0; 4],
             weather_flags: 0,
+            autoloot: core::autoloot::AutolootConfig::default(),
         }
     }
 
