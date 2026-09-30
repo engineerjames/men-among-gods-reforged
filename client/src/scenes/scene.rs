@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    time::{Duration, Instant},
-};
+use std::{collections::HashMap, time::Duration};
 
 use sdl2::{
     event::Event,
@@ -35,17 +32,6 @@ enum SceneTransition {
     FadingIn { elapsed: Duration },
 }
 
-/// Directs how the current scene iteration should reach the display.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum FramePresentation {
-    /// Render and present using the application's normal frame pacing.
-    Immediate,
-    /// Render now, then wait until the absolute deadline before presenting.
-    PresentAt(Instant),
-    /// Skip rendering and presentation so gameplay can catch up.
-    Skip,
-}
-
 /// Trait implemented by each game scene (login, character selection, gameplay, etc.).
 ///
 /// The scene manager drives the lifecycle: `on_enter` --> frame loop (`handle_event`,
@@ -63,15 +49,6 @@ pub trait Scene {
 
     /// Per-frame logic update. `dt` is the time elapsed since the last frame.
     fn update(&mut self, app_state: &mut AppState<'_>, dt: Duration) -> Option<SceneType>;
-
-    /// Takes the one-shot presentation decision produced by the last update.
-    ///
-    /// # Returns
-    ///
-    /// * The presentation behavior for the current iteration.
-    fn take_frame_presentation(&mut self) -> FramePresentation {
-        FramePresentation::Immediate
-    }
 
     /// Renders non-UI world elements (tiles, sprites) onto the SDL canvas.
     fn render_world(
@@ -359,22 +336,6 @@ impl SceneManager {
             let _ = canvas.fill_rect(Rect::new(0, 0, TARGET_WIDTH_INT, TARGET_HEIGHT_INT));
             canvas.set_blend_mode(prev_blend_mode);
         }
-    }
-
-    /// Takes the active scene's presentation decision.
-    ///
-    /// # Returns
-    ///
-    /// * The presentation behavior for the current iteration.
-    pub fn take_frame_presentation(&mut self) -> FramePresentation {
-        if self.active_scene == SceneType::Exit {
-            return FramePresentation::Immediate;
-        }
-
-        self.scenes
-            .get_mut(&self.active_scene)
-            .map(|scene| scene.take_frame_presentation())
-            .unwrap_or(FramePresentation::Immediate)
     }
 
     /// Externally requests a scene transition (e.g. from the main loop on quit).

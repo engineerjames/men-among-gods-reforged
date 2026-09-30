@@ -421,7 +421,7 @@ impl GameScene {
             return None;
         }
 
-        let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
+        let (cam_xoff, cam_yoff) = self.camera_offsets(ps);
         if !Self::cursor_in_map_interaction_area(self.mouse_x, self.mouse_y, cam_xoff, cam_yoff) {
             return None;
         }
@@ -530,7 +530,7 @@ impl GameScene {
                 .hovered_label(self.effective_shift_held());
         }
 
-        let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
+        let (cam_xoff, cam_yoff) = self.camera_offsets(ps);
         if !Self::cursor_in_map_interaction_area(self.mouse_x, self.mouse_y, cam_xoff, cam_yoff) {
             return None;
         }
@@ -592,7 +592,7 @@ impl GameScene {
     ) -> Result<(), String> {
         let map = ps.map();
         let ci = ps.character_info();
-        let (cam_xoff_base, cam_yoff_base) = Self::camera_offsets(ps);
+        let (cam_xoff_base, cam_yoff_base) = self.camera_offsets(ps);
         let cam_xoff = cam_xoff_base + camera_shake.0 * SUBPIXEL_UNIT;
         let cam_yoff = cam_yoff_base + camera_shake.1 * SUBPIXEL_UNIT;
         let hover_highlight = self.resolve_hover_highlight(ps);
@@ -666,8 +666,7 @@ impl GameScene {
                     continue;
                 }
 
-                let ch_xoff = tile.obj_xoff_sub;
-                let ch_yoff = tile.obj_yoff_sub;
+                let (ch_xoff, ch_yoff) = self.world_interpolator.character_offset(tile);
 
                 let mut obj = tile.obj1;
                 if obj > 0 {

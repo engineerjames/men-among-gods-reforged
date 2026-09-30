@@ -1,10 +1,13 @@
 //! Lock-free metrics store aggregated across all simulated clients.
 
+use std::collections::BTreeMap;
 use std::sync::{
     Mutex,
     atomic::{AtomicU64, Ordering},
 };
 use std::time::Duration;
+
+use mag_core::types::api::Class;
 
 /// Thread-safe counters and samples collected during a load-test run.
 pub struct Metrics {
@@ -38,6 +41,20 @@ pub struct Metrics {
     pub commands_sent: AtomicU64,
     /// Total periodic slash-commands that failed to send.
     pub commands_errors: AtomicU64,
+    /// `CL_SKILL` casts sent from `[behavior.cast]`.
+    pub casts_sent: AtomicU64,
+    /// Cast timer fires where the bot knew no eligible skill (or no target).
+    pub casts_skipped: AtomicU64,
+    /// Chat lines sent from `[behavior.chat]`.
+    pub chats_sent: AtomicU64,
+    /// Chat lines that failed to send.
+    pub chats_errors: AtomicU64,
+    /// `CL_USE` interactions sent from `[behavior.interact]`.
+    pub interacts_sent: AtomicU64,
+    /// Interact timer fires with no usable item in range.
+    pub interacts_skipped: AtomicU64,
+    /// Number of bootstrapped bots per character class.
+    pub class_counts: Mutex<BTreeMap<String, u64>>,
     /// Collected RTT samples in milliseconds, from CL_PING / SV_PONG exchanges.
     pub rtt_samples: Mutex<Vec<u32>>,
 }
@@ -63,7 +80,25 @@ impl Metrics {
             dispersion_errors: AtomicU64::new(0),
             commands_sent: AtomicU64::new(0),
             commands_errors: AtomicU64::new(0),
+            casts_sent: AtomicU64::new(0),
+            casts_skipped: AtomicU64::new(0),
+            chats_sent: AtomicU64::new(0),
+            chats_errors: AtomicU64::new(0),
+            interacts_sent: AtomicU64::new(0),
+            interacts_skipped: AtomicU64::new(0),
+            class_counts: Mutex::new(BTreeMap::new()),
             rtt_samples: Mutex::new(Vec::new()),
+        }
+    }
+
+    /// Records one bootstrapped bot of the given class.
+    ///
+    /// # Arguments
+    ///
+    /// * `class` - Class of the bot's character.
+    pub fn record_class(&self, class: Class) {
+        if let Ok(mut m) = self.class_counts.lock() {
+            *m.entry(format!("{class:?}")).or_insert(0) += 1;
         }
     }
 
@@ -110,10 +145,19 @@ impl Metrics {
             String::new()
         };
 
+        let casts = self.casts_sent.load(Ordering::Relaxed);
+        let chats = self.chats_sent.load(Ordering::Relaxed);
+        let interacts = self.interacts_sent.load(Ordering::Relaxed);
+        let behavior_suffix = if casts > 0 || chats > 0 || interacts > 0 {
+            format!(" casts={casts} chats={chats} uses={interacts}")
+        } else {
+            String::new()
+        };
+
         println!(
             "[{:>6.1}s] clients={active}/{connected} errors={errors} | \
              ticks={ticks} (~{tps:.1}/s/client*) late_gaps={late} | \
-             in={} out={} pkts_out={pkts_out}{dispersion_suffix}",
+             in={} out={} pkts_out={pkts_out}{dispersion_suffix}{behavior_suffix}",
             elapsed.as_secs_f64(),
             human_bytes(bytes_in),
             human_bytes(bytes_out),
@@ -157,6 +201,12 @@ impl Metrics {
         println!("  Connected:     {connected}");
         println!("  Errors:        {errors}");
         println!("  Disconnected:  {disconnects}");
+        if let Ok(classes) = self.class_counts.lock()
+            && !classes.is_empty()
+        {
+            let summary: Vec<String> = classes.iter().map(|(k, v)| format!("{k}={v}")).collect();
+            println!("  Classes:       {}", summary.join(" "));
+        }
         println!("--- Server Ticks ---");
         let avg_conn_secs = if connected > 0 {
             total_conn_ms as f64 / 1000.0 / connected as f64
@@ -186,6 +236,30 @@ impl Metrics {
             println!("--- Periodic Commands ---");
             println!("  Sent:          {commands_sent}");
             println!("  Errors:        {commands_errors}");
+        }
+
+        let casts_sent = self.casts_sent.load(Ordering::Relaxed);
+        let casts_skipped = self.casts_skipped.load(Ordering::Relaxed);
+        let chats_sent = self.chats_sent.load(Ordering::Relaxed);
+        let chats_errors = self.chats_errors.load(Ordering::Relaxed);
+        let interacts_sent = self.interacts_sent.load(Ordering::Relaxed);
+        let interacts_skipped = self.interacts_skipped.load(Ordering::Relaxed);
+        if casts_sent
+            + casts_skipped
+            + chats_sent
+            + chats_errors
+            + interacts_sent
+            + interacts_skipped
+            > 0
+        {
+            println!("--- Behaviour ---");
+            println!(
+                "  Casts:         {casts_sent} sent, {casts_skipped} skipped (no eligible skill/target)"
+            );
+            println!("  Chats:         {chats_sent} sent, {chats_errors} errors");
+            println!(
+                "  Uses:          {interacts_sent} sent, {interacts_skipped} skipped (no usable item in range)"
+            );
         }
 
         // RTT stats
@@ -251,5 +325,17 @@ mod tests {
         assert_eq!(human_bytes(512), "512B");
         assert_eq!(human_bytes(1024), "1.0KiB");
         assert_eq!(human_bytes(1536), "1.5KiB");
+    }
+
+    #[test]
+    fn record_class_counts_per_class() {
+        let m = Metrics::new();
+        m.record_class(Class::Templar);
+        m.record_class(Class::Templar);
+        m.record_class(Class::Harakim);
+        let counts = m.class_counts.lock().unwrap();
+        assert_eq!(counts.get("Templar"), Some(&2));
+        assert_eq!(counts.get("Harakim"), Some(&1));
+        assert_eq!(counts.get("Mercenary"), None);
     }
 }

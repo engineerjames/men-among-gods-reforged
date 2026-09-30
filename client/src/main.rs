@@ -15,7 +15,7 @@ use client::font_cache::TextEngine;
 use client::gfx_cache::GraphicsCache;
 use client::platform::PlatformProfile;
 use client::preferences::DisplayMode;
-use client::scenes::scene::{FramePresentation, SceneType};
+use client::scenes::scene::SceneType;
 use client::sfx_cache::SoundCache;
 use client::state::{ApiTokenState, AppState, DisplayCommand};
 use client::ui::visuals::panning_background::PanningBackground;
@@ -28,7 +28,9 @@ use mag_core::measure;
 /// Initialises logging, SDL2 subsystems (video, audio, mixer), creates the
 /// window and canvas, builds the scene manager, and enters the main loop.
 /// The loop polls events, updates the active scene, renders world + UI layers,
-/// and caps at 60 FPS via `FPSManager`.
+/// and presents every frame at display rate (vsync, or a 60 FPS cap via
+/// `FPSManager` when vsync is off). Gameplay ticks are paced separately
+/// inside the game scene, which interpolates between them.
 fn main() -> Result<(), String> {
     // Build the log-file path relative to the executable so that the logger
     // resolves correctly inside a macOS .app bundle (where the OS sets CWD to
@@ -438,13 +440,7 @@ fn main() -> Result<(), String> {
             }
         }
         // ------------------------------------------------------------------
-        let frame_presentation = scene_manager.take_frame_presentation();
-        if frame_presentation == FramePresentation::Skip {
-            continue;
-        }
 
-        // Taken only on frames that actually render, so a request made on a
-        // skipped frame is honoured by the next drawn one.
         let mut screenshot_request = automation
             .as_mut()
             .and_then(AutomationDriver::take_pending_screenshot);
@@ -470,12 +466,9 @@ fn main() -> Result<(), String> {
             break 'running;
         }
 
-        if let FramePresentation::PresentAt(deadline) = frame_presentation {
-            wait_until(deadline, &mut event_pump);
-        }
         measure!("client.present", canvas.present());
 
-        if frame_presentation == FramePresentation::Immediate && !effective_vsync_enabled {
+        if !effective_vsync_enabled {
             fps_manager.delay();
         }
     }
@@ -587,29 +580,6 @@ fn apply_display_mode(
     }
 
     applied_mode
-}
-
-/// Waits until an absolute presentation deadline without accumulating drift.
-///
-/// # Arguments
-///
-/// * `deadline` - Absolute time at which the completed frame should be presented.
-/// * `event_pump` - SDL event pump used to keep the operating-system window responsive.
-fn wait_until(deadline: Instant, event_pump: &mut sdl2::EventPump) {
-    const COARSE_MARGIN: Duration = Duration::from_millis(1);
-
-    loop {
-        event_pump.pump_events();
-        let now = Instant::now();
-        let Some(remaining) = deadline.checked_duration_since(now) else {
-            return;
-        };
-        if remaining > COARSE_MARGIN {
-            std::thread::sleep(remaining - COARSE_MARGIN);
-        } else {
-            std::thread::yield_now();
-        }
-    }
 }
 
 /// Toggles VSync on the renderer at runtime via raw SDL2 FFI.
