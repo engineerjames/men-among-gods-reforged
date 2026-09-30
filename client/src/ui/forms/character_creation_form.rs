@@ -354,6 +354,26 @@ impl CharacterCreationForm {
         std::mem::take(&mut self.actions)
     }
 
+    /// Named clickable regions for the UI automation driver.
+    ///
+    /// Class column bounds are only valid after the form has rendered once.
+    ///
+    /// # Returns
+    ///
+    /// * `(name, bounds)` pairs for every interactive element of the form.
+    pub fn automation_targets(&self) -> Vec<(&'static str, Bounds)> {
+        vec![
+            ("name", *self.name_input.bounds()),
+            ("description", *self.description_input.bounds()),
+            ("random_name", *self.random_name_button.bounds()),
+            ("class_harakim", self.class_col_bounds[0]),
+            ("class_templar", self.class_col_bounds[1]),
+            ("class_mercenary", self.class_col_bounds[2]),
+            ("create", *self.create_button.bounds()),
+            ("back", *self.back_button.bounds()),
+        ]
+    }
+
     /// Pushes a Create action with the current field values.
     fn push_create_action(&mut self) {
         self.actions.push(CharacterCreationFormAction::Create {

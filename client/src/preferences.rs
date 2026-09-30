@@ -313,6 +313,10 @@ fn profile_key(identity: &CharacterIdentity) -> String {
 /// Returns the directory used for all writable runtime files
 /// (profile JSON, log file, etc.) and ensures it exists.
 ///
+/// **`MAG_CLIENT_DATA_DIR`** — when set and non-empty, overrides every
+/// platform default below. Used by automation/perf runs to keep a scripted
+/// session's profile, logs and known-hosts separate from the user's own.
+///
 /// **macOS / Linux** — files are stored in `~/.men-among-gods/` so that:
 ///   * macOS `.app` bundles are not broken (Apple prohibits writing inside the
 ///     bundle, and the OS sets CWD to `/` on launch, making relative paths
@@ -322,6 +326,20 @@ fn profile_key(identity: &CharacterIdentity) -> String {
 /// **Windows** — files are stored next to the executable, matching the
 /// existing behaviour and expectations for a portable Windows install.
 fn data_directory() -> PathBuf {
+    if let Some(dir) = std::env::var_os("MAG_CLIENT_DATA_DIR")
+        .map(PathBuf::from)
+        .filter(|p| !p.as_os_str().is_empty())
+    {
+        if let Err(e) = fs::create_dir_all(&dir) {
+            eprintln!(
+                "Warning: could not create data directory '{}': {}",
+                dir.display(),
+                e
+            );
+        }
+        return dir;
+    }
+
     #[cfg(unix)]
     {
         // Prefer $HOME; fall back to the exe directory on the rare chance

@@ -190,6 +190,10 @@ impl LoginScene {
 }
 
 impl Scene for LoginScene {
+    fn automation_targets(&self) -> Vec<(&'static str, crate::ui::widget::Bounds)> {
+        self.login_form.automation_targets()
+    }
+
     fn on_enter(&mut self, app_state: &mut AppState<'_>) {
         self.ensure_music_initialized(app_state);
 

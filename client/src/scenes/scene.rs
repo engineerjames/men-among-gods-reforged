@@ -14,6 +14,7 @@ use sdl2::{
 use crate::{
     constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT},
     state::AppState,
+    ui::widget::Bounds,
 };
 
 /// Duration of the fade-to-black before a new scene is swapped in.
@@ -78,6 +79,40 @@ pub trait Scene {
         app_state: &mut AppState<'_>,
         canvas: &mut Canvas<Window>,
     ) -> Result<(), String>;
+
+    /// Lists named, clickable regions for the UI automation driver.
+    ///
+    /// Names are scene-local (e.g. `username`, `login`) and are resolved by
+    /// [`crate::automation`] as `@name` or `@<scene>.name`. Bounds are in
+    /// logical 960x540 coordinates.
+    ///
+    /// # Returns
+    ///
+    /// * `(name, bounds)` pairs; empty when the scene exposes no targets.
+    fn automation_targets(&self) -> Vec<(&'static str, Bounds)> {
+        Vec::new()
+    }
+
+    /// Performs a scene-specific automation action that has no natural input
+    /// event (e.g. starting the render profiler).
+    ///
+    /// # Arguments
+    ///
+    /// * `_app_state` - Shared application state.
+    /// * `action` - Action name from the automation script.
+    /// * `_args` - Remaining script arguments.
+    ///
+    /// # Returns
+    ///
+    /// * `Err` describing the problem when the action is unsupported or fails.
+    fn automation_action(
+        &mut self,
+        _app_state: &mut AppState<'_>,
+        action: &str,
+        _args: &[String],
+    ) -> Result<(), String> {
+        Err(format!("action `{action}` is not supported by this scene"))
+    }
 }
 
 /// Identifies which scene is active. Used as `HashMap` keys and for scene transition requests.
@@ -91,6 +126,50 @@ pub enum SceneType {
     RequestReset,
     EnterResetCode,
     Exit,
+}
+
+impl SceneType {
+    /// Stable lowercase name used by automation scripts (`wait_scene`, `@scene.target`).
+    ///
+    /// # Returns
+    ///
+    /// * The script-facing name of this scene.
+    pub fn automation_name(self) -> &'static str {
+        match self {
+            Self::Login => "login",
+            Self::CharacterCreation => "char_create",
+            Self::CharacterSelection => "char_select",
+            Self::Game => "game",
+            Self::NewAccount => "new_account",
+            Self::RequestReset => "request_reset",
+            Self::EnterResetCode => "enter_reset_code",
+            Self::Exit => "exit",
+        }
+    }
+
+    /// Parses a script-facing scene name (case-insensitive).
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name as written in an automation script.
+    ///
+    /// # Returns
+    ///
+    /// * The matching scene, or `None` for unknown names.
+    pub fn from_automation_name(name: &str) -> Option<Self> {
+        const ALL: [SceneType; 8] = [
+            SceneType::Login,
+            SceneType::CharacterCreation,
+            SceneType::CharacterSelection,
+            SceneType::Game,
+            SceneType::NewAccount,
+            SceneType::RequestReset,
+            SceneType::EnterResetCode,
+            SceneType::Exit,
+        ];
+        let lower = name.to_ascii_lowercase();
+        ALL.into_iter().find(|s| s.automation_name() == lower)
+    }
 }
 
 /// Owns all scene instances and drives the scene lifecycle (enter, update, render, exit).
@@ -306,6 +385,50 @@ impl SceneManager {
     /// * `app_state` - Value passed to `request_scene_change`.
     pub fn request_scene_change(&mut self, scene_type: SceneType, app_state: &mut AppState<'_>) {
         self.apply_scene_change(Some(scene_type), app_state);
+    }
+
+    /// Whether a fade transition is in progress (input is ignored meanwhile).
+    ///
+    /// # Returns
+    ///
+    /// * `true` while fading out of or into a scene.
+    pub fn is_transitioning(&self) -> bool {
+        !matches!(self.transition, SceneTransition::None)
+    }
+
+    /// Named automation targets exposed by the active scene.
+    ///
+    /// # Returns
+    ///
+    /// * `(name, bounds)` pairs from [`Scene::automation_targets`].
+    pub fn automation_targets(&self) -> Vec<(&'static str, Bounds)> {
+        self.scenes
+            .get(&self.active_scene)
+            .map(|scene| scene.automation_targets())
+            .unwrap_or_default()
+    }
+
+    /// Forwards an automation action to the active scene.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state.
+    /// * `action` - Action name from the automation script.
+    /// * `args` - Remaining script arguments.
+    ///
+    /// # Returns
+    ///
+    /// * Result of [`Scene::automation_action`].
+    pub fn automation_action(
+        &mut self,
+        app_state: &mut AppState<'_>,
+        action: &str,
+        args: &[String],
+    ) -> Result<(), String> {
+        match self.scenes.get_mut(&self.active_scene) {
+            Some(scene) => scene.automation_action(app_state, action, args),
+            None => Err("no active scene".to_owned()),
+        }
     }
 
     /// Performs the actual scene switch: calls `on_exit` on the current scene, swaps the

@@ -143,6 +143,28 @@ impl ScrollableList {
         (self.bounds.height as i32 / ROW_H).max(1) as usize
     }
 
+    /// Bounds of the `row`-th currently visible row (0 = top of the viewport).
+    ///
+    /// # Arguments
+    ///
+    /// * `row` - Visible row index, independent of the scroll offset.
+    ///
+    /// # Returns
+    ///
+    /// * The row rectangle, or `None` when `row` is outside the viewport or
+    ///   has no item behind it.
+    pub fn row_bounds(&self, row: usize) -> Option<Bounds> {
+        if row >= self.visible_rows() || self.scroll_offset + row >= self.items.len() {
+            return None;
+        }
+        Some(Bounds::new(
+            self.bounds.x,
+            self.bounds.y + row as i32 * ROW_H,
+            self.bounds.width,
+            ROW_H as u32,
+        ))
+    }
+
     /// Returns the maximum scroll offset.
     fn max_scroll(&self) -> usize {
         self.items.len().saturating_sub(self.visible_rows())

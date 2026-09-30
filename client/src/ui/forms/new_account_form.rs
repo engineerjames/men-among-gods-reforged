@@ -283,6 +283,22 @@ impl NewAccountForm {
         std::mem::take(&mut self.actions)
     }
 
+    /// Named clickable regions for the UI automation driver.
+    ///
+    /// # Returns
+    ///
+    /// * `(name, bounds)` pairs for every interactive element of the form.
+    pub fn automation_targets(&self) -> Vec<(&'static str, Bounds)> {
+        vec![
+            ("email", *self.email_input.bounds()),
+            ("username", *self.username_input.bounds()),
+            ("password", *self.password_input.bounds()),
+            ("confirm_password", *self.confirm_password_input.bounds()),
+            ("create", *self.create_button.bounds()),
+            ("cancel", *self.cancel_button.bounds()),
+        ]
+    }
+
     /// Pushes a Create action with the current field values, after validating
     /// that the password and confirm-password fields match.
     fn push_create_action(&mut self) {

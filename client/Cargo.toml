@@ -16,6 +16,10 @@ path = "src/bin/ui_integration.rs"
 name = "font-integration"
 path = "src/bin/font_integration.rs"
 
+[features]
+# Enables `mag_core::measure!` timing rows (target `perf`) in the main loop.
+measure-time = []
+
 [dependencies]
 mag_core = { path = "../core", package = "core" }
 # SDL2 is sourced via cargo-vcpkg and statically linked on all platforms –

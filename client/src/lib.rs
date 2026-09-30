@@ -3,6 +3,7 @@
 //! Re-exports all modules so that both the main client binary and auxiliary
 
 pub mod account_api;
+pub mod automation;
 pub mod cert_trust;
 pub mod constants;
 pub mod dpi_scaling;

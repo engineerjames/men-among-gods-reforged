@@ -266,6 +266,29 @@ impl CharacterSelectionForm {
         std::mem::take(&mut self.actions)
     }
 
+    /// Named clickable regions for the UI automation driver.
+    ///
+    /// `row0`..`row2` address the currently visible character rows.
+    ///
+    /// # Returns
+    ///
+    /// * `(name, bounds)` pairs for every interactive element of the form.
+    pub fn automation_targets(&self) -> Vec<(&'static str, Bounds)> {
+        const ROW_NAMES: [&str; 3] = ["row0", "row1", "row2"];
+        let mut targets = vec![
+            ("create", *self.create_button.bounds()),
+            ("continue", *self.continue_button.bounds()),
+            ("logout", *self.logout_button.bounds()),
+            ("delete", *self.delete_button.bounds()),
+        ];
+        for (row, name) in ROW_NAMES.iter().enumerate() {
+            if let Some(bounds) = self.character_list.row_bounds(row) {
+                targets.push((name, bounds));
+            }
+        }
+        targets
+    }
+
     /// Looks up a character name by ID from the cached names.
     fn character_name_for_id(&self, id: u64) -> Option<&str> {
         self.character_names

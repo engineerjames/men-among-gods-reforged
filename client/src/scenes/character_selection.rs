@@ -167,6 +167,10 @@ impl CharacterSelectionScene {
 }
 
 impl Scene for CharacterSelectionScene {
+    fn automation_targets(&self) -> Vec<(&'static str, crate::ui::widget::Bounds)> {
+        self.form.automation_targets()
+    }
+
     fn on_enter(&mut self, app_state: &mut AppState<'_>) {
         Self::cleanup_finished_thread(&mut self.characters_thread, "character loading");
         Self::cleanup_finished_thread(&mut self.login_thread, "game login");
