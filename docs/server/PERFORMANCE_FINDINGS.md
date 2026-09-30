@@ -1,16 +1,93 @@
 # Server performance analysis — 400 concurrent players
 
 Measured with `scripts/perf_loadtest.sh` (see
-[PERFORMANCE_HARNESS.md](PERFORMANCE_HARNESS.md)) on 2026-09-28/29.
+[PERFORMANCE_HARNESS.md](PERFORMANCE_HARNESS.md)) on 2026-09-28/29/30.
 
 | Run | Clients | Steady window | Artifacts |
 | --- | --- | --- | --- |
 | A (baseline) | 400 | 590 s | `perf-runs/2026-09-28_22-18-28` |
 | B | 130 | 350 s | `perf-runs/2026-09-28_22-40-05` (finer `getmap`/`change` split) |
 | C (after fixes) | 400 | 450 s | `perf-runs/2026-09-29_07-33-10` |
+| D (serial control) | 400 | 300 s | `perf-runs/2026-09-30_12-39-27` (`MAG_TICK_WORKERS=1`) |
+| E (12 workers) | 400 | 300 s | `perf-runs/2026-09-30_12-52-10` |
+| F (8 workers) | 400 | 300 s | `perf-runs/2026-09-30_13-05-22` (`MAG_TICK_WORKERS=8`) |
 
-Host: Apple Silicon, 12 cores, 36 GB. Server built with `--profile profiling
---features measure-time`; KeyDB and the account API in Docker.
+Host: Apple Silicon M3 Pro (6 performance + 6 efficiency cores), 36 GB. Server
+built with `--profile profiling --features measure-time`; KeyDB and the account
+API in Docker.
+
+## Round two: parallel per-player view updates (runs D–F)
+
+Runs D, E and F are a controlled A/B: same binary, same `--reset-world`
+snapshot, same 720 s duration (400 bots take ~7 min to bootstrap through the
+API, so the 300 s steady window has all 400 online in every run). The only
+difference is `MAG_TICK_WORKERS`.
+
+| Metric | D (serial) | E (12 workers) | F (8 workers) |
+| --- | --- | --- | --- |
+| Mean tick time | 26.85 ms | **9.84 ms** | 10.20 ms |
+| Tick p50 / p95 / p99 | 27.00 / 28.04 / 29.27 ms | 9.41 / 12.47 / 13.44 ms | 10.03 / **11.96** / 13.36 ms |
+| Tick max | 30.97 ms | 24.95 ms | 33.07 ms |
+| Ticks over the 27.78 ms budget | 40 / 529 (7.6%) | **0 / 540 (0%)** | 1 / 522 (0.2%) |
+| Reported load p50 / p95 | 97% / 100.6% | **33% / 44%** | 36% / 43% |
+| Tick thread busy | 99.9% of one core | **38.7%** | 40.0% |
+| `send_normal_state_updates` (wall) | 23.62 ms/tick | **4.86 ms/tick** | 5.45 ms/tick |
+| `getmap` + `change` (summed CPU) | 23.5 ms/tick | 54.2 ms/tick | **41.8 ms/tick** |
+| Process CPU (mean, all threads) | 59% | 123% | **98%** |
+| Loadtest late gaps (>100 ms) | 6 | **0** | **0** |
+| Bot RTT p95 | 56 ms | 56 ms | 56 ms |
+
+The serial control reproduces run C almost exactly (26.85 vs 27.07 ms), so the
+world-layout caveat from round one no longer applies.
+
+### What changed
+
+`plr_getmap` and `plr_change` only read shared world state and only write the
+player's own `ServerPlayer` slot plus that character's `SeeMap`, so the pass is
+embarrassingly parallel. `server/src/player/update.rs` makes the split explicit
+(`WorldView` + `PlayerUpdateCtx`) and fans the pass out over a rayon pool; the
+few world mutations the legacy code did inline (`IF_UPDATE` clears, overflow
+disconnects, visibility hit/miss counters) are collected in `Deferred` and
+replayed on the tick thread after the join, so each client's byte stream is
+identical to the serial pass (verified by
+`update::tests::parallel_and_serial_updates_produce_identical_output`). The
+write-only `PACKET_STATS` `RwLock` that every `xsend` took was removed at the
+same time. Pool size defaults to `available_parallelism()`, overridable with
+`MAG_TICK_WORKERS` (`1` = serial). See `DESIGN.md` for the contract.
+
+### What it costs
+
+The summed worker CPU for the pass more than doubled (23.5 → 54.2 ms/tick at
+12 workers). Three things account for that, in rough order:
+
+1. **Efficiency cores.** `available_parallelism()` is 12 on this box but six
+   of those are E-cores that run this memory-bound loop at a fraction of
+   P-core speed; rayon's work stealing balances the *count* of jobs, not their
+   duration, so a slow worker's last job stretches the join.
+2. **Cache contention.** Twelve threads streaming the same 80×80 map windows
+   and the 8192-entry character array compete for L2/L3.
+3. **Pool wake/join overhead** — small, and paid once per tick.
+
+None of this matters while the box has idle cores, but it is why wall time
+dropped ~5× rather than ~8×. Run F confirms it: 8 workers deliver the same
+wall-clock tick (within noise) for 22% less total CPU, because the slowest
+E-cores are left out. On heterogeneous hosts, set `MAG_TICK_WORKERS` to the
+number of performance cores; the auto default is a safe fallback, not the
+optimum.
+
+### Where the remaining tick-thread time goes (run E)
+
+| Phase | ms / tick (wall) |
+| --- | --- |
+| `player.send_normal_state_updates` (parallel) | 4.86 |
+| `character.main_tick` | 3.38 |
+| `handle_network_io` | 1.68 |
+| `player.process_commands_and_idle` | 0.39 |
+| `compress_ticks` | 0.31 |
+
+Sampled self time on the tick thread is now dominated by `do_area_notify`
+(16.5%), `_platform_memmove` (16.5%), `npc_try_spell` (16.2%) and
+`do_regenerate` (9.7%) — i.e. finding #4 below is next.
 
 ## Results after the first round of fixes
 
@@ -79,7 +156,8 @@ hold its tick rate.
 | Reported load | p50 111%, p95 118% | < 100% |
 | RSS | 753 MB | — |
 
-The other 11 cores are idle. The tick loop is single threaded, so the machine
+The other 11 cores are idle. The tick loop was single threaded (see round two
+above), so the machine
 is 8% utilised while the game is already degrading.
 
 ## Where the time goes
@@ -200,15 +278,15 @@ thread.
 
 ## Suggested next steps
 
-1. **Make `plr_getmap` and `plr_change` incremental** — by far the biggest
-   remaining prize at 84% of busy time, and the thing that makes cost linear
-   in players.
-2. **Index `do_area_notify`** — ~14% of sampled game-thread self time.
+1. **Index `do_area_notify`** — now the largest sampled self-time item on the
+   tick thread (16.5%) together with `npc_try_spell`.
+2. **Make `plr_getmap` and `plr_change` incremental** — still the biggest CPU
+   consumer overall (~54 ms of worker time per tick); dirty-region skipping
+   would shrink the work the pool has to spread and improve scaling further.
 3. **Get logging off the tick thread** — ~4%, plus less disk pressure.
 
-Beyond that, the structural ceiling is that the tick loop is single threaded:
-per-player view building is embarrassingly parallel and is the obvious
-candidate if the game needs to scale past ~500 players.
+The remaining structural ceiling is that everything except the per-player
+view pass (NPC AI, combat, effects, socket I/O) still runs on the tick thread.
 
 
 ## Two defects found while building the harness

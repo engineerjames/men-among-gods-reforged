@@ -7,7 +7,6 @@ use core::{
 use crate::{
     driver,
     game_state::GameState,
-    network_manager,
     player::{
         commands::{
             plr_doact, plr_misc, plr_move_down, plr_move_left, plr_move_leftdown, plr_move_leftup,
@@ -16,9 +15,13 @@ use crate::{
             plr_turn_rightup, plr_turn_up,
         },
         connection::{plr_login, plr_logout},
-        map::{plr_change_light, plr_change_map, plr_change_position},
+        map::{plr_change_light_ctx, plr_change_map_ctx, plr_change_position_ctx},
+        update::PlayerUpdateCtx,
     },
 };
+
+#[cfg(test)]
+use crate::player::update;
 
 /// Periodic medium-rate driver using an explicit game state.
 ///
@@ -545,68 +548,81 @@ pub fn plr_state(gs: &mut GameState, nr: usize) {
 ///
 /// * `gs` - Active game state used by this function.
 /// * `nr` - Numeric identifier used by this function.
+#[cfg(test)]
 pub fn plr_change(gs: &mut GameState, nr: usize) {
-    let cn = gs.players[nr].usnr;
+    update::with_player_ctx(gs, nr, plr_change_ctx);
+}
+
+/// Context form of [`plr_change`]; runs on a tick worker.
+///
+/// # Arguments
+///
+/// * `ctx` - Per-player update context.
+pub fn plr_change_ctx(ctx: &mut PlayerUpdateCtx) {
+    let cn = ctx.cn;
 
     if cn == 0 || cn >= core::constants::MAXCHARS {
         log::error!("plr_change: invalid character number {}", cn);
         return;
     }
 
-    let ticker = gs.globals.ticker;
+    let ticker = ctx.world.globals.ticker;
     let should_update = {
-        let has_update_flag = (gs.characters[cn].flags & CharacterFlags::Update.bits()) != 0;
+        let has_update_flag = (ctx.world.characters[cn].flags & CharacterFlags::Update.bits()) != 0;
         let ticker_match = (cn & 15) == (ticker as usize & 15);
         has_update_flag || ticker_match
     };
 
     if should_update {
         // Send full player stats update
-        plr_change_stats(gs, nr, cn, ticker);
+        plr_change_stats(ctx);
     }
 
     // Always send combat-related updates
-    plr_change_hp(gs, nr, cn);
-    plr_change_end(gs, nr, cn);
-    plr_change_mana(gs, nr, cn);
-    plr_change_dir(gs, nr, cn);
-    plr_change_points(gs, nr, cn);
-    plr_change_gold(gs, nr, cn);
+    plr_change_hp(ctx);
+    plr_change_end(ctx);
+    plr_change_mana(ctx);
+    plr_change_dir(ctx);
+    plr_change_points(ctx);
+    plr_change_gold(ctx);
 
     // Send god load info every 32 ticks
-    plr_change_load(gs, nr, cn, ticker);
+    plr_change_load(ctx, ticker);
 
     // Send map position and scrolling
-    plr_change_position(gs, nr, cn);
+    plr_change_position_ctx(ctx);
 
     // Send light updates
-    plr_change_light(gs, nr);
+    plr_change_light_ctx(ctx);
 
     // Send tile content updates
-    plr_change_map(gs, nr);
+    plr_change_map_ctx(ctx);
 
     // Send target updates
-    plr_change_target(gs, nr, cn);
+    plr_change_target(ctx);
 }
 
 /// Send full stats update to player
-fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
+fn plr_change_stats(ctx: &mut PlayerUpdateCtx) {
+    let cn = ctx.cn;
+    let ch = &ctx.world.characters[cn];
+    let items = ctx.world.items;
+
     // Send name in three parts if changed
-    let name_changed = gs.players[nr].cpl.name[..] != gs.characters[cn].name[..];
+    let name_changed = ctx.player.cpl.name[..] != ch.name[..];
 
     if name_changed {
-        let ch = gs.characters[cn];
         // part1: 15 bytes
         let mut buf: [u8; 16] = [0; 16];
         buf[0] = ServerCommandType::SetCharName1 as u8;
         buf[1..16].copy_from_slice(&ch.name[0..15]);
-        network_manager::xsend(gs, nr, &buf, 16);
+        ctx.xsend(&buf, 16);
 
         // part2: next 15 bytes
         let mut buf2: [u8; 16] = [0; 16];
         buf2[0] = ServerCommandType::SetCharName2 as u8;
         buf2[1..16].copy_from_slice(&ch.name[15..30]);
-        network_manager::xsend(gs, nr, &buf2, 16);
+        ctx.xsend(&buf2, 16);
 
         // part3: last 10 bytes + temp (u16 -> u32 slot)
         let mut buf3: [u8; 16] = [0; 16];
@@ -614,31 +630,25 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
         buf3[1..11].copy_from_slice(&ch.name[30..40]);
         let temp_bytes = u32::from(ch.temp).to_le_bytes();
         buf3[11..15].copy_from_slice(&temp_bytes[0..4]);
-        network_manager::xsend(gs, nr, &buf3, 16);
+        ctx.xsend(&buf3, 16);
 
-        gs.players[nr]
-            .cpl
-            .name
-            .copy_from_slice(&gs.characters[cn].name);
+        ctx.player.cpl.name.copy_from_slice(&ch.name);
     }
 
     // send mode if different
-    let mode = i32::from(gs.characters[cn].mode);
-    if gs.players[nr].cpl.mode != mode {
-        let mode = gs.characters[cn].mode;
+    let mode = i32::from(ch.mode);
+    if ctx.player.cpl.mode != mode {
         let mut buf: [u8; 2] = [0; 2];
         buf[0] = ServerCommandType::SetCharMode as u8;
-        buf[1] = mode;
-        network_manager::xsend(gs, nr, &buf, 2);
-        gs.players[nr].cpl.mode = i32::from(mode);
+        buf[1] = ch.mode;
+        ctx.xsend(&buf, 2);
+        ctx.player.cpl.mode = mode;
     }
 
     // attribs (5 x 6 u16 values)
     for a in 0..5usize {
-        let chv = gs.characters[cn].attrib[a];
-        let changed = gs.players[nr].cpl.attrib[a] != chv;
-        if changed {
-            let arr = gs.characters[cn].attrib[a];
+        let arr = ch.attrib[a];
+        if ctx.player.cpl.attrib[a] != arr {
             let mut buf: [u8; 14] = [0; 14];
             buf[0] = ServerCommandType::SetCharAttrib as u8;
             buf[1] = a as u8;
@@ -647,8 +657,8 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
                 buf[off] = (v & 0xff) as u8;
                 buf[off + 1] = (v >> 8) as u8;
             }
-            network_manager::xsend(gs, nr, &buf, 14);
-            gs.players[nr].cpl.attrib[a] = arr;
+            ctx.xsend(&buf, 14);
+            ctx.player.cpl.attrib[a] = arr;
         }
     }
 
@@ -659,11 +669,10 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
         ServerCommandType::SetCharMana,
     ];
     for (idx, code) in powers.iter().enumerate() {
-        let ch = gs.characters[cn];
         let different = match idx {
-            0 => gs.players[nr].cpl.hp != ch.hp,
-            1 => gs.players[nr].cpl.end != ch.end,
-            2 => gs.players[nr].cpl.mana != ch.mana,
+            0 => ctx.player.cpl.hp != ch.hp,
+            1 => ctx.player.cpl.end != ch.end,
+            2 => ctx.player.cpl.mana != ch.mana,
             _ => false,
         };
         if different {
@@ -680,11 +689,11 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
                 buf[off] = (v & 0xff) as u8;
                 buf[off + 1] = (v >> 8) as u8;
             }
-            network_manager::xsend(gs, nr, &buf, 13);
+            ctx.xsend(&buf, 13);
             match idx {
-                0 => gs.players[nr].cpl.hp = ch.hp,
-                1 => gs.players[nr].cpl.end = ch.end,
-                2 => gs.players[nr].cpl.mana = ch.mana,
+                0 => ctx.player.cpl.hp = ch.hp,
+                1 => ctx.player.cpl.end = ch.end,
+                2 => ctx.player.cpl.mana = ch.mana,
                 _ => {}
             }
         }
@@ -692,10 +701,8 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
 
     // skills (0..MAX_SKILLS)
     for s in 0..core::skills::MAX_SKILLS {
-        let chv = gs.characters[cn].skill[s];
-        let changed = gs.players[nr].cpl.skill[s] != chv;
-        if changed {
-            let arr = gs.characters[cn].skill[s];
+        let arr = ch.skill[s];
+        if ctx.player.cpl.skill[s] != arr {
             let mut buf: [u8; 14] = [0; 14];
             buf[0] = ServerCommandType::SetCharSkill as u8;
             buf[1] = s as u8;
@@ -704,20 +711,20 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
                 buf[off] = (v & 0xff) as u8;
                 buf[off + 1] = (v >> 8) as u8;
             }
-            network_manager::xsend(gs, nr, &buf, 14);
-            gs.players[nr].cpl.skill[s] = arr;
+            ctx.xsend(&buf, 14);
+            ctx.player.cpl.skill[s] = arr;
         }
     }
 
     // items (40)
     for i in 0..40usize {
-        let in_idx = gs.characters[cn].item[i] as usize;
-        let cpl_item = gs.players[nr].cpl.item[i];
+        let in_idx = ch.item[i] as usize;
+        let cpl_item = ctx.player.cpl.item[i];
 
         // Check if changed OR if IF_UPDATE is set (but not for building mode)
         let needs_update = if in_idx != 0 {
             (cpl_item != in_idx as i32)
-                || ((gs.items[in_idx].flags & core::constants::ItemFlags::IF_UPDATE.bits()) != 0)
+                || ((items[in_idx].flags & core::constants::ItemFlags::IF_UPDATE.bits()) != 0)
         } else {
             cpl_item != in_idx as i32
         };
@@ -729,7 +736,7 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
             buf[1..5].copy_from_slice(&idx_bytes);
 
             if in_idx != 0 {
-                let it = &gs.items[in_idx];
+                let it = &items[in_idx];
                 let sprite = if it.active != 0 {
                     it.sprite[1]
                 } else {
@@ -747,20 +754,20 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
                 buf[8] = 0;
             }
 
-            network_manager::xsend(gs, nr, &buf, 9);
-            gs.players[nr].cpl.item[i] = in_idx as i32;
+            ctx.xsend(&buf, 9);
+            ctx.player.cpl.item[i] = in_idx as i32;
         }
     }
 
     // worn (20)
     for i in 0..20usize {
-        let in_idx = gs.characters[cn].worn[i] as usize;
-        let cpl_worn = gs.players[nr].cpl.worn[i];
+        let in_idx = ch.worn[i] as usize;
+        let cpl_worn = ctx.player.cpl.worn[i];
 
         // Check if changed OR if IF_UPDATE is set
         let needs_update = if in_idx != 0 {
             (cpl_worn != in_idx as i32)
-                || ((gs.items[in_idx].flags & core::constants::ItemFlags::IF_UPDATE.bits()) != 0)
+                || ((items[in_idx].flags & core::constants::ItemFlags::IF_UPDATE.bits()) != 0)
         } else {
             cpl_worn != in_idx as i32
         };
@@ -773,7 +780,7 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
 
             if in_idx != 0 {
                 {
-                    let it = &gs.items[in_idx];
+                    let it = &items[in_idx];
                     let sprite = if it.active != 0 {
                         it.sprite[1]
                     } else {
@@ -785,8 +792,8 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
                     buf[7] = (placement & 0xff) as u8;
                     buf[8] = ((placement >> 8) & 0xff) as u8;
                 }
-                // Clear IF_UPDATE flag
-                gs.items[in_idx].flags &= !core::constants::ItemFlags::IF_UPDATE.bits();
+                // Clear IF_UPDATE flag (applied on the tick thread)
+                ctx.defer_clear_item_update(in_idx);
             } else {
                 buf[5] = 0;
                 buf[6] = 0;
@@ -794,20 +801,20 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
                 buf[8] = 0;
             }
 
-            network_manager::xsend(gs, nr, &buf, 9);
-            gs.players[nr].cpl.worn[i] = in_idx as i32;
+            ctx.xsend(&buf, 9);
+            ctx.player.cpl.worn[i] = in_idx as i32;
         }
     }
 
     // spells (20)
     for i in 0..20usize {
-        let in_idx = gs.characters[cn].spell[i] as usize;
-        let cpl_spell = gs.players[nr].cpl.spell[i];
-        let cpl_active = gs.players[nr].cpl.active[i];
+        let in_idx = ch.spell[i] as usize;
+        let cpl_spell = ctx.player.cpl.spell[i];
+        let cpl_active = ctx.player.cpl.active[i];
 
         // Calculate current active fraction
         let (current_active_frac, has_update_flag) = if in_idx != 0 {
-            let it = &gs.items[in_idx];
+            let it = &items[in_idx];
             let duration = std::cmp::max(1, it.duration);
             let frac = ((it.active * 16) / duration) as i16;
             let has_flag = (it.flags & core::constants::ItemFlags::IF_UPDATE.bits()) != 0;
@@ -818,7 +825,7 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
 
         // Compute current spell_type (item template number used as skill identifier)
         let current_spell_type = if in_idx != 0 {
-            gs.items[in_idx].temp as i16
+            items[in_idx].temp as i16
         } else {
             0
         };
@@ -827,7 +834,7 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
         let needs_update = (cpl_spell != in_idx as i32)
             || (i16::from(cpl_active) != current_active_frac)
             || has_update_flag
-            || (gs.players[nr].cpl.spell_type[i] != current_spell_type);
+            || (ctx.player.cpl.spell_type[i] != current_spell_type);
 
         if needs_update {
             let mut buf: [u8; 11] = [0; 11];
@@ -837,7 +844,7 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
 
             if in_idx != 0 {
                 {
-                    let it = &gs.items[in_idx];
+                    let it = &items[in_idx];
                     let sprite = it.sprite[1];
                     let duration = std::cmp::max(1, it.duration);
                     let active_frac = ((it.active * 16) / duration) as i16;
@@ -850,29 +857,29 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
                     buf[9] = (skill_nr & 0xff) as u8;
                     buf[10] = ((skill_nr >> 8) & 0xff) as u8;
                 }
-                // Clear IF_UPDATE flag
-                gs.items[in_idx].flags &= !core::constants::ItemFlags::IF_UPDATE.bits();
-                gs.players[nr].cpl.spell[i] = in_idx as i32;
-                gs.players[nr].cpl.active[i] = current_active_frac as i8;
-                gs.players[nr].cpl.spell_type[i] = current_spell_type;
+                // Clear IF_UPDATE flag (applied on the tick thread)
+                ctx.defer_clear_item_update(in_idx);
+                ctx.player.cpl.spell[i] = in_idx as i32;
+                ctx.player.cpl.active[i] = current_active_frac as i8;
+                ctx.player.cpl.spell_type[i] = current_spell_type;
             } else {
-                gs.players[nr].cpl.spell[i] = 0;
-                gs.players[nr].cpl.active[i] = 0;
-                gs.players[nr].cpl.spell_type[i] = 0;
+                ctx.player.cpl.spell[i] = 0;
+                ctx.player.cpl.active[i] = 0;
+                ctx.player.cpl.spell_type[i] = 0;
             }
 
-            network_manager::xsend(gs, nr, &buf, 11);
+            ctx.xsend(&buf, 11);
         }
     }
 
     // citem (cursor item)
-    let in_idx = gs.characters[cn].citem as usize;
-    let cpl_citem = gs.players[nr].cpl.citem;
+    let in_idx = ch.citem as usize;
+    let cpl_citem = ctx.player.cpl.citem;
 
     // Check if changed OR if IF_UPDATE is set (but not for building mode or gold amounts)
     let needs_update = if in_idx != 0 && (in_idx & 0x80000000) == 0 {
         (cpl_citem != in_idx as i32)
-            || ((gs.items[in_idx].flags & core::constants::ItemFlags::IF_UPDATE.bits()) != 0)
+            || ((items[in_idx].flags & core::constants::ItemFlags::IF_UPDATE.bits()) != 0)
     } else {
         cpl_citem != in_idx as i32
     };
@@ -906,7 +913,7 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
         } else if in_idx != 0 {
             // Normal item
             {
-                let it = &gs.items[in_idx];
+                let it = &items[in_idx];
                 let sprite = if it.active != 0 {
                     it.sprite[1]
                 } else {
@@ -918,8 +925,8 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
                 buf[3] = (placement & 0xff) as u8;
                 buf[4] = ((placement >> 8) & 0xff) as u8;
             }
-            // Clear IF_UPDATE flag
-            gs.items[in_idx].flags &= !core::constants::ItemFlags::IF_UPDATE.bits();
+            // Clear IF_UPDATE flag (applied on the tick thread)
+            ctx.defer_clear_item_update(in_idx);
         } else {
             // Empty cursor
             buf[1] = 0;
@@ -928,15 +935,15 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
             buf[4] = 0;
         }
 
-        network_manager::xsend(gs, nr, &buf, 5);
-        gs.players[nr].cpl.citem = in_idx as i32;
+        ctx.xsend(&buf, 5);
+        ctx.player.cpl.citem = in_idx as i32;
     }
 }
 
 /// Send HP change to player
-fn plr_change_hp(gs: &mut GameState, nr: usize, cn: usize) {
-    let current_hp = (gs.characters[cn].a_hp + 500) / 1000;
-    let player_hp = gs.players[nr].cpl.a_hp;
+fn plr_change_hp(ctx: &mut PlayerUpdateCtx) {
+    let current_hp = (ctx.world.characters[ctx.cn].a_hp + 500) / 1000;
+    let player_hp = ctx.player.cpl.a_hp;
 
     if current_hp != player_hp {
         let mut buf: [u8; 16] = [0; 16];
@@ -944,15 +951,15 @@ fn plr_change_hp(gs: &mut GameState, nr: usize, cn: usize) {
         buf[1] = current_hp as u8;
         buf[2] = (current_hp >> 8) as u8;
 
-        network_manager::xsend(gs, nr, &buf, 3);
-        gs.players[nr].cpl.a_hp = current_hp;
+        ctx.xsend(&buf, 3);
+        ctx.player.cpl.a_hp = current_hp;
     }
 }
 
 /// Send endurance change to player
-fn plr_change_end(gs: &mut GameState, nr: usize, cn: usize) {
-    let current_end = (gs.characters[cn].a_end + 500) / 1000;
-    let player_end = gs.players[nr].cpl.a_end;
+fn plr_change_end(ctx: &mut PlayerUpdateCtx) {
+    let current_end = (ctx.world.characters[ctx.cn].a_end + 500) / 1000;
+    let player_end = ctx.player.cpl.a_end;
 
     if current_end != player_end {
         let mut buf: [u8; 16] = [0; 16];
@@ -960,15 +967,15 @@ fn plr_change_end(gs: &mut GameState, nr: usize, cn: usize) {
         buf[1] = current_end as u8;
         buf[2] = (current_end >> 8) as u8;
 
-        network_manager::xsend(gs, nr, &buf, 3);
-        gs.players[nr].cpl.a_end = current_end;
+        ctx.xsend(&buf, 3);
+        ctx.player.cpl.a_end = current_end;
     }
 }
 
 /// Send mana change to player
-fn plr_change_mana(gs: &mut GameState, nr: usize, cn: usize) {
-    let current_mana = (gs.characters[cn].a_mana + 500) / 1000;
-    let player_mana = gs.players[nr].cpl.a_mana;
+fn plr_change_mana(ctx: &mut PlayerUpdateCtx) {
+    let current_mana = (ctx.world.characters[ctx.cn].a_mana + 500) / 1000;
+    let player_mana = ctx.player.cpl.a_mana;
 
     if current_mana != player_mana {
         let mut buf: [u8; 16] = [0; 16];
@@ -976,34 +983,35 @@ fn plr_change_mana(gs: &mut GameState, nr: usize, cn: usize) {
         buf[1] = current_mana as u8;
         buf[2] = (current_mana >> 8) as u8;
 
-        network_manager::xsend(gs, nr, &buf, 3);
-        gs.players[nr].cpl.a_mana = current_mana;
+        ctx.xsend(&buf, 3);
+        ctx.player.cpl.a_mana = current_mana;
     }
 }
 
 /// Send direction change to player
-fn plr_change_dir(gs: &mut GameState, nr: usize, cn: usize) {
-    let current_dir = gs.characters[cn].dir;
-    let player_dir = gs.players[nr].cpl.dir;
+fn plr_change_dir(ctx: &mut PlayerUpdateCtx) {
+    let current_dir = ctx.world.characters[ctx.cn].dir;
+    let player_dir = ctx.player.cpl.dir;
 
     if i32::from(current_dir) != player_dir {
         let mut buf: [u8; 16] = [0; 16];
         buf[0] = ServerCommandType::SetCharDir as u8;
         buf[1] = current_dir;
 
-        network_manager::xsend(gs, nr, &buf, 2);
-        gs.players[nr].cpl.dir = i32::from(current_dir);
+        ctx.xsend(&buf, 2);
+        ctx.player.cpl.dir = i32::from(current_dir);
     }
 }
 
 /// Send points/kindred change to player
-fn plr_change_points(gs: &mut GameState, nr: usize, cn: usize) {
-    let points = gs.characters[cn].points;
-    let points_tot = gs.characters[cn].points_tot;
-    let kindred = gs.characters[cn].kindred;
-    let cpl_points = gs.players[nr].cpl.points;
-    let cpl_points_tot = gs.players[nr].cpl.points_tot;
-    let cpl_kindred = gs.players[nr].cpl.kindred;
+fn plr_change_points(ctx: &mut PlayerUpdateCtx) {
+    let ch = &ctx.world.characters[ctx.cn];
+    let points = ch.points;
+    let points_tot = ch.points_tot;
+    let kindred = ch.kindred;
+    let cpl_points = ctx.player.cpl.points;
+    let cpl_points_tot = ctx.player.cpl.points_tot;
+    let cpl_kindred = ctx.player.cpl.kindred;
 
     if points != cpl_points || points_tot != cpl_points_tot || kindred != cpl_kindred {
         let mut buf: [u8; 13] = [0; 13];
@@ -1012,22 +1020,23 @@ fn plr_change_points(gs: &mut GameState, nr: usize, cn: usize) {
         buf[5..9].copy_from_slice(&points_tot.to_le_bytes());
         buf[9..13].copy_from_slice(&kindred.to_le_bytes());
 
-        network_manager::xsend(gs, nr, &buf, 13);
+        ctx.xsend(&buf, 13);
 
-        gs.players[nr].cpl.points = points;
-        gs.players[nr].cpl.points_tot = points_tot;
-        gs.players[nr].cpl.kindred = kindred;
+        ctx.player.cpl.points = points;
+        ctx.player.cpl.points_tot = points_tot;
+        ctx.player.cpl.kindred = kindred;
     }
 }
 
 /// Send gold/armor/weapon change to player
-fn plr_change_gold(gs: &mut GameState, nr: usize, cn: usize) {
-    let gold = gs.characters[cn].gold;
-    let armor = gs.characters[cn].armor;
-    let weapon = gs.characters[cn].weapon;
-    let cpl_gold = gs.players[nr].cpl.gold;
-    let cpl_armor = gs.players[nr].cpl.armor;
-    let cpl_weapon = gs.players[nr].cpl.weapon;
+fn plr_change_gold(ctx: &mut PlayerUpdateCtx) {
+    let ch = &ctx.world.characters[ctx.cn];
+    let gold = ch.gold;
+    let armor = ch.armor;
+    let weapon = ch.weapon;
+    let cpl_gold = ctx.player.cpl.gold;
+    let cpl_armor = ctx.player.cpl.armor;
+    let cpl_weapon = ctx.player.cpl.weapon;
 
     if gold != cpl_gold || i32::from(armor) != cpl_armor || i32::from(weapon) != cpl_weapon {
         let armor32: i32 = i32::from(armor);
@@ -1039,36 +1048,37 @@ fn plr_change_gold(gs: &mut GameState, nr: usize, cn: usize) {
         buf[5..9].copy_from_slice(&armor32.to_le_bytes());
         buf[9..13].copy_from_slice(&weapon32.to_le_bytes());
 
-        network_manager::xsend(gs, nr, &buf, 13);
+        ctx.xsend(&buf, 13);
 
-        gs.players[nr].cpl.gold = gold;
-        gs.players[nr].cpl.armor = i32::from(armor);
-        gs.players[nr].cpl.weapon = i32::from(weapon);
+        ctx.player.cpl.gold = gold;
+        ctx.player.cpl.armor = i32::from(armor);
+        ctx.player.cpl.weapon = i32::from(weapon);
     }
 }
 
 /// Send server load info to gods every 32 ticks
-fn plr_change_load(gs: &mut GameState, nr: usize, cn: usize, ticker: i32) {
-    let is_god = (gs.characters[cn].flags & CharacterFlags::God.bits()) != 0;
+fn plr_change_load(ctx: &mut PlayerUpdateCtx, ticker: i32) {
+    let is_god = (ctx.world.characters[ctx.cn].flags & CharacterFlags::God.bits()) != 0;
 
     if is_god && (ticker & 31) == 0 {
-        let load = gs.globals.load as u32;
+        let load = ctx.world.globals.load as u32;
         let mut buf: [u8; 5] = [0; 5];
         buf[0] = ServerCommandType::Load as u8;
         buf[1..5].copy_from_slice(&load.to_le_bytes());
-        network_manager::xsend(gs, nr, &buf, 5);
+        ctx.xsend(&buf, 5);
     }
 }
 
 /// Send target change to player
-fn plr_change_target(gs: &mut GameState, nr: usize, cn: usize) {
+fn plr_change_target(ctx: &mut PlayerUpdateCtx) {
+    let ch = &ctx.world.characters[ctx.cn];
     let (attack_cn, goto_x, goto_y, misc_action, misc_target1, misc_target2) = (
-        gs.characters[cn].attack_cn,
-        gs.characters[cn].goto_x,
-        gs.characters[cn].goto_y,
-        gs.characters[cn].misc_action,
-        gs.characters[cn].misc_target1,
-        gs.characters[cn].misc_target2,
+        ch.attack_cn,
+        ch.goto_x,
+        ch.goto_y,
+        ch.misc_action,
+        ch.misc_target1,
+        ch.misc_target2,
     );
 
     let (
@@ -1079,12 +1089,12 @@ fn plr_change_target(gs: &mut GameState, nr: usize, cn: usize) {
         cpl_misc_target1,
         cpl_misc_target2,
     ) = (
-        gs.players[nr].cpl.attack_cn,
-        gs.players[nr].cpl.goto_x,
-        gs.players[nr].cpl.goto_y,
-        gs.players[nr].cpl.misc_action,
-        gs.players[nr].cpl.misc_target1,
-        gs.players[nr].cpl.misc_target2,
+        ctx.player.cpl.attack_cn,
+        ctx.player.cpl.goto_x,
+        ctx.player.cpl.goto_y,
+        ctx.player.cpl.misc_action,
+        ctx.player.cpl.misc_target1,
+        ctx.player.cpl.misc_target2,
     );
 
     if i32::from(attack_cn) != cpl_attack_cn
@@ -1121,14 +1131,14 @@ fn plr_change_target(gs: &mut GameState, nr: usize, cn: usize) {
         buf[11] = misc_target2 as u8;
         buf[12] = (misc_target2 >> 8) as u8;
 
-        network_manager::xsend(gs, nr, &buf, 13);
+        ctx.xsend(&buf, 13);
 
-        gs.players[nr].cpl.attack_cn = i32::from(attack_cn);
-        gs.players[nr].cpl.goto_x = i32::from(goto_x);
-        gs.players[nr].cpl.goto_y = i32::from(goto_y);
-        gs.players[nr].cpl.misc_action = i32::from(misc_action);
-        gs.players[nr].cpl.misc_target1 = i32::from(misc_target1);
-        gs.players[nr].cpl.misc_target2 = i32::from(misc_target2);
+        ctx.player.cpl.attack_cn = i32::from(attack_cn);
+        ctx.player.cpl.goto_x = i32::from(goto_x);
+        ctx.player.cpl.goto_y = i32::from(goto_y);
+        ctx.player.cpl.misc_action = i32::from(misc_action);
+        ctx.player.cpl.misc_target1 = i32::from(misc_target1);
+        ctx.player.cpl.misc_target2 = i32::from(misc_target2);
 
         log::debug!("plr_change_target: misc_action={}", misc_action);
     }
@@ -1285,6 +1295,10 @@ mod tests {
     fn reset_tbuf(gs: &mut GameState, nr: usize) {
         gs.players[nr].tptr = 0;
         gs.players[nr].tbuf.fill(0);
+    }
+
+    fn change_stats(gs: &mut GameState, nr: usize) {
+        update::with_player_ctx(gs, nr, plr_change_stats);
     }
 
     fn map_index(x: i16, y: i16) -> usize {
@@ -1496,7 +1510,7 @@ mod tests {
             gs.items[13].placement = 7;
             gs.items[13].flags = ItemFlags::IF_UPDATE.bits();
 
-            plr_change_stats(gs, nr, cn, 0);
+            change_stats(gs, nr);
 
             assert_eq!(
                 gs.players[nr].tbuf[0],
@@ -1534,7 +1548,7 @@ mod tests {
             gs.items[10].sprite[0] = 77;
             gs.items[10].placement = 5;
             gs.items[10].flags = ItemFlags::IF_UPDATE.bits();
-            plr_change_stats(gs, nr, cn, 0);
+            change_stats(gs, nr);
             assert_eq!(gs.players[nr].cpl.item[0], gs.characters[cn].item[0] as i32);
             assert_eq!(gs.players[nr].tbuf[0], ServerCommandType::SetCharItem as u8);
             assert_eq!(
@@ -1551,7 +1565,7 @@ mod tests {
             gs.players[nr].cpl.item[0] = 0;
             gs.players[nr].cpl.citem = 0;
             gs.characters[cn].citem = 0x80000064u32;
-            plr_change_stats(gs, nr, cn, 0);
+            change_stats(gs, nr);
             assert_eq!(gs.players[nr].tbuf[0], ServerCommandType::SetCharObj as u8);
             assert_eq!(gs.players[nr].tbuf[1], 39);
         });
@@ -1564,7 +1578,7 @@ mod tests {
             attach_test_socket(gs, nr);
 
             gs.characters[cn].a_hp = 2500;
-            plr_change_hp(gs, nr, cn);
+            update::with_player_ctx(gs, nr, plr_change_hp);
             assert_eq!(
                 gs.players[nr].tbuf[..3],
                 [ServerCommandType::SetCharAHP as u8, 3, 0]
@@ -1573,7 +1587,7 @@ mod tests {
 
             reset_tbuf(gs, nr);
             gs.characters[cn].a_end = 3500;
-            plr_change_end(gs, nr, cn);
+            update::with_player_ctx(gs, nr, plr_change_end);
             assert_eq!(
                 gs.players[nr].tbuf[..3],
                 [ServerCommandType::SetCharAEnd as u8, 4, 0]
@@ -1582,7 +1596,7 @@ mod tests {
 
             reset_tbuf(gs, nr);
             gs.characters[cn].a_mana = 4500;
-            plr_change_mana(gs, nr, cn);
+            update::with_player_ctx(gs, nr, plr_change_mana);
             assert_eq!(
                 gs.players[nr].tbuf[..3],
                 [ServerCommandType::SetCharAMana as u8, 5, 0]
@@ -1591,7 +1605,7 @@ mod tests {
 
             reset_tbuf(gs, nr);
             gs.characters[cn].dir = core::constants::DX_LEFT;
-            plr_change_dir(gs, nr, cn);
+            update::with_player_ctx(gs, nr, plr_change_dir);
             assert_eq!(
                 gs.players[nr].tbuf[..2],
                 [
@@ -1605,7 +1619,7 @@ mod tests {
             gs.characters[cn].points = 5;
             gs.characters[cn].points_tot = 10;
             gs.characters[cn].kindred = 15;
-            plr_change_points(gs, nr, cn);
+            update::with_player_ctx(gs, nr, plr_change_points);
             assert_eq!(gs.players[nr].tbuf[0], ServerCommandType::SetCharPts as u8);
             assert_eq!(gs.players[nr].cpl.points, 5);
             assert_eq!(gs.players[nr].cpl.points_tot, 10);
@@ -1615,7 +1629,7 @@ mod tests {
             gs.characters[cn].gold = 1234;
             gs.characters[cn].armor = 9;
             gs.characters[cn].weapon = 11;
-            plr_change_gold(gs, nr, cn);
+            update::with_player_ctx(gs, nr, plr_change_gold);
             assert_eq!(gs.players[nr].tbuf[0], ServerCommandType::SetCharGold as u8);
             assert_eq!(gs.players[nr].cpl.gold, 1234);
             assert_eq!(gs.players[nr].cpl.armor, 9);
@@ -1631,7 +1645,7 @@ mod tests {
             gs.characters[cn].flags |= CharacterFlags::God.bits();
             gs.globals.load = 77;
 
-            plr_change_load(gs, nr, cn, 32);
+            update::with_player_ctx(gs, nr, |ctx| plr_change_load(ctx, 32));
             assert_eq!(gs.players[nr].tbuf[0], ServerCommandType::Load as u8);
             assert_eq!(
                 u32::from_le_bytes(gs.players[nr].tbuf[1..5].try_into().unwrap()),
@@ -1645,7 +1659,7 @@ mod tests {
             gs.characters[cn].misc_action = 13;
             gs.characters[cn].misc_target1 = 14;
             gs.characters[cn].misc_target2 = 15;
-            plr_change_target(gs, nr, cn);
+            update::with_player_ctx(gs, nr, plr_change_target);
             assert_eq!(gs.players[nr].tbuf[0], ServerCommandType::SetTarget as u8);
             assert_eq!(gs.players[nr].cpl.attack_cn, 2);
             assert_eq!(gs.players[nr].cpl.goto_x, 11);

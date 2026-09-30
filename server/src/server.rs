@@ -356,6 +356,13 @@ pub struct Server {
 
     /// World actions waiting for their snapshot save to complete.
     pending_world_action_saves: HashMap<String, core::world_action_store::WorldActionRequest>,
+
+    /// Worker pool for the per-player view/update fan-out; `None` runs it
+    /// serially on the tick thread.
+    tick_workers: Option<rayon::ThreadPool>,
+
+    /// Whether the last update pass used the pool; logged on change.
+    last_fanout_parallel: Option<bool>,
 }
 
 impl Server {
@@ -387,6 +394,8 @@ impl Server {
             world_action_save_tx: None,
             world_action_save_rx: None,
             pending_world_action_saves: HashMap::new(),
+            tick_workers: None,
+            last_fanout_parallel: None,
         }
     }
 
@@ -457,7 +466,8 @@ impl Server {
         log::info!("TLS enabled — accepting encrypted connections on port 5555");
         self.tls_config = Some(tls_config);
 
-        crate::network_manager::initialize_packet_stats()?;
+        let workers = player::update::resolve_tick_worker_count();
+        self.tick_workers = player::update::build_tick_worker_pool(workers);
 
         // Mark data as dirty so a crash before clean shutdown is detectable.
         gs.globals.set_dirty(true);
@@ -791,55 +801,43 @@ impl Server {
 
         // Send changes to players in normal state
         core::measure!("player.send_normal_state_updates", {
-            // Per-call `measure!` would emit one log line per player per tick
-            // (tens of thousands per second at load) and dominate the very
-            // profile it is meant to inform, so accumulate and log once.
-            #[cfg(feature = "measure-time")]
-            let mut getmap_total = std::time::Duration::ZERO;
-            #[cfg(feature = "measure-time")]
-            let mut change_total = std::time::Duration::ZERO;
-            #[cfg(feature = "measure-time")]
-            let mut players_updated = 0u32;
+            let summary = player::update::run_player_updates(gs, self.tick_workers.as_ref());
 
-            for n in 1..gs.players.len() {
-                if gs.players[n].sock.is_none() {
-                    continue;
-                }
-                if gs.players[n].state != core::constants::ST_NORMAL {
-                    continue;
-                }
-
-                #[cfg(feature = "measure-time")]
-                {
-                    let started = Instant::now();
-                    player::map::plr_getmap(gs, n);
-                    getmap_total += started.elapsed();
-
-                    let started = Instant::now();
-                    player::tick::plr_change(gs, n);
-                    change_total += started.elapsed();
-
-                    players_updated += 1;
-                }
-
-                #[cfg(not(feature = "measure-time"))]
-                {
-                    player::map::plr_getmap(gs, n);
-                    player::tick::plr_change(gs, n);
-                }
+            if summary.players_updated > 0 && self.last_fanout_parallel != Some(summary.parallel) {
+                log::info!(
+                    "Player update fan-out now {} ({} players)",
+                    if summary.parallel {
+                        "parallel"
+                    } else {
+                        "serial"
+                    },
+                    summary.players_updated
+                );
+                self.last_fanout_parallel = Some(summary.parallel);
             }
 
+            // Per-call `measure!` would emit one log line per player per tick
+            // (tens of thousands per second at load) and dominate the very
+            // profile it is meant to inform, so log the summed split once.
+            // When the pool is used these are CPU totals across workers, not
+            // wall time; the enclosing measure! is the wall time.
             #[cfg(feature = "measure-time")]
-            if players_updated > 0 {
+            if summary.players_updated > 0 {
                 log::info!(
                     target: "perf",
                     "[measure-time] player.getmap took {:?}",
-                    getmap_total
+                    summary.timings.getmap
                 );
                 log::info!(
                     target: "perf",
                     "[measure-time] player.change took {:?}",
-                    change_total
+                    summary.timings.change
+                );
+                log::info!(
+                    target: "perf",
+                    "[measure-time] player.update_fanout players={} parallel={}",
+                    summary.players_updated,
+                    summary.parallel
                 );
             }
         });

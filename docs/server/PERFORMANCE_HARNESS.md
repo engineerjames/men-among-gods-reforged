@@ -58,8 +58,13 @@ Run `./scripts/perf_loadtest.sh --help` for the full option list.
 
 ## Reading the report
 
-* **Headroom** — busy time vs. wall time. The tick loop is single threaded, so
-  "100% of one core" means saturated no matter how many cores the box has.
+* **Headroom** — busy time vs. wall time on the *tick thread*. Only the
+  per-player view pass is parallel (see `DESIGN.md`), so "100% of one core"
+  still means the tick thread is saturated regardless of core count.
+* **`player.getmap` / `player.change`** are summed per-player timings. With
+  the worker pool enabled they are CPU totals across workers and can exceed
+  100% of busy time; `player.send_normal_state_updates` is the wall-clock cost
+  of the whole pass. Set `MAG_TICK_WORKERS=1` for a serial control run.
 * **Where busy time goes (inclusive)** — each `measure!` label's share of the
   work the tick loop actually does. `server.tick` is excluded from the
   denominator because it also covers the sleep that paces the loop to 36 TPS.
