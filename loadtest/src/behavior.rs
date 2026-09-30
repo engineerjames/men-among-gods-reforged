@@ -23,7 +23,7 @@ use crate::world_view::WorldView;
 ///
 /// Excludes: `SK_RECALL` (teleports away, undoing dispersion), `SK_IDENT` and
 /// `SK_REPAIR` (need an item under the cursor), `SK_LOCK` (needs a lock-pick
-/// + door), and every passive/automatic skill the server refuses to cast
+/// and a door), and every passive/automatic skill the server refuses to cast
 /// directly (`SK_REGEN`, `SK_REST`, `SK_MEDIT`, weapon skills, ...).
 pub const SELF_CAST_SKILLS: &[usize] = &[
     SK_LIGHT,
