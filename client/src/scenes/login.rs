@@ -192,6 +192,12 @@ impl LoginScene {
 impl Scene for LoginScene {
     fn on_enter(&mut self, app_state: &mut AppState<'_>) {
         self.ensure_music_initialized(app_state);
+
+        if app_state.api.take_session_expired() {
+            self.login_form.set_error(Some(
+                "Your session expired. Please sign in again.".to_owned(),
+            ));
+        }
     }
 
     fn on_exit(&mut self, app_state: &mut AppState<'_>) {

@@ -251,7 +251,14 @@ impl Scene for CharacterCreationScene {
                 Some(SceneType::CharacterSelection)
             }
             Err(err) => {
-                self.form.set_error(Some(err));
+                self.form.set_error(Some(err.clone()));
+
+                if account_api::is_unauthorized(&err) {
+                    log::warn!("API session rejected (401); returning to login screen");
+                    app_state.api.expire_session();
+                    return Some(SceneType::Login);
+                }
+
                 None
             }
         }

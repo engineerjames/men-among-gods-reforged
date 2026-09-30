@@ -93,6 +93,8 @@ directly to KeyDB.
 
 **Usage:**
 ```bash
+# Both values are read from the project .env file automatically; exporting
+# them in the shell is optional and takes precedence over .env.
 export MAG_API_BASE_URL=https://127.0.0.1:5554
 export MAG_ADMIN_API_TOKEN=<32+ byte admin token>
 

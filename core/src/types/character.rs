@@ -166,7 +166,9 @@ pub struct Character {
     /// speed (see `server/src/state/stats.rs`); `[3]` = active Seyan'Du rune
     /// index (`0..=3`, see `core::seyan_runes::SeyanRune`, defaults to `0`);
     /// `[4]` = ticker value when the next rune swap is allowed (defaults to
-    /// `0`, i.e. immediately). See `server/src/player/seyan_runes.rs`.
+    /// `0`, i.e. immediately; see `server/src/player/seyan_runes.rs`); `[5]`
+    /// and `[6]` = per-character Zoetje tutorial step and next-message ticker
+    /// (see `server/src/driver/special.rs`).
     pub future3: [i32; 12],
 
     // In reality this should be time_t

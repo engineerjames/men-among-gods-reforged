@@ -24,6 +24,7 @@ serde.workspace = true
 serde_json.workspace = true
 clap = { version = "4.5", features = ["derive", "env"] }
 dialoguer = "0.11"
+dotenvy = "0.15"
 
 [[bin]]
 name = "template_viewer"

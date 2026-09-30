@@ -1489,6 +1489,7 @@ pub fn npc_msg(
             1 => driver::npc_stunrun_msg(gs, cn, msg_type as u8, dat1, dat2, dat3, dat4),
             2 => driver::npc_cityattack_msg(gs, cn, msg_type, dat1, dat2, dat3, dat4),
             3 => driver::npc_malte_msg(gs, cn, msg_type, dat1, dat2, dat3, dat4),
+            4 => driver::npc_zoetje_msg(gs, cn, msg_type, dat1, dat2, dat3, dat4),
             _ => {
                 log::error!("Unknown special driver {} for {}", special_driver, cn);
                 false
@@ -1952,6 +1953,7 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
             1 => driver::npc_stunrun_high(gs, cn),
             2 => driver::npc_cityattack_high(gs, cn),
             3 => driver::npc_malte_high(gs, cn),
+            4 => driver::npc_zoetje_high(gs, cn),
             _ => {
                 log::error!("Unknown special driver {} for {}", special_driver, cn);
                 false
@@ -2440,6 +2442,9 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
             }
             3 => {
                 driver::npc_malte_low(gs, cn);
+            }
+            4 => {
+                driver::npc_zoetje_low(gs, cn);
             }
             _ => {
                 log::error!("Unknown special driver {} for {}", special_driver, cn);

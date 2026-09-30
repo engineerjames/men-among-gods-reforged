@@ -3,6 +3,18 @@ use std::{collections::HashMap, path::PathBuf};
 
 const LOGIN_MUSIC_CHANNEL: i32 = 0;
 
+/// Number of mixing channels to allocate on the SDL2_mixer device.
+///
+/// SDL2_mixer only allocates 8 channels by default, which the game exhausts
+/// during normal play, causing `Mix_PlayChannel` to fail with
+/// "No free channels available".
+pub const MIXER_CHANNEL_COUNT: i32 = 32;
+
+/// Number of leading channels reserved for dedicated use (currently music on
+/// [`LOGIN_MUSIC_CHANNEL`]). Reserved channels are never handed out by
+/// `Mix_PlayChannel(-1)`.
+pub const RESERVED_CHANNEL_COUNT: i32 = LOGIN_MUSIC_CHANNEL + 1;
+
 /// Manages pre-loaded sound effects and background music tracks.
 ///
 /// Sound effects are identified by numeric sprite IDs; music tracks by the
