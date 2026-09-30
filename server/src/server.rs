@@ -2289,7 +2289,7 @@ impl Server {
             } else {
                 Vec::new()
             };
-            let raw_bytes = format!("{:02x?}", &tbuf_data);
+            let raw_bytes = format!("{:02x?}", tbuf_data);
 
             let (olen_i32, header, payload): (i32, [u8; 2], Vec<u8>) = if olen_uncompressed_i32 > 16
             {

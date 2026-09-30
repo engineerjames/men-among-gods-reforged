@@ -1158,10 +1158,21 @@ mod tests {
         let mut covered = vec![false; len];
         for def in defs {
             assert!(def.count >= 1, "{what}: {} has no slots", def.name);
-            for idx in def.index..def.index + def.count {
-                assert!(idx < len, "{what}: {} slot {idx} out of range", def.name);
-                assert!(!covered[idx], "{what}: slot {idx} documented twice");
-                covered[idx] = true;
+            assert!(
+                def.index + def.count <= len,
+                "{what}: {} slots {}..{} out of range",
+                def.name,
+                def.index,
+                def.index + def.count
+            );
+            for (idx, slot) in covered
+                .iter_mut()
+                .enumerate()
+                .skip(def.index)
+                .take(def.count)
+            {
+                assert!(!*slot, "{what}: slot {idx} documented twice");
+                *slot = true;
             }
             match def.kind {
                 FieldKind::Flags(names) => {

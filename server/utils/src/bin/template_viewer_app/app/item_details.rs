@@ -18,6 +18,9 @@ const WHERE_USED_LIMIT: usize = 500;
 /// One "Where used" row: `(item_id, x, y, area)`.
 type WhereUsedRow = (u32, u16, u16, String);
 
+/// Map placements `(item_id, x, y)` grouped by template id.
+type WhereUsedIndex = HashMap<u16, Vec<(u32, u16, u16)>>;
+
 /// Cached "Where used" lookups so the map isn't rescanned every frame.
 ///
 /// Reset via [`TemplateViewerApp::invalidate_where_used`] whenever map tiles or
@@ -25,7 +28,7 @@ type WhereUsedRow = (u32, u16, u16, String);
 #[derive(Default)]
 pub(super) struct WhereUsedCache {
     /// Map placements `(item_id, x, y)` grouped by template id, from one full-map scan.
-    by_template: Option<HashMap<u16, Vec<(u32, u16, u16)>>>,
+    by_template: Option<WhereUsedIndex>,
     /// Sorted rows (with area names) for the most recently shown template.
     rows: Option<(u16, Rc<[WhereUsedRow]>)>,
 }
@@ -40,9 +43,9 @@ pub(super) struct WhereUsedCache {
 /// # Returns
 ///
 /// * `template_id -> [(item_id, x, y)]` in map scan order.
-fn build_where_used_index(map_tiles: &[Map], items: &[Item]) -> HashMap<u16, Vec<(u32, u16, u16)>> {
+fn build_where_used_index(map_tiles: &[Map], items: &[Item]) -> WhereUsedIndex {
     let tile_w = SERVER_MAPX as usize;
-    let mut index: HashMap<u16, Vec<(u32, u16, u16)>> = HashMap::new();
+    let mut index: WhereUsedIndex = HashMap::new();
     for (tile_idx, tile) in map_tiles.iter().enumerate() {
         if tile.it == 0 {
             continue;
