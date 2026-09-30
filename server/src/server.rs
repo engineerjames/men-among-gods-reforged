@@ -2342,7 +2342,13 @@ impl Server {
             } else {
                 Vec::new()
             };
-            let raw_bytes = format!("{:02x?}", tbuf_data);
+            // Formatting several hundred bytes per player per tick is not free.
+            let trace_enabled = log::log_enabled!(log::Level::Trace);
+            let raw_bytes = if trace_enabled {
+                format!("{:02x?}", tbuf_data)
+            } else {
+                String::new()
+            };
 
             let (olen_i32, header, payload): (i32, [u8; 2], Vec<u8>) = if olen_uncompressed_i32 > 16
             {
@@ -2412,19 +2418,21 @@ impl Server {
             let mut wire_frame = Vec::with_capacity(needed);
             wire_frame.extend_from_slice(&header);
             wire_frame.extend_from_slice(&payload);
-            log::trace!(
-                "tick_compression tick={} player={} character={} raw_len={} raw_bytes={:02x?} compressed={} payload_len={} payload_bytes={:02x?} wire_len={} wire_bytes={:02x?}",
-                gs.globals.ticker,
-                n,
-                p.usnr,
-                ilen,
-                raw_bytes,
-                olen_i32 & 0x8000 != 0,
-                payload.len(),
-                payload,
-                wire_frame.len(),
-                wire_frame,
-            );
+            if trace_enabled {
+                log::trace!(
+                    "tick_compression tick={} player={} character={} raw_len={} raw_bytes={} compressed={} payload_len={} payload_bytes={:02x?} wire_len={} wire_bytes={:02x?}",
+                    gs.globals.ticker,
+                    n,
+                    p.usnr,
+                    ilen,
+                    raw_bytes,
+                    olen_i32 & 0x8000 != 0,
+                    payload.len(),
+                    payload,
+                    wire_frame.len(),
+                    wire_frame,
+                );
+            }
 
             let mut iptr = p.iptr;
             let obuf_len = p.obuf.len();

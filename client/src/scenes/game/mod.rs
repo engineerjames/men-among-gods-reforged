@@ -18,11 +18,13 @@ mod profile;
 mod tick_scheduler;
 mod weather;
 mod world_input;
+mod world_interpolation;
 mod world_render;
 
 use mag_core::traits::class_from_kindred;
 use perf_profiler::{PerfLabel, PerfProfiler};
-use tick_scheduler::LegacyTickScheduler;
+use tick_scheduler::{MAX_TICKS_PER_FRAME, TickScheduler};
+use world_interpolation::WorldInterpolator;
 
 use std::collections::{HashSet, VecDeque};
 use std::io::Write;
@@ -746,10 +748,10 @@ pub struct GameScene {
     pending_tick_batches: VecDeque<crate::network::ServerTickBatch>,
     /// Local simulation ticker used by legacy animation stepping.
     sim_ticker: u32,
-    /// Queue-depth scheduler controlling gameplay presentation cadence.
-    tick_scheduler: LegacyTickScheduler,
-    /// One-shot presentation decision for the current gameplay iteration.
-    frame_presentation: crate::scenes::scene::FramePresentation,
+    /// Fixed-cadence pacer deciding when queued server ticks are applied.
+    tick_scheduler: TickScheduler,
+    /// Interpolates camera and character positions between applied ticks.
+    world_interpolator: WorldInterpolator,
 }
 
 impl GameScene {
@@ -940,8 +942,8 @@ impl GameScene {
             network_test_cancel: None,
             pending_tick_batches: VecDeque::new(),
             sim_ticker: 0,
-            tick_scheduler: LegacyTickScheduler::new(Instant::now()),
-            frame_presentation: crate::scenes::scene::FramePresentation::Immediate,
+            tick_scheduler: TickScheduler::new(Instant::now()),
+            world_interpolator: WorldInterpolator::new(),
         }
     }
 
@@ -2189,7 +2191,7 @@ impl Scene for GameScene {
         self.pending_tick_batches.clear();
         self.sim_ticker = 0;
         self.tick_scheduler.reset(Instant::now());
-        self.frame_presentation = crate::scenes::scene::FramePresentation::Immediate;
+        self.world_interpolator.reset();
         self.vcursor_x = TARGET_WIDTH_INT as f32 / 2.0;
         self.vcursor_y = TARGET_HEIGHT_INT as f32 / 2.0;
         self.left_stick_x = 0;
@@ -2239,7 +2241,7 @@ impl Scene for GameScene {
         self.cancel_network_test();
         self.pending_tick_batches.clear();
         self.sim_ticker = 0;
-        self.frame_presentation = crate::scenes::scene::FramePresentation::Immediate;
+        self.world_interpolator.reset();
 
         if let Some(mut net) = app_state.network.take() {
             net.shutdown();
@@ -2621,7 +2623,7 @@ impl Scene for GameScene {
             if pressed_at.elapsed() >= L3_HOLD_THRESHOLD {
                 self.l3_pressed_at = None; // consumed
                 if let Some(ps) = app_state.player_state.as_ref() {
-                    let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
+                    let (cam_xoff, cam_yoff) = self.camera_offsets(ps);
                     if let Some((mx, my)) =
                         Self::screen_to_map_tile(self.mouse_x, self.mouse_y, cam_xoff, cam_yoff)
                     {
@@ -2653,25 +2655,14 @@ impl Scene for GameScene {
         }
 
         let mut scene = self.process_network_events(app_state);
-        let mut animation_started = false;
         if scene.is_none() {
-            if let Some(batch) = self.pending_tick_batches.pop_front() {
-                self.apply_server_tick_batch(app_state, batch);
-                if let Some(ps) = app_state.player_state.as_mut() {
-                    animation_started = ps.map_mut().take_animation_started();
-                }
-            }
+            self.apply_due_ticks(app_state);
             if let Some(ps) = app_state.player_state.as_mut()
                 && ps.take_exit_requested_reason().is_some()
             {
                 scene = Some(SceneType::CharacterSelection);
             }
         }
-        self.frame_presentation = self.tick_scheduler.complete_iteration(
-            Instant::now(),
-            self.pending_tick_batches.len(),
-            animation_started,
-        );
         if scene.is_none() {
             if let Some(ps) = app_state.player_state.as_mut()
                 && !Self::is_selected_visible(ps)
@@ -2691,13 +2682,6 @@ impl Scene for GameScene {
             }
         }
         scene
-    }
-
-    fn take_frame_presentation(&mut self) -> crate::scenes::scene::FramePresentation {
-        std::mem::replace(
-            &mut self.frame_presentation,
-            crate::scenes::scene::FramePresentation::Immediate,
-        )
     }
 
     /// Render the isometric world, all HUD panels, and overlay effects.
@@ -3023,8 +3007,6 @@ impl Scene for GameScene {
 
 #[cfg(test)]
 mod tests {
-    use crate::scenes::scene::{FramePresentation, Scene};
-
     use super::{
         GameScene, HELPER_TEXT_CURSOR_FLIP_GAP_Y, HELPER_TEXT_CURSOR_GAP_X,
         HELPER_TEXT_CURSOR_GAP_Y, HELPER_TEXT_SCREEN_MARGIN, MAX_CLIENT_LOG_UPLOAD_BYTES,
@@ -3095,21 +3077,6 @@ mod tests {
         scene.mouse_ctrl_held = false;
         scene.ctrl_held = true;
         assert!(scene.effective_ctrl_held());
-    }
-
-    #[test]
-    fn frame_presentation_directive_is_consumed_once() {
-        let mut scene = GameScene::new();
-        scene.frame_presentation = FramePresentation::Skip;
-
-        assert_eq!(
-            Scene::take_frame_presentation(&mut scene),
-            FramePresentation::Skip
-        );
-        assert_eq!(
-            Scene::take_frame_presentation(&mut scene),
-            FramePresentation::Immediate
-        );
     }
 
     #[test]

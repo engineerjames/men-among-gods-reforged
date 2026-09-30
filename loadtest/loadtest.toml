@@ -74,10 +74,52 @@ prefix = "loadtest"
 email_domain = "example.com"
 # Shared password for all bot accounts.
 password = "loadtest1234"
-# Starting character class: "mercenary" | "templar" | "harakim"
-class = "mercenary"
+# Starting character class: "mercenary" | "templar" | "harakim" | "random"
+# "random" picks one of the three per bot, seeded by the bot index so the
+# same bot always gets the same class. Only applies when a bot's character is
+# first created; existing characters keep their class, which is read back from
+# the API and tracked per bot (it drives spell selection).
+class = "random"
 # Character sex: "male" | "female"
 sex = "male"
+
+# In-world behaviour. Each sub-table is an independent periodic action a bot
+# performs once it has a confirmed world position. All default to disabled.
+[behavior.cast]
+# Periodically cast a spell/skill the server has reported as known for the
+# bot's class (self-targeted buffs like Protect/Bless/Heal/Light/Enhance...).
+enabled = true
+# Milliseconds between cast attempts per client (each bot gets a random
+# phase offset so they don't fire in lockstep).
+interval_ms = 8000
+# Also cast hostile spells (Blast/Curse/Stun...) at a random visible character.
+# Off by default: it kills NPCs and hits other bots/players.
+allow_hostile = false
+
+[behavior.chat]
+# Periodically say a chat line (regular local "say").
+enabled = true
+# Milliseconds between chat lines per client.
+interval_ms = 30000
+# Message pool; a random entry is picked each time. Leave empty for the
+# built-in defaults. Avoid anything containing the god password.
+messages = [
+  "hello there",
+  "anyone selling armor?",
+  "where is the arena?",
+  "lfg dungeon",
+  "brb",
+]
+
+[behavior.interact]
+# Periodically send CL_USE on a random usable item (ISUSABLE tile flag: doors,
+# levers, portals, shrines...) visible within `radius` tiles. The server
+# path-finds to it and runs the item's use handler.
+enabled = true
+# Milliseconds between interaction attempts per client.
+interval_ms = 10000
+# Maximum Chebyshev tile distance from the bot to a candidate item.
+radius = 8
 
 # Periodic slash-commands each bot client sends, each on its own interval.
 # Every entry is one `[[commands]]` table with a `command` string and an

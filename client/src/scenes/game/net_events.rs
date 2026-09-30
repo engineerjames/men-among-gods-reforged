@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use mag_core::client_commands::ClientCommand;
 use mag_core::constants::{IS_GRAVE, TILEX, TILEY};
 use mag_core::server_commands::{ServerCommand, ServerCommandData};
@@ -15,7 +17,7 @@ use crate::{
     },
 };
 
-use super::{GameScene, QSIZE};
+use super::{GameScene, MAX_TICKS_PER_FRAME, QSIZE};
 
 /// Result of routing a [`UiEvent`] through the widget stack.
 ///
@@ -113,6 +115,35 @@ impl GameScene {
         if let Some(net) = app_state.network.as_mut() {
             net.maybe_send_ctick(self.sim_ticker);
         }
+        if let Some(ps) = app_state.player_state.as_ref() {
+            self.world_interpolator.record_tick(ps.map());
+        }
+    }
+
+    /// Applies every queued tick that is due this frame and refreshes the
+    /// interpolation factor used by the renderer.
+    ///
+    /// At most [`MAX_TICKS_PER_FRAME`] ticks are applied per call so a deep
+    /// backlog is drained over several frames instead of freezing one.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Application state holding the player map and network.
+    pub(super) fn apply_due_ticks(&mut self, app_state: &mut AppState<'_>) {
+        let now = Instant::now();
+        let mut applied = 0;
+        while applied < MAX_TICKS_PER_FRAME && self.tick_scheduler.is_due(now) {
+            let Some(batch) = self.pending_tick_batches.pop_front() else {
+                self.tick_scheduler.starved(now);
+                break;
+            };
+            self.apply_server_tick_batch(app_state, batch);
+            self.tick_scheduler
+                .tick_applied(self.pending_tick_batches.len());
+            applied += 1;
+        }
+        self.world_interpolator
+            .set_alpha(self.tick_scheduler.interpolation_alpha(now));
     }
 
     /// Drains pending network events, queuing complete tick batches for the

@@ -47,8 +47,10 @@ from analyze_perf_log import (  # noqa: E402
     render_table,
 )
 
-# Frame budget at the client's 60 FPS cap (menus) and at the 36 TPS server
-# tick the game scene paces its presentation to (LegacyTickScheduler).
+# Frame budget at the client's 60 FPS cap / vsync. Frames run at display rate
+# in every scene; the game scene applies server ticks (36 TPS) on its own
+# schedule and interpolates between them, so a frame slower than 1.5 ticks
+# means a visible hitch rather than expected pacing.
 TARGET_FRAME_MS = 1000.0 / 60.0
 TICK_FRAME_MS = 1000.0 / 36.0
 
@@ -306,12 +308,11 @@ def build_report(run_dir: Path, meta: dict, data: dict, window_label: str) -> st
             f"max {frame['max_ms']:.2f} ms")
         add(f"- Budget {TARGET_FRAME_MS:.2f} ms (60 FPS): {frame['over_budget']:,} frames "
             f"over budget ({frame['over_budget_pct']:.1f}%)")
-        add(f"- In-game frames are paced to the {TICK_FRAME_MS:.2f} ms server tick (36 TPS), so "
-            f"~{TICK_FRAME_MS:.1f} ms is expected there; frames slower than 1.5 ticks: "
-            f"{frame['over_tick_budget']:,} ({frame['over_tick_budget_pct']:.1f}%)")
+        add(f"- Frames slower than 1.5 server ticks ({TICK_FRAME_MS * 1.5:.1f} ms), i.e. a "
+            f"visible hitch: {frame['over_tick_budget']:,} ({frame['over_tick_budget_pct']:.1f}%)")
         add("")
         add("`client.frame` is wall time between consecutive loop iterations and "
-            "therefore includes the FPS-cap sleep, tick-pacing wait and vsync; the "
+            "therefore includes the FPS-cap sleep and vsync; the "
             "sections below are the work inside one iteration.")
         add("")
 

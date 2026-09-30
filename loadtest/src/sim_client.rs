@@ -23,6 +23,10 @@
 //!    - Optionally send `CL_PING` every `ping.interval_secs` seconds.
 //!    - Send each configured `[[commands]]` entry (e.g. `/rank`, `/who`) on its
 //!      own `interval_secs` (see [`maybe_send_commands`]).
+//!    - When enabled under `[behavior]`, periodically cast a known spell
+//!      (`behavior.cast`), say a chat line (`behavior.chat`), or `CL_USE` a
+//!      nearby usable item (`behavior.interact`). Decisions come from the
+//!      bot's [`BotProfile`] (class, known skills) and its [`WorldView`].
 //! 7. On shutdown, the task exits and bumps the disconnect counter.
 
 use std::collections::HashMap;
@@ -31,8 +35,9 @@ use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use mag_core::client_commands::ClientCommand;
-use mag_core::constants::{SERVER_MAPX, SERVER_MAPY, TILEX, TILEY};
+use mag_core::constants::{SERVER_MAPX, SERVER_MAPY};
 use mag_core::server_commands::{ServerCommand, ServerCommandData};
+use mag_core::skills::get_skill_name;
 use rand::Rng;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -40,12 +45,14 @@ use tokio::io::{AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::sync::broadcast;
 use tokio::time::{Duration, MissedTickBehavior, interval};
 
-use crate::api_bootstrap::{RateLimiter, bootstrap_client, mint_ticket};
+use crate::api_bootstrap::{BotCharacter, RateLimiter, bootstrap_client, mint_ticket};
+use crate::behavior::{BotProfile, pick_chat_message, pick_interact_target};
 use crate::config::LoadTestConfig;
 use crate::login_gate::LoginGate;
 use crate::metrics::Metrics;
 use crate::net_impair;
 use crate::protocol::{FramedReader, GameStream, TlsGameStream};
+use crate::world_view::WorldView;
 
 /// Margin (in tiles) kept away from the map edges when picking a random
 /// dispersion `/goto` target, avoiding `usize` underflow in the server's
@@ -76,10 +83,14 @@ struct ClientState {
     /// Whether the one-shot login dispersion sequence (god password + `/goto`)
     /// has already been sent for this client.
     dispersion_done: bool,
+    /// Tracked identity (class, sex, name) and server-reported skills.
+    profile: BotProfile,
+    /// Bot-side model of the visible map window (usable items, characters).
+    world: WorldView,
 }
 
 impl ClientState {
-    fn new() -> Self {
+    fn new(character: BotCharacter) -> Self {
         Self {
             client_ticker: 0,
             last_ctick_sent: 0,
@@ -90,6 +101,8 @@ impl ClientState {
             last_tick_instant: None,
             start: Instant::now(),
             dispersion_done: false,
+            profile: BotProfile::new(character),
+            world: WorldView::new(),
         }
     }
 }
@@ -141,7 +154,7 @@ pub async fn run(
 
     // Bootstrap: ensure account and character exist.
     let bootstrap_result = bootstrap_client(index, &config, &http, &rate_limiter).await;
-    let (jwt, character_id) = match bootstrap_result {
+    let (jwt, character) = match bootstrap_result {
         Ok(v) => v,
         Err(e) => {
             log::warn!("Client {index}: bootstrap failed — {e:#}");
@@ -149,6 +162,8 @@ pub async fn run(
             return;
         }
     };
+    let character_id = character.id;
+    metrics.record_class(character.class);
 
     // Wait for exclusive access to the login sequence: only one client mints
     // a ticket, connects, and completes the handshake at a time, and the
@@ -189,7 +204,12 @@ pub async fn run(
 
     metrics.connected.fetch_add(1, Ordering::Relaxed);
     let connected_at = Instant::now();
-    log::info!("Client {index}: logged in (character_id={character_id})");
+    log::info!(
+        "Client {index}: logged in (character_id={character_id} name={} class={:?} sex={:?})",
+        character.name,
+        character.class,
+        character.sex,
+    );
 
     // The character has fully spawned into the world — release the gate so
     // the next client's cooldown starts counting from now, giving this
@@ -201,6 +221,7 @@ pub async fn run(
 
     game_loop(
         index,
+        character,
         read_half,
         write_half,
         config,
@@ -221,8 +242,10 @@ pub async fn run(
 // Game loop
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::too_many_arguments)]
 async fn game_loop(
     index: usize,
+    character: BotCharacter,
     read_half: ReadHalf<TlsGameStream>,
     mut write_half: WriteHalf<TlsGameStream>,
     config: Arc<LoadTestConfig>,
@@ -253,12 +276,20 @@ async fn game_loop(
         }
     });
 
-    let mut state = ClientState::new();
+    let mut state = ClientState::new(character);
     let mut framed = FramedReader::new();
     let mut rng = StdRng::from_os_rng();
 
     let mut move_timer = interval(Duration::from_millis(config.movement.interval_ms));
     move_timer.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
+    // In-world behaviours. Each timer is built even when disabled (the
+    // select! guard skips it) so the branch set stays static. A small random
+    // phase offset per bot keeps hundreds of clients from firing in lockstep.
+    let behavior = &config.behavior;
+    let mut cast_timer = phased_interval(behavior.cast.interval_ms, &mut rng);
+    let mut chat_timer = phased_interval(behavior.chat.interval_ms, &mut rng);
+    let mut interact_timer = phased_interval(behavior.interact.interval_ms, &mut rng);
 
     let ping_interval_ms = (config.ping.interval_secs * 1000.0) as u64;
     let mut ping_timer = interval(Duration::from_millis(ping_interval_ms.max(1)));
@@ -284,6 +315,9 @@ async fn game_loop(
         // Precompute flag so the borrow checker is happy inside select!
         let has_position = state.self_x.is_some();
         let ping_enabled = config.ping.enabled && state.client_ticker > 0;
+        let cast_enabled = behavior.cast.enabled && has_position;
+        let chat_enabled = behavior.chat.enabled && has_position;
+        let interact_enabled = behavior.interact.enabled && has_position;
 
         tokio::select! {
             // Shutdown signal
@@ -399,6 +433,57 @@ async fn game_loop(
                 )
                 .await;
             }
+
+            // Periodic spell casting (`[behavior.cast]`)
+            _ = cast_timer.tick(), if cast_enabled => {
+                let choice = state.profile.pick_cast(&state.world, behavior.cast.allow_hostile, &mut rng);
+                match choice {
+                    Some(c) => {
+                        let cmd = ClientCommand::new_skill(
+                            c.skill as u32,
+                            c.target,
+                            u32::from(state.profile.braveness),
+                        );
+                        log::debug!(
+                            "Client {index}: casting {} (skill={}) target={}",
+                            get_skill_name(c.skill),
+                            c.skill,
+                            c.target,
+                        );
+                        send_impaired(index, &mut write_half, cmd, &config, &mut rng, &metrics).await;
+                        metrics.casts_sent.fetch_add(1, Ordering::Relaxed);
+                    }
+                    None => {
+                        metrics.casts_skipped.fetch_add(1, Ordering::Relaxed);
+                    }
+                }
+            }
+
+            // Periodic chat (`[behavior.chat]`)
+            _ = chat_timer.tick(), if chat_enabled => {
+                let text = pick_chat_message(&behavior.chat.messages, &mut rng).to_owned();
+                if send_say_text(&mut write_half, &text, &metrics).await {
+                    metrics.chats_sent.fetch_add(1, Ordering::Relaxed);
+                    log::trace!("Client {index}: said {text:?}");
+                } else {
+                    metrics.chats_errors.fetch_add(1, Ordering::Relaxed);
+                }
+            }
+
+            // Periodic environment interaction (`[behavior.interact]`)
+            _ = interact_timer.tick(), if interact_enabled => {
+                match pick_interact_target(&state.world, behavior.interact.radius, &mut rng) {
+                    Some((x, y)) => {
+                        log::debug!("Client {index}: using item at {x},{y}");
+                        let cmd = ClientCommand::new_use(x as i16, y);
+                        send_impaired(index, &mut write_half, cmd, &config, &mut rng, &metrics).await;
+                        metrics.interacts_sent.fetch_add(1, Ordering::Relaxed);
+                    }
+                    None => {
+                        metrics.interacts_skipped.fetch_add(1, Ordering::Relaxed);
+                    }
+                }
+            }
         }
     }
 }
@@ -406,6 +491,29 @@ async fn game_loop(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Builds a periodic timer for a `[behavior.*]` action whose first tick is
+/// delayed by a random fraction of the period.
+///
+/// Every bot builds its timers at login; without a phase offset, bots that
+/// logged in during the same second would all cast/chat/interact in the
+/// same tick for the rest of the run, which is an unrealistic burst pattern.
+///
+/// # Arguments
+///
+/// * `interval_ms` - Period in milliseconds (clamped to at least 1).
+/// * `rng` - RNG for the phase offset.
+///
+/// # Returns
+///
+/// * A `Skip`-behaviour interval whose first tick is `0..period` in the future.
+fn phased_interval(interval_ms: u64, rng: &mut impl Rng) -> tokio::time::Interval {
+    let period = Duration::from_millis(interval_ms.max(1));
+    let phase = Duration::from_millis(rng.random_range(0..interval_ms.max(1)));
+    let mut timer = tokio::time::interval_at(tokio::time::Instant::now() + phase, period);
+    timer.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    timer
+}
 
 /// Processes a single server command byte slice, updating client state.
 ///
@@ -416,11 +524,35 @@ fn process_command(index: usize, cmd_bytes: &[u8], state: &mut ClientState, metr
         return;
     };
 
+    // Keep the map window model current (scrolls, tile flags, origin).
+    state.world.apply(&cmd);
+
     match cmd.structured_data {
-        ServerCommandData::SetOrigin { x, y } => {
+        ServerCommandData::SetOrigin { .. } => {
             // Origin is the top-left of the visible grid; player sits at center.
-            state.self_x = Some(x.wrapping_add(TILEX as i16 / 2));
-            state.self_y = Some(y.wrapping_add(TILEY as i16 / 2));
+            let was_unknown = state.self_x.is_none();
+            let (x, y) = state.world.self_pos().unwrap_or((0, 0));
+            state.self_x = Some(x);
+            state.self_y = Some(y);
+            if was_unknown {
+                log::debug!(
+                    "Client {index}: class={:?} castable skills: [{}]",
+                    state.profile.class(),
+                    state.profile.describe_skills(),
+                );
+            }
+        }
+        ServerCommandData::SetCharSkill {
+            index: skill,
+            values,
+        } => {
+            state.profile.set_skill(skill, &values);
+        }
+        ServerCommandData::SetCharAttrib {
+            index: attrib,
+            values,
+        } => {
+            state.profile.set_attrib(attrib, &values);
         }
         ServerCommandData::Pong { seq, .. } => {
             if let Some(sent_at) = state.ping_times.remove(&seq) {
@@ -669,14 +801,26 @@ async fn maybe_send_commands(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mag_core::types::api::{Class, Sex};
+
+    fn test_character() -> BotCharacter {
+        BotCharacter {
+            id: 1,
+            name: "loadtesta".into(),
+            class: Class::Templar,
+            sex: Sex::Male,
+        }
+    }
 
     #[test]
     fn client_state_initial_values() {
-        let s = ClientState::new();
+        let s = ClientState::new(test_character());
         assert_eq!(s.client_ticker, 0);
         assert!(s.self_x.is_none());
         assert!(s.self_y.is_none());
         assert!(s.ping_times.is_empty());
+        assert_eq!(s.profile.class(), Class::Templar);
+        assert!(s.world.self_pos().is_none());
     }
 
     #[test]
@@ -701,8 +845,32 @@ mod tests {
 
     #[test]
     fn client_state_dispersion_starts_undone() {
-        let s = ClientState::new();
+        let s = ClientState::new(test_character());
         assert!(!s.dispersion_done);
+    }
+
+    #[test]
+    fn set_origin_updates_position_and_world_view() {
+        let metrics = Metrics::new();
+        let mut s = ClientState::new(test_character());
+        // Wire encoding: SetOrigin opcode followed by two little-endian i16s.
+        let mut bytes = vec![mag_core::server_commands::ServerCommandType::SetOrigin as u8];
+        bytes.extend_from_slice(&500i16.to_le_bytes());
+        bytes.extend_from_slice(&600i16.to_le_bytes());
+        process_command(0, &bytes, &mut s, &metrics);
+        assert_eq!(s.self_x, Some(500 + mag_core::constants::TILEX as i16 / 2));
+        assert_eq!(s.self_y, Some(600 + mag_core::constants::TILEY as i16 / 2));
+        assert_eq!(
+            s.world.self_pos(),
+            Some((s.self_x.unwrap(), s.self_y.unwrap()))
+        );
+    }
+
+    #[tokio::test]
+    async fn phased_interval_handles_zero_period() {
+        let mut rng = StdRng::seed_from_u64(9);
+        let t = phased_interval(0, &mut rng);
+        assert_eq!(t.period(), Duration::from_millis(1));
     }
 
     #[test]

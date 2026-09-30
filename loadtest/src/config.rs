@@ -1,6 +1,9 @@
 //! TOML configuration types for the load-test runner.
 
 use mag_core::types::api::{Class, Sex};
+use rand::SeedableRng;
+use rand::rngs::StdRng;
+use rand::seq::IndexedRandom;
 use serde::Deserialize;
 
 /// Top-level load-test configuration, loaded from a TOML file.
@@ -22,6 +25,8 @@ pub struct LoadTestConfig {
     pub ping: PingConfig,
     /// Bot account/character creation settings.
     pub accounts: AccountConfig,
+    /// In-world behaviour simulation (spell casting, chat, environment use).
+    pub behavior: BehaviorConfig,
     /// Periodic slash-commands each client issues on independent intervals.
     pub commands: Vec<CommandEntry>,
 }
@@ -176,6 +181,100 @@ impl Default for PingConfig {
     }
 }
 
+/// In-world behaviour simulation settings (`[behavior]`).
+///
+/// Each sub-table drives one independent periodic action a bot performs
+/// once it has a confirmed world position. All are optional and default to
+/// disabled so existing configs keep the old "move only" behaviour.
+#[derive(Debug, Deserialize, Clone, Default)]
+#[serde(default)]
+pub struct BehaviorConfig {
+    /// Spell/skill casting (`[behavior.cast]`).
+    pub cast: CastConfig,
+    /// Free-text chat messages (`[behavior.chat]`).
+    pub chat: ChatConfig,
+    /// Environment interaction with usable items (`[behavior.interact]`).
+    pub interact: InteractConfig,
+}
+
+/// Periodic spell/skill casting settings (`[behavior.cast]`).
+///
+/// A bot only casts skills the server has reported as known for its
+/// character (`SV_SETCHARSKILL` with a non-zero base value), filtered to the
+/// set of directly-castable, self-targeted skills. When `allow_hostile` is
+/// set, hostile skills are also eligible whenever another character is
+/// visible on the bot's map window.
+#[derive(Debug, Deserialize, Clone)]
+#[serde(default)]
+pub struct CastConfig {
+    /// Enable periodic casting.
+    pub enabled: bool,
+    /// Milliseconds between cast attempts per client.
+    pub interval_ms: u64,
+    /// Also cast hostile skills at a random visible character.
+    pub allow_hostile: bool,
+}
+
+impl Default for CastConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            interval_ms: 8_000,
+            allow_hostile: false,
+        }
+    }
+}
+
+/// Periodic chat settings (`[behavior.chat]`).
+#[derive(Debug, Deserialize, Clone)]
+#[serde(default)]
+pub struct ChatConfig {
+    /// Enable periodic chat messages.
+    pub enabled: bool,
+    /// Milliseconds between chat messages per client.
+    pub interval_ms: u64,
+    /// Pool of messages to pick from at random. Empty falls back to a small
+    /// built-in set.
+    pub messages: Vec<String>,
+}
+
+impl Default for ChatConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            interval_ms: 30_000,
+            messages: Vec::new(),
+        }
+    }
+}
+
+/// Periodic environment interaction settings (`[behavior.interact]`).
+///
+/// The bot scans its visible map window for tiles flagged `ISUSABLE`
+/// (doors, levers, portals, shrines, ...) within `radius` tiles and sends a
+/// `CL_USE` for a random one; the server path-finds to it and applies the
+/// item's use handler, exactly as if a player shift-clicked it.
+#[derive(Debug, Deserialize, Clone)]
+#[serde(default)]
+pub struct InteractConfig {
+    /// Enable periodic interaction attempts.
+    pub enabled: bool,
+    /// Milliseconds between interaction attempts per client.
+    pub interval_ms: u64,
+    /// Maximum Chebyshev tile distance from the bot to a candidate item.
+    pub radius: i32,
+}
+
+impl Default for InteractConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            interval_ms: 10_000,
+            radius: 8,
+        }
+    }
+}
+
 /// A single periodic slash-command a bot client repeatedly sends.
 ///
 /// Declared as a TOML array of tables under `[[commands]]`, e.g.:
@@ -203,7 +302,10 @@ pub struct AccountConfig {
     pub email_domain: String,
     /// Password shared across all bot accounts.
     pub password: String,
-    /// Starting character class.  One of: mercenary, templar, harakim.
+    /// Starting character class.  One of: mercenary, templar, harakim, random.
+    ///
+    /// `random` picks one of the three starting classes per bot, seeded by
+    /// the bot index so the assignment is stable across runs.
     pub class: String,
     /// Character sex.  One of: male, female.
     pub sex: String,
@@ -235,22 +337,38 @@ impl AccountConfig {
         }
     }
 
-    /// Parses the configured class string to a [`Class`] variant.
+    /// Resolves the starting class for bot `index`.
     ///
-    /// Accepts `"mercenary"`, `"templar"`, `"harakim"`.  Defaults to
-    /// [`Class::Mercenary`] for any unrecognised string.
+    /// Accepts `"mercenary"`, `"templar"`, `"harakim"`, or `"random"`.
+    /// `random` picks uniformly from [`STARTING_CLASSES`] using an RNG seeded
+    /// by `index`, so the same bot always gets the same class across runs
+    /// (its character persists server-side after the first run anyway).
+    /// Defaults to [`Class::Mercenary`] for any unrecognised string.
+    ///
+    /// # Arguments
+    ///
+    /// * `index` - Bot index, used as the seed for `random`.
     ///
     /// # Returns
     ///
-    /// * A [`Class`] variant matching the configured string, or [`Class::Mercenary`].
-    pub fn class(&self) -> Class {
+    /// * The [`Class`] to request when creating this bot's character.
+    pub fn class_for(&self, index: usize) -> Class {
         match self.class.trim().to_lowercase().as_str() {
             "templar" => Class::Templar,
             "harakim" => Class::Harakim,
+            "random" => {
+                let mut rng = StdRng::seed_from_u64(index as u64);
+                *STARTING_CLASSES
+                    .choose(&mut rng)
+                    .expect("STARTING_CLASSES is non-empty")
+            }
             _ => Class::Mercenary,
         }
     }
 }
+
+/// Classes a freshly created character may start as.
+pub const STARTING_CLASSES: [Class; 3] = [Class::Mercenary, Class::Templar, Class::Harakim];
 
 #[cfg(test)]
 mod tests {
@@ -307,12 +425,65 @@ mod tests {
     #[test]
     fn class_parsing() {
         let mut a = AccountConfig::default();
-        assert!(matches!(a.class(), Class::Mercenary));
+        assert!(matches!(a.class_for(0), Class::Mercenary));
         a.class = "templar".into();
-        assert!(matches!(a.class(), Class::Templar));
+        assert!(matches!(a.class_for(0), Class::Templar));
         a.class = "harakim".into();
-        assert!(matches!(a.class(), Class::Harakim));
+        assert!(matches!(a.class_for(0), Class::Harakim));
         a.class = "unknown".into();
-        assert!(matches!(a.class(), Class::Mercenary));
+        assert!(matches!(a.class_for(0), Class::Mercenary));
+    }
+
+    #[test]
+    fn random_class_is_stable_per_index_and_covers_all_classes() {
+        let a = AccountConfig {
+            class: "random".into(),
+            ..AccountConfig::default()
+        };
+        for i in 0..50 {
+            assert_eq!(a.class_for(i), a.class_for(i));
+            assert!(STARTING_CLASSES.contains(&a.class_for(i)));
+        }
+        let seen: std::collections::HashSet<Class> = (0..200).map(|i| a.class_for(i)).collect();
+        assert_eq!(seen.len(), STARTING_CLASSES.len());
+    }
+
+    #[test]
+    fn behavior_defaults_disabled() {
+        let cfg: LoadTestConfig = toml::from_str("").unwrap();
+        assert!(!cfg.behavior.cast.enabled);
+        assert!(!cfg.behavior.chat.enabled);
+        assert!(!cfg.behavior.interact.enabled);
+        assert_eq!(cfg.behavior.cast.interval_ms, 8_000);
+        assert_eq!(cfg.behavior.interact.radius, 8);
+    }
+
+    #[test]
+    fn behavior_section_parses() {
+        let cfg: LoadTestConfig = toml::from_str(
+            r#"
+            [behavior.cast]
+            enabled = true
+            interval_ms = 1500
+            allow_hostile = true
+
+            [behavior.chat]
+            enabled = true
+            messages = ["hi", "lo"]
+
+            [behavior.interact]
+            enabled = true
+            radius = 3
+            "#,
+        )
+        .unwrap();
+        assert!(cfg.behavior.cast.enabled);
+        assert_eq!(cfg.behavior.cast.interval_ms, 1500);
+        assert!(cfg.behavior.cast.allow_hostile);
+        assert!(cfg.behavior.chat.enabled);
+        assert_eq!(cfg.behavior.chat.messages, vec!["hi", "lo"]);
+        assert_eq!(cfg.behavior.chat.interval_ms, 30_000);
+        assert!(cfg.behavior.interact.enabled);
+        assert_eq!(cfg.behavior.interact.radius, 3);
     }
 }

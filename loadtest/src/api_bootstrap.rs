@@ -16,13 +16,43 @@ use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHasher};
 use mag_core::constants::VERSION;
 use mag_core::types::api::{
-    CharacterSummary, CreateAccountRequest, CreateCharacterRequest, CreateGameLoginTicketRequest,
-    CreateGameLoginTicketResponse, GetCharactersResponse, LoginRequest, LoginResponse,
+    CharacterSummary, Class, CreateAccountRequest, CreateCharacterRequest,
+    CreateGameLoginTicketRequest, CreateGameLoginTicketResponse, GetCharactersResponse,
+    LoginRequest, LoginResponse, Sex,
 };
 use reqwest::StatusCode;
 use tokio::sync::{Mutex, Semaphore};
 
 use crate::config::LoadTestConfig;
+
+/// Identity of the character a bot plays, as reported by the account API.
+///
+/// The class and sex come from the API record (not the config), so a
+/// character created by an earlier run with a different `accounts.class`
+/// setting is still tracked with its real class. This is what downstream
+/// behaviour logic (spell selection, future behaviour trees) keys off.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BotCharacter {
+    /// API character ID used for ticket minting.
+    pub id: u64,
+    /// In-game character name.
+    pub name: String,
+    /// Starting class/race of the character.
+    pub class: Class,
+    /// Character sex.
+    pub sex: Sex,
+}
+
+impl From<CharacterSummary> for BotCharacter {
+    fn from(summary: CharacterSummary) -> Self {
+        Self {
+            id: summary.id,
+            name: summary.name,
+            class: summary.class,
+            sex: summary.sex,
+        }
+    }
+}
 
 /// Maximum number of distinct candidate names to try when the server rejects
 /// a generated character name (HTTP 400 — e.g. it contains a banned
@@ -232,10 +262,12 @@ pub fn hash_password(username: &str, password: &str) -> anyhow::Result<String> {
 // Bootstrap
 // ---------------------------------------------------------------------------
 
-/// Ensures the bot account and character exist, and returns the JWT + character ID.
+/// Ensures the bot account and character exist, and returns the JWT + character identity.
 ///
 /// Idempotent: a `409 Conflict` on account creation means the account already exists
-/// (reuses it).  The character named `{prefix}-bot-{index}` is reused if present.
+/// (reuses it).  The account's first existing character is reused if present;
+/// otherwise one is created with the class resolved by
+/// [`AccountConfig::class_for`](crate::config::AccountConfig::class_for).
 ///
 /// # Arguments
 ///
@@ -246,14 +278,14 @@ pub fn hash_password(username: &str, password: &str) -> anyhow::Result<String> {
 ///
 /// # Returns
 ///
-/// * `Ok((jwt, character_id))` on success.
+/// * `Ok((jwt, character))` on success.
 /// * `Err` if any API call fails fatally.
 pub async fn bootstrap_client(
     index: usize,
     config: &LoadTestConfig,
     http: &reqwest::Client,
     rate_limiter: &RateLimiter,
-) -> anyhow::Result<(String, u64)> {
+) -> anyhow::Result<(String, BotCharacter)> {
     let base = config.api.base_url.trim_end_matches('/').to_owned();
     let username = format!("{}-{}", config.accounts.prefix, index);
     let email = format!("{username}@{}", config.accounts.email_domain);
@@ -329,8 +361,8 @@ pub async fn bootstrap_client(
 
     let chars: GetCharactersResponse = char_resp.json().await.context("parse characters")?;
 
-    let character_id = if let Some(ch) = chars.characters.first() {
-        ch.id
+    let character = if let Some(ch) = chars.characters.into_iter().next() {
+        BotCharacter::from(ch)
     } else {
         // No characters yet — create one. The server's name filter (banned
         // substrings, reserved words, etc.) isn't known to this tool and can
@@ -338,14 +370,18 @@ pub async fn bootstrap_client(
         // suffix can spell a banned word only where they join. Retry with a
         // different deterministic candidate on a name-rejection (HTTP 400)
         // before giving up; any other failure is still treated as fatal.
+        let class = config.accounts.class_for(index);
         let mut created = None;
         let mut last_candidate = String::new();
         for attempt in 0..MAX_CHARACTER_NAME_ATTEMPTS {
             let candidate = character_name_candidate(&config.accounts.prefix, index, attempt);
             last_candidate.clone_from(&candidate);
-            let outcome = create_character(http, &base, &jwt, &candidate, config, rate_limiter)
-                .await
-                .with_context(|| format!("create character '{candidate}' (account: {username})"))?;
+            let outcome =
+                create_character(http, &base, &jwt, &candidate, class, config, rate_limiter)
+                    .await
+                    .with_context(|| {
+                        format!("create character '{candidate}' (account: {username})")
+                    })?;
             match outcome {
                 CreateCharacterOutcome::Created(summary) => {
                     created = Some(summary);
@@ -363,10 +399,10 @@ pub async fn bootstrap_client(
                 "no acceptable character name found for {username} after {MAX_CHARACTER_NAME_ATTEMPTS} attempts (last tried: '{last_candidate}')"
             )
         })?;
-        created.id
+        BotCharacter::from(created)
     };
 
-    Ok((jwt, character_id))
+    Ok((jwt, character))
 }
 
 /// Mints a fresh one-time game-login ticket for the given character.
@@ -433,17 +469,29 @@ enum CreateCharacterOutcome {
 
 /// Creates a character via the API, honouring the rate limiter.
 ///
+/// # Arguments
+///
+/// * `http` - Shared HTTP client.
+/// * `base` - API base URL without a trailing slash.
+/// * `jwt` - Bearer token for the owning account.
+/// * `name` - Requested character name.
+/// * `class` - Starting class to request.
+/// * `config` - Shared load-test configuration (sex).
+/// * `rate_limiter` - Shared API rate limiter.
+///
 /// # Returns
 ///
 /// * `Ok(CreateCharacterOutcome::Created(_))` on success.
 /// * `Ok(CreateCharacterOutcome::NameRejected)` when the server rejects `name`
 ///   specifically (`HTTP 400`) — retryable with a different name.
 /// * `Err` for any other failure (network, auth, server error, etc.).
+#[allow(clippy::too_many_arguments)]
 async fn create_character(
     http: &reqwest::Client,
     base: &str,
     jwt: &str,
     name: &str,
+    class: Class,
     config: &LoadTestConfig,
     rate_limiter: &RateLimiter,
 ) -> anyhow::Result<CreateCharacterOutcome> {
@@ -455,7 +503,7 @@ async fn create_character(
                 name: name.to_owned(),
                 description: None,
                 sex: config.accounts.sex(),
-                class: config.accounts.class(),
+                class,
             }),
     )
     .await

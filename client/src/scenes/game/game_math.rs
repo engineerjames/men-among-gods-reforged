@@ -53,16 +53,22 @@ impl GameScene {
         (cx, cy)
     }
 
-    /// Returns the camera offsets, in [`SUBPIXEL_UNIT`] units, derived from the
-    /// center tile's `obj_xoff_sub` / `obj_yoff_sub` (smooth scrolling between
-    /// tiles).
-    pub(super) fn camera_offsets(ps: &PlayerState) -> (i32, i32) {
-        let map = ps.map();
-        if let Some(center) = map.tile_at_xy(TILEX / 2, TILEY / 2) {
-            (-center.obj_xoff_sub, -center.obj_yoff_sub)
-        } else {
-            (0, 0)
-        }
+    /// Returns the camera offsets, in [`SUBPIXEL_UNIT`] units, for the frame
+    /// being rendered.
+    ///
+    /// The camera follows the centre tile's `obj_xoff_sub` / `obj_yoff_sub`
+    /// (smooth scrolling between tiles), interpolated between the previous and
+    /// current server tick so the world scrolls at display rate.
+    ///
+    /// # Arguments
+    ///
+    /// * `ps` - Player state owning the live map.
+    ///
+    /// # Returns
+    ///
+    /// * `(x, y)` camera offsets in [`SUBPIXEL_UNIT`] units.
+    pub(super) fn camera_offsets(&self, ps: &PlayerState) -> (i32, i32) {
+        self.world_interpolator.camera_offset(ps.map())
     }
 
     /// Converts a screen pixel coordinate to the map tile `(x, y)` it lies on,

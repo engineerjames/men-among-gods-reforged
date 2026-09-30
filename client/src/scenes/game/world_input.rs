@@ -82,7 +82,7 @@ impl GameScene {
             return None;
         };
 
-        let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
+        let (cam_xoff, cam_yoff) = self.camera_offsets(ps);
 
         let Some((mx, my)) = Self::screen_to_map_tile(x, y, cam_xoff, cam_yoff) else {
             log::warn!("Click outside of map area: screen=({}, {})", x, y);

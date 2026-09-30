@@ -1,7 +1,8 @@
 //! `mag-loadtest` — game-server load-test client simulator.
 //!
 //! Spawns up to hundreds of headless bot clients that authenticate via the
-//! account API, connect to the game server over TLS, and simulate movement.
+//! account API, connect to the game server over TLS, and simulate movement,
+//! spell casting, chat, and environment interaction.
 //!
 //! # Usage
 //!
@@ -11,12 +12,14 @@
 //! ```
 
 mod api_bootstrap;
+mod behavior;
 mod config;
 mod login_gate;
 mod metrics;
 mod net_impair;
 mod protocol;
 mod sim_client;
+mod world_view;
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -143,6 +146,13 @@ async fn main() -> anyhow::Result<()> {
             "disabled"
         },
     );
+    log::info!(
+        "  Class: {} | Behaviour: cast={} chat={} interact={}",
+        config.accounts.class,
+        on_off(config.behavior.cast.enabled),
+        on_off(config.behavior.chat.enabled),
+        on_off(config.behavior.interact.enabled),
+    );
 
     let config = Arc::new(config);
     let god_password = Arc::new(god_password);
@@ -232,6 +242,11 @@ async fn main() -> anyhow::Result<()> {
 // ---------------------------------------------------------------------------
 // Config loading
 // ---------------------------------------------------------------------------
+
+/// Formats a boolean flag for the startup summary.
+fn on_off(enabled: bool) -> &'static str {
+    if enabled { "on" } else { "off" }
+}
 
 /// Loads [`LoadTestConfig`] from a TOML file, falling back to defaults if the
 /// file is absent.

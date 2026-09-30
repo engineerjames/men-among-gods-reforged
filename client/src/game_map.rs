@@ -44,7 +44,6 @@ fn movement_base_status(status: u8) -> Option<u8> {
 pub struct GameMap {
     tiles: Vec<CMapTile>,
     last_setmap_index: Option<u16>,
-    animation_started_since_last_check: bool,
 }
 
 impl Default for GameMap {
@@ -74,7 +73,6 @@ impl GameMap {
         Self {
             tiles,
             last_setmap_index: None,
-            animation_started_since_last_check: false,
         }
     }
 
@@ -99,14 +97,6 @@ impl GameMap {
     #[inline]
     pub fn reset_last_setmap_index(&mut self) {
         self.last_setmap_index = None;
-    }
-
-    /// Takes the one-shot signal that an existing character changed animations.
-    ///
-    /// # Returns
-    /// * `true` once after a character animation base changes.
-    pub fn take_animation_started(&mut self) -> bool {
-        std::mem::take(&mut self.animation_started_since_last_check)
     }
 
     /// Converts (x, y) grid coordinates to a flat index.
@@ -240,12 +230,6 @@ impl GameMap {
             let starts_new_movement = movement_base_status(v).is_some()
                 && movement_base_status(v) != movement_base_status(tile.ch_status);
 
-            if same_character
-                && character_animation_base_status(v)
-                    != character_animation_base_status(tile.ch_status)
-            {
-                self.animation_started_since_last_check = true;
-            }
             tile.movement_start_pending = same_character && starts_new_movement;
             tile.movement_start_lead_ticks = 0;
             tile.ch_status = v;
@@ -574,7 +558,7 @@ mod tests {
     }
 
     #[test]
-    fn same_character_movement_and_turn_starts_raise_presentation_signal() {
+    fn same_character_movement_start_is_flagged_for_cadence_correction() {
         let mut map = GameMap::new();
         map.apply_set_map(
             0,
@@ -611,33 +595,9 @@ mod tests {
             None,
         );
 
-        {
-            let tile = map.tile_at_index(10).unwrap();
-            assert!(tile.movement_start_pending);
-            assert_eq!(tile.movement_start_lead_ticks, 0);
-        }
-        assert!(map.take_animation_started());
-        assert!(!map.take_animation_started());
-
-        map.apply_set_map(
-            0,
-            Some(10),
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            Some(96),
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        );
-
-        assert!(map.take_animation_started());
+        let tile = map.tile_at_index(10).unwrap();
+        assert!(tile.movement_start_pending);
+        assert_eq!(tile.movement_start_lead_ticks, 0);
     }
 
     #[test]
