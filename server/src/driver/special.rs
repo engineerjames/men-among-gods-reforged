@@ -1154,7 +1154,7 @@ fn zoetje_tutorial_dialogue(
             ZoetjeGate::Look,
         )),
         3 => Some((
-            "To do this once the item is in your inventory, hold shift + left-click to grab the item, then place it in the appropriate slot and press left-click again to set it."
+            "To do this once the item is in your inventory, hold shift + left-click to grab the item, then place it in the appropriate slot and press shift + left-click again to set it."
                 .to_owned(),
             ZoetjeGate::Pause,
         )),
