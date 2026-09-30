@@ -1064,6 +1064,21 @@ impl GameState {
             return true;
         }
 
+        // Zoetje (special driver 4) runs the starting-area tutorial.
+        if self.characters[co].data[25] == 4
+            && (self.characters[co].flags & CharacterFlags::Player.bits()) == 0
+        {
+            if msg {
+                let co_name = self.characters[co].get_name().to_owned();
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("{co_name} is under the protection of the gods.\n"),
+                );
+            }
+            return false;
+        }
+
         // Check for NOFIGHT
         let m1 = (i32::from(self.characters[cn_actual].x)
             + i32::from(self.characters[cn_actual].y) * SERVER_MAPX) as usize;
@@ -1285,6 +1300,19 @@ mod tests {
 
     fn spend_talent(gs: &mut GameState, cn: usize, slot: core::talent_trees::TalentRef) {
         gs.characters[cn].future1[slot.layer as usize] |= slot.mask;
+    }
+
+    #[test]
+    fn players_may_not_attack_zoetje() {
+        with_test_gs(|gs| {
+            seed_character(gs, 1, CharacterFlags::Player.bits(), 0);
+            seed_character(gs, 2, 0, 0);
+            seed_character(gs, 3, 0, 0);
+            gs.characters[2].data[25] = 4;
+
+            assert!(!gs.may_attack_msg(1, 2, false));
+            assert!(gs.may_attack_msg(1, 3, false));
+        });
     }
 
     #[test]

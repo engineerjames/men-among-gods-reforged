@@ -98,6 +98,15 @@ fn main() -> Result<(), String> {
             })
             .is_ok();
 
+    if audio_available {
+        // SDL2_mixer only allocates 8 mixing channels by default, which the game
+        // exhausts quickly. Reserving the first channel keeps music playback from
+        // being stolen by `Mix_PlayChannel(-1)` sfx requests.
+        let allocated = sdl2::mixer::allocate_channels(client::sfx_cache::MIXER_CHANNEL_COUNT);
+        let reserved = sdl2::mixer::reserve_channels(client::sfx_cache::RESERVED_CHANNEL_COUNT);
+        log::info!("Audio mixer channels allocated={allocated} reserved={reserved}");
+    }
+
     log::info!("Creating window and event pump...");
     let video = sdl_context.video()?;
     let window_title = format!("Men Among Gods - Reforged v{}", env!("CARGO_PKG_VERSION"));

@@ -803,6 +803,21 @@ impl GameState {
                 self.do_character_log(cn, FontColor::Green, "Black List.\n");
             }
         }
+
+        // Only a deliberate manual look at Zoetje advances the starting tutorial;
+        // automatic looks and looks at other NPCs do not count.
+        let is_zoetje = self.characters[co].data[25] == 4;
+        let cn_is_player = self.characters[cn].flags & CharacterFlags::Player.bits() != 0;
+        if is_zoetje && cn_is_player && autoflag == 0 {
+            self.do_notify_character(
+                co as u32,
+                i32::from(core::constants::NT_LOOK),
+                cn as i32,
+                0,
+                0,
+                0,
+            );
+        }
     }
 
     /// Port of `do_give_exp(int cn, int p, int gflag, int rank)` from `svr_do.cpp`

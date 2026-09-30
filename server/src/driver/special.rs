@@ -3,7 +3,7 @@ use crate::game_state::GameState;
 use crate::god::God;
 use crate::{driver, player};
 use core::types::Character;
-use core::{constants::*, skills};
+use core::{constants::*, skills, traits::Class};
 
 struct Seen {
     co: usize,
@@ -983,7 +983,721 @@ pub fn npc_cityattack_msg(
     }
 }
 
-/// Runs the high-priority tick for Malte's NPC driver.
+/// Runs the high-priority tick for Zoetje's NPC driver (special driver 4).
+///
+/// # Arguments
+///
+/// * `_gs` - Active game state used by this function.
+/// * `_cn` - Zoetje character index.
+///
+/// # Returns
+///
+/// * Always `false`; Zoetje has no high-priority actions.
+pub fn npc_zoetje_high(_gs: &mut GameState, _cn: usize) -> bool {
+    false
+}
+
+/// Runs the low-priority tick for Zoetje's NPC driver (special driver 4).
+///
+/// Tutorial progress is driven entirely by player notifications, so the only
+/// idle behaviour is keeping her facing her configured resting direction.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
+/// * `cn` - Zoetje character index.
+///
+/// # Returns
+///
+/// * `true` when a turn toward the resting direction was queued.
+pub fn npc_zoetje_low(gs: &mut GameState, cn: usize) -> bool {
+    npc_zoetje_face_resting_direction(gs, cn)
+}
+
+/// Queues a turn so Zoetje faces the resting direction from `data[30]`.
+///
+/// `pop_create_char` forces every spawned NPC to `DX_DOWN`, and the generic
+/// low-priority driver (which normally applies `data[30]`) is bypassed by
+/// special drivers, so Zoetje has to apply it herself.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
+/// * `cn` - Zoetje character index.
+///
+/// # Returns
+///
+/// * `true` when a `DR_TURN` action was queued, otherwise `false`.
+fn npc_zoetje_face_resting_direction(gs: &mut GameState, cn: usize) -> bool {
+    let wanted = gs.characters[cn].data[30];
+    if wanted == 0 || i32::from(gs.characters[cn].dir) == wanted {
+        return false;
+    }
+
+    let (dx, dy) = match u8::try_from(wanted) {
+        Ok(DX_UP) => (0, -1),
+        Ok(DX_DOWN) => (0, 1),
+        Ok(DX_LEFT) => (-1, 0),
+        Ok(DX_RIGHT) => (1, 0),
+        Ok(DX_LEFTUP) => (-1, -1),
+        Ok(DX_LEFTDOWN) => (-1, 1),
+        Ok(DX_RIGHTUP) => (1, -1),
+        Ok(DX_RIGHTDOWN) => (1, 1),
+        _ => return false,
+    };
+
+    let target_x = i32::from(gs.characters[cn].x) + dx;
+    let target_y = i32::from(gs.characters[cn].y) + dy;
+    if !(0..SERVER_MAPX).contains(&target_x) || !(0..SERVER_MAPY).contains(&target_y) {
+        return false;
+    }
+
+    gs.characters[cn].misc_action = DR_TURN as u16;
+    gs.characters[cn].misc_target1 = target_x as u16;
+    gs.characters[cn].misc_target2 = target_y as u16;
+    true
+}
+
+/// Character field used to persist per-player Zoetje tutorial progress.
+const ZOETJE_TUTORIAL_STEP_IDX: usize = 5;
+/// Character field used to rate-limit each player's tutorial messages.
+const ZOETJE_TUTORIAL_NEXT_TICK_IDX: usize = 6;
+/// Minimum interval between consecutive tutorial messages.
+const ZOETJE_TUTORIAL_MESSAGE_INTERVAL: i32 = TICKS * 12;
+/// Interval between nudges while the player has not met the current gate.
+const ZOETJE_TUTORIAL_REMINDER_INTERVAL: i32 = TICKS * 30;
+/// First tutorial step with no dialogue left; the tutorial is finished here.
+const ZOETJE_TUTORIAL_DONE_STEP: i32 = 8;
+/// Tutorial step whose line also hands the player a flask.
+const ZOETJE_FLASK_STEP: i32 = 4;
+/// Item template Zoetje hands out for potion brewing.
+const ZOETJE_FLASK_TEMPLATE: usize = 100;
+/// Tutorial step whose line sends the player to fight the practice enemy.
+const ZOETJE_POTION_STEP: i32 = 6;
+/// Tutorial step delivered once the practice enemy is slain.
+const ZOETJE_SLAIN_STEP: i32 = 7;
+/// Garden room the player is sent to once they are equipped.
+const ZOETJE_GARDEN_POS: (usize, usize) = (491, 125);
+/// Practice room the player is sent to once they have brewed a potion.
+const ZOETJE_PRACTICE_ROOM_POS: (usize, usize) = (498, 125);
+/// Chebyshev radius around [`ZOETJE_PRACTICE_ROOM_POS`] that counts as inside the room.
+const ZOETJE_PRACTICE_ROOM_RADIUS: i32 = 3;
+/// Zoetje's room, where the player returns to find the exit portal.
+const ZOETJE_START_ROOM_POS: (usize, usize) = (HOME_START_X as usize, HOME_START_Y as usize);
+/// Character template spawned beside the player as a practice enemy.
+const ZOETJE_PRACTICE_ENEMY_TEMPLATE: usize = 12;
+/// Relative `data[64]` self-destruct delay so an ignored practice enemy despawns.
+const ZOETJE_PRACTICE_ENEMY_LIFETIME: i32 = TICKS * 60 * 10;
+/// Fallback destination (Aston's Temple of Skua) when the tutorial cannot continue.
+const ZOETJE_FALLBACK_POS: (usize, usize) = (HOME_MERCENARY_X as usize, HOME_MERCENARY_Y as usize);
+/// What Zoetje tells the player before sending them to Aston early.
+const ZOETJE_FALLBACK_MESSAGE: &str = "The weave of the Temple of Rebirth is fraying- I cannot hold these halls together around you any longer. I will send you to the Temple of Skua in Aston instead. Go with the gods!";
+
+/// What the player must do before Zoetje will deliver a given tutorial line.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum ZoetjeGate {
+    /// Nothing beyond the normal pause between lines.
+    Pause,
+    /// Deliberately look at Zoetje (Ctrl + right-click).
+    Look,
+    /// Wear body armor and wield a weapon.
+    Equipped,
+    /// Carry a potion brewed from a garden flower.
+    Potion,
+    /// Slay the practice enemy; only the kill hook clears it.
+    Slain,
+}
+
+/// Builds one personalized line of Zoetje's tutorial dialogue.
+///
+/// # Arguments
+///
+/// * `step` - Tutorial dialogue step to produce.
+/// * `player_name` - Name of the player receiving the tutorial.
+/// * `class` - Player's character class, used to select the suggested weapon.
+///
+/// # Returns
+///
+/// * The dialogue and the gate that must be cleared before it is delivered,
+///   or `None` once the tutorial is complete.
+fn zoetje_tutorial_dialogue(
+    step: i32,
+    player_name: &str,
+    class: Class,
+) -> Option<(String, ZoetjeGate)> {
+    let weapon = match class {
+        Class::Harakim => "Harakim Dagger",
+        Class::Templar => "Templar Two-Handed Blade",
+        _ => "Mercenary Sword",
+    };
+
+    match step {
+        0 => Some((
+            format!(
+                "{}, welcome to the Temple of Rebirth. You've come back to our lands- a familiar face, reborn as a stranger.",
+                player_name
+            ),
+            ZoetjeGate::Pause,
+        )),
+        1 => Some((
+            format!(
+                "{}, rebirth can be confusing. Are you able to see fully with your new eyes? Please, hold the CTRL key and right-click me to look at me.",
+                player_name
+            ),
+            ZoetjeGate::Pause,
+        )),
+        2 => Some((
+            format!(
+                "You've opened the door, and set yourself on this mortal plain once more. But be ready for the dangers ahead of you- please take the armor and a {}. Open your inventory (press I), and equip for battle.",
+                weapon
+            ),
+            ZoetjeGate::Look,
+        )),
+        3 => Some((
+            "To do this once the item is in your inventory, hold shift + left-click to grab the item, then place it in the appropriate slot and press shift + left-click again to set it."
+                .to_owned(),
+            ZoetjeGate::Pause,
+        )),
+        ZOETJE_FLASK_STEP => Some((
+            "Now you're equipped for battle, and moving about! Here, take this flask. Please, take all the flowers from my garden you would like. You can use them with the flask to make a potion."
+                .to_owned(),
+            ZoetjeGate::Equipped,
+        )),
+        5 => Some((
+            "Hold Shift + Left-Click to gather flowers from the garden.".to_owned(),
+            ZoetjeGate::Pause,
+        )),
+        ZOETJE_POTION_STEP => Some((
+            "In the next room there is an enemy to practice your attacks on. You must remember how to fight! Hold Ctrl + Left-Click to attack."
+                .to_owned(),
+            ZoetjeGate::Potion,
+        )),
+        ZOETJE_SLAIN_STEP => Some((
+            format!(
+                "Well fought, {}! You haven't forgotten how to hold your own. When you are ready to leave my lands, hold Shift + Left-Click on the portal to step through it.",
+                player_name
+            ),
+            ZoetjeGate::Slain,
+        )),
+        _ => None,
+    }
+}
+
+/// Returns the nudge Zoetje repeats while the player has not cleared a gate.
+///
+/// # Arguments
+///
+/// * `gate` - Gate currently blocking tutorial progress.
+///
+/// # Returns
+///
+/// * The reminder text, or `None` for gates that should wait silently.
+fn zoetje_gate_reminder(gate: ZoetjeGate) -> Option<&'static str> {
+    match gate {
+        ZoetjeGate::Look => Some(
+            "Take a good look at me first: hold the CTRL key and right-click me. I'll wait for you.",
+        ),
+        ZoetjeGate::Equipped => Some(
+            "Don't be shy: put the armor on your body and take a weapon in hand. I'll wait for you.",
+        ),
+        ZoetjeGate::Potion => Some(
+            "Go on, pick a flower from my garden and use it with your flask to brew a potion. I'll send you onward once it's done.",
+        ),
+        ZoetjeGate::Pause | ZoetjeGate::Slain => None,
+    }
+}
+
+/// Reports whether the player has done what the current tutorial gate asks.
+///
+/// [`ZoetjeGate::Look`] and [`ZoetjeGate::Slain`] are never satisfied here;
+/// only their events (`NT_LOOK`, the practice-enemy kill hook) clear them.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing the player.
+/// * `player` - Character index being tutored.
+/// * `gate` - Gate to evaluate.
+///
+/// # Returns
+///
+/// * `true` when the gate is cleared, otherwise `false`.
+fn zoetje_gate_satisfied(gs: &GameState, player: usize, gate: ZoetjeGate) -> bool {
+    match gate {
+        ZoetjeGate::Pause => true,
+        ZoetjeGate::Look | ZoetjeGate::Slain => false,
+        ZoetjeGate::Equipped => {
+            gs.characters[player].worn[WN_BODY] != 0 && gs.characters[player].worn[WN_RHAND] != 0
+        }
+        ZoetjeGate::Potion => zoetje_player_has_potion(gs, player),
+    }
+}
+
+/// Reports whether the player is holding or carrying a flask potion.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing the player and item instances.
+/// * `player` - Character index being tutored.
+///
+/// # Returns
+///
+/// * `true` when any carried item is a potion template, otherwise `false`.
+fn zoetje_player_has_potion(gs: &GameState, player: usize) -> bool {
+    let character = &gs.characters[player];
+    character
+        .item
+        .iter()
+        .copied()
+        .chain(std::iter::once(character.citem))
+        .any(|item| {
+            let item = item as usize;
+            item != 0
+                && item < MAXITEM
+                && POTION_TEMPLATE_IDS.contains(&usize::from(gs.items[item].temp))
+        })
+}
+
+/// Reports whether the player just cleared an action gate, so Zoetje can
+/// answer straight away instead of waiting out the pause or reminder timer.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing the player.
+/// * `player` - Character index being tutored.
+/// * `step` - Tutorial step the player is on.
+/// * `gate` - Gate guarding that step's line.
+///
+/// # Returns
+///
+/// * `true` when the line can be delivered immediately, otherwise `false`.
+fn zoetje_action_gate_just_cleared(
+    gs: &GameState,
+    player: usize,
+    step: i32,
+    gate: ZoetjeGate,
+) -> bool {
+    gate != ZoetjeGate::Pause
+        && zoetje_gate_satisfied(gs, player, gate)
+        // A full inventory would otherwise repeat the "make room" nudge every notify.
+        && (step != ZOETJE_FLASK_STEP
+            || gs.characters[player].get_next_inventory_slot().is_some())
+}
+
+/// Moves the player to a tutorial room, logging when no free tile is found.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing the player.
+/// * `player` - Character index being moved.
+/// * `(x, y)` - Destination tile.
+///
+/// # Returns
+///
+/// * `true` when the player was moved, otherwise `false`.
+fn zoetje_transfer_player(gs: &mut GameState, player: usize, (x, y): (usize, usize)) -> bool {
+    let moved = God::transfer_char(gs, player, x, y);
+    if !moved {
+        log::warn!("Zoetje could not transfer character {player} to ({x}, {y})");
+    }
+    moved
+}
+
+/// Spawns a practice enemy beside the player that only fights back once attacked.
+///
+/// `God::create_char` zeroes the template's `data[]`, which clears its kill
+/// groups, door and rest-position duties, so the enemy stays passive until hit.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing the player.
+/// * `player` - Character index the enemy is placed next to.
+///
+/// # Returns
+///
+/// * The spawned character index, or `None` when it could not be created or placed.
+fn zoetje_spawn_practice_enemy(gs: &mut GameState, player: usize) -> Option<usize> {
+    let Some(cc) = God::create_char(gs, ZOETJE_PRACTICE_ENEMY_TEMPLATE, false) else {
+        log::error!(
+            "Zoetje could not create practice enemy template {ZOETJE_PRACTICE_ENEMY_TEMPLATE}"
+        );
+        return None;
+    };
+    let cc = cc as usize;
+
+    // create_char assigns a random name; restore the template's.
+    let name = gs.character_templates[ZOETJE_PRACTICE_ENEMY_TEMPLATE].name;
+    gs.characters[cc].name = name;
+    gs.characters[cc].reference = name;
+    // Otherwise its death would respawn another copy at the template's home tile.
+    gs.characters[cc].flags &= !CharacterFlags::Respawn.bits();
+    gs.characters[cc].data[64] = ZOETJE_PRACTICE_ENEMY_LIFETIME;
+
+    let (x, y) = (
+        gs.characters[player].x as usize,
+        gs.characters[player].y as usize,
+    );
+    if !God::drop_char_fuzzy(gs, cc, x, y) {
+        log::warn!("Zoetje could not place a practice enemy near character {player}");
+        God::destroy_items(gs, cc);
+        gs.characters[cc].used = USE_EMPTY;
+        return None;
+    }
+
+    Some(cc)
+}
+
+/// Ends the tutorial early when it cannot continue, sending the player to Aston
+/// and binding their temple and tavern there.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing Zoetje and the player.
+/// * `cn` - Zoetje's character index, used as the tell sender, or `0` if she is missing.
+/// * `player` - Character index being sent on.
+fn zoetje_send_to_aston(gs: &mut GameState, cn: usize, player: usize) {
+    if cn != 0 {
+        npc_zoetje_tell_player(gs, cn, player, ZOETJE_FALLBACK_MESSAGE);
+    } else {
+        gs.do_character_log(
+            player,
+            core::types::FontColor::Yellow,
+            ZOETJE_FALLBACK_MESSAGE,
+        );
+    }
+
+    let (x, y) = ZOETJE_FALLBACK_POS;
+    let character = &mut gs.characters[player];
+    character.temple_x = x as u16;
+    character.temple_y = y as u16;
+    character.tavern_x = x as u16;
+    character.tavern_y = y as u16;
+    character.future3[ZOETJE_TUTORIAL_STEP_IDX] = ZOETJE_TUTORIAL_DONE_STEP;
+
+    if !God::transfer_char(gs, player, x, y) {
+        log::error!("Zoetje could not send character {player} to Aston ({x}, {y})");
+    }
+}
+
+/// Reports whether the player is standing in the practice room.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing the player.
+/// * `player` - Character index to check.
+///
+/// # Returns
+///
+/// * `true` when the player is inside the practice room, otherwise `false`.
+fn zoetje_player_in_practice_room(gs: &GameState, player: usize) -> bool {
+    let (x, y) = ZOETJE_PRACTICE_ROOM_POS;
+    (i32::from(gs.characters[player].x) - x as i32).abs() <= ZOETJE_PRACTICE_ROOM_RADIUS
+        && (i32::from(gs.characters[player].y) - y as i32).abs() <= ZOETJE_PRACTICE_ROOM_RADIUS
+}
+
+/// Moves the player into the practice room and spawns their practice enemy.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing the player.
+/// * `player` - Character index being sent to fight.
+///
+/// # Returns
+///
+/// * `true` when both the transfer and the spawn succeeded, otherwise `false`.
+fn zoetje_start_practice_fight(gs: &mut GameState, player: usize) -> bool {
+    zoetje_transfer_player(gs, player, ZOETJE_PRACTICE_ROOM_POS)
+        && zoetje_spawn_practice_enemy(gs, player).is_some()
+}
+
+/// Sends a player who left the practice room without a kill (death or relog) back to fight.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing Zoetje and the player.
+/// * `cn` - Zoetje's character index.
+/// * `player` - Character index awaiting the practice kill.
+///
+/// # Returns
+///
+/// * `true` when the player was sent back (or on to Aston), `false` while they are still fighting.
+fn zoetje_retry_practice_fight(gs: &mut GameState, cn: usize, player: usize) -> bool {
+    if zoetje_player_in_practice_room(gs, player) {
+        return false;
+    }
+
+    gs.characters[player].future3[ZOETJE_TUTORIAL_NEXT_TICK_IDX] = gs
+        .globals
+        .ticker
+        .saturating_add(ZOETJE_TUTORIAL_REMINDER_INTERVAL);
+    npc_zoetje_tell_player(
+        gs,
+        cn,
+        player,
+        "Back on your feet? Good- let's try that again. Hold Ctrl + Left-Click to attack.",
+    );
+    if !zoetje_start_practice_fight(gs, player) {
+        zoetje_send_to_aston(gs, cn, player);
+    }
+    true
+}
+
+/// Advances the tutorial when a tutored player slays a practice enemy.
+///
+/// Called from `do_character_killed`; the practice room is outside Zoetje's
+/// notify range, so she cannot observe the kill herself.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state.
+/// * `victim_temp` - Template id of the character that died.
+/// * `killer` - Character index of the killer.
+pub fn zoetje_practice_enemy_killed(gs: &mut GameState, victim_temp: u16, killer: usize) {
+    if usize::from(victim_temp) != ZOETJE_PRACTICE_ENEMY_TEMPLATE
+        || gs.characters[killer].flags & CharacterFlags::Player.bits() == 0
+        || gs.characters[killer].future3[ZOETJE_TUTORIAL_STEP_IDX] != ZOETJE_SLAIN_STEP
+    {
+        return;
+    }
+
+    // Players also use data[25] (as a kill counter), so exclude them.
+    let zoetje = (1..MAXCHARS).find(|&co| {
+        gs.characters[co].used == USE_ACTIVE
+            && gs.characters[co].data[25] == 4
+            && gs.characters[co].flags & CharacterFlags::Player.bits() == 0
+    });
+    match zoetje {
+        Some(cn) => {
+            npc_zoetje_advance_tutorial(gs, cn, killer, Some(ZoetjeGate::Slain), false);
+        }
+        None => {
+            log::error!("Zoetje is missing; sending character {killer} to Aston");
+            zoetje_send_to_aston(gs, 0, killer);
+        }
+    }
+}
+
+/// Creates a flask and places it in the player's inventory.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used to create and hand over the item.
+/// * `player` - Character index receiving the flask.
+///
+/// # Returns
+///
+/// * `true` when the flask reached the player's inventory, otherwise `false`.
+fn zoetje_give_flask(gs: &mut GameState, player: usize) -> bool {
+    let Some(flask) = God::create_item(gs, ZOETJE_FLASK_TEMPLATE) else {
+        log::error!("Zoetje could not create flask template {ZOETJE_FLASK_TEMPLATE}");
+        return false;
+    };
+
+    if God::give_character_item(gs, player, flask) {
+        return true;
+    }
+
+    gs.items[flask].used = USE_EMPTY;
+    false
+}
+
+/// Sends the next tutorial line privately and advances that player's state.
+///
+/// A line is only delivered once its gate is cleared; otherwise the player
+/// gets a periodic nudge and the tutorial stays on the same step.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing Zoetje and the player.
+/// * `cn` - Zoetje's character index.
+/// * `player` - Character index receiving the tutorial.
+/// * `gate_override` - Gate already cleared by an external event, if any.
+/// * `throttled` - The pause/reminder timer has not elapsed yet; only a freshly
+///   cleared action gate may advance.
+///
+/// # Returns
+///
+/// * `true` when a dialogue line or reminder was sent; otherwise `false`.
+fn npc_zoetje_advance_tutorial(
+    gs: &mut GameState,
+    cn: usize,
+    player: usize,
+    gate_override: Option<ZoetjeGate>,
+    throttled: bool,
+) -> bool {
+    let step = gs.characters[player].future3[ZOETJE_TUTORIAL_STEP_IDX];
+    let name = gs.characters[player].get_name().to_owned();
+    let class = Class::from(gs.characters[player].kindred);
+    let Some((message, gate)) = zoetje_tutorial_dialogue(step, &name, class) else {
+        return false;
+    };
+
+    // An external event only ever clears the gate it corresponds to; it must
+    // never skip ahead past an unrelated step's pause.
+    let cleared_by_event = match gate_override {
+        Some(cleared) if cleared != gate => return false,
+        Some(_) => true,
+        None => false,
+    };
+
+    if throttled && !zoetje_action_gate_just_cleared(gs, player, step, gate) {
+        return false;
+    }
+
+    if !cleared_by_event && !zoetje_gate_satisfied(gs, player, gate) {
+        if gate == ZoetjeGate::Slain {
+            return zoetje_retry_practice_fight(gs, cn, player);
+        }
+        let Some(reminder) = zoetje_gate_reminder(gate) else {
+            return false;
+        };
+        npc_zoetje_tell_player(gs, cn, player, reminder);
+        gs.characters[player].future3[ZOETJE_TUTORIAL_NEXT_TICK_IDX] = gs
+            .globals
+            .ticker
+            .saturating_add(ZOETJE_TUTORIAL_REMINDER_INTERVAL);
+        return true;
+    }
+
+    if step == ZOETJE_FLASK_STEP && gs.characters[player].get_next_inventory_slot().is_none() {
+        npc_zoetje_tell_player(
+            gs,
+            cn,
+            player,
+            "Your hands are full- make some room and I'll pass you a flask.",
+        );
+        gs.characters[player].future3[ZOETJE_TUTORIAL_NEXT_TICK_IDX] = gs
+            .globals
+            .ticker
+            .saturating_add(ZOETJE_TUTORIAL_REMINDER_INTERVAL);
+        return true;
+    }
+
+    if step == ZOETJE_FLASK_STEP && !zoetje_give_flask(gs, player) {
+        zoetje_send_to_aston(gs, cn, player);
+        return true;
+    }
+
+    // Commit progress first: the room transfer re-enters this driver via NT_SEE.
+    gs.characters[player].future3[ZOETJE_TUTORIAL_STEP_IDX] = step + 1;
+    gs.characters[player].future3[ZOETJE_TUTORIAL_NEXT_TICK_IDX] = gs
+        .globals
+        .ticker
+        .saturating_add(ZOETJE_TUTORIAL_MESSAGE_INTERVAL);
+
+    npc_zoetje_tell_player(gs, cn, player, &message);
+
+    let room_ready = match step {
+        ZOETJE_FLASK_STEP => zoetje_transfer_player(gs, player, ZOETJE_GARDEN_POS),
+        ZOETJE_POTION_STEP => zoetje_start_practice_fight(gs, player),
+        ZOETJE_SLAIN_STEP => zoetje_transfer_player(gs, player, ZOETJE_START_ROOM_POS),
+        _ => true,
+    };
+    if !room_ready {
+        zoetje_send_to_aston(gs, cn, player);
+    }
+    true
+}
+
+/// Sends tutorial text via Zoetje's private tell, splitting only if the tell
+/// command's 200-character display limit would otherwise truncate the text.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing Zoetje and the recipient.
+/// * `cn` - Zoetje's character index, used as the tell sender.
+/// * `player` - Character index receiving the tutorial.
+/// * `message` - Tutorial line to deliver.
+fn npc_zoetje_tell_player(gs: &mut GameState, cn: usize, player: usize, message: &str) {
+    let player_name = gs.characters[player].get_name().to_owned();
+    for part in zoetje_tell_parts(message) {
+        gs.do_tell(cn, &player_name, &part);
+    }
+}
+
+/// Splits a long private tell into bounded chunks, preferring a sentence break.
+///
+/// # Arguments
+///
+/// * `message` - Full tutorial message to preserve.
+///
+/// # Returns
+///
+/// * One or more strings, each no longer than the tell display limit.
+fn zoetje_tell_parts(message: &str) -> Vec<String> {
+    const TELL_MAX_CHARS: usize = 200;
+    if message.chars().count() <= TELL_MAX_CHARS {
+        return vec![message.to_owned()];
+    }
+
+    if let Some((first_sentence, remainder)) = message.split_once(". ") {
+        let first_sentence = format!("{first_sentence}.");
+        if first_sentence.chars().count() <= TELL_MAX_CHARS
+            && remainder.chars().count() <= TELL_MAX_CHARS
+        {
+            return vec![first_sentence, remainder.to_owned()];
+        }
+    }
+
+    let chars: Vec<char> = message.chars().collect();
+    chars
+        .chunks(TELL_MAX_CHARS)
+        .map(|chunk| chunk.iter().collect())
+        .collect()
+}
+
+/// Handles nearby-player and manual-look notifications for Zoetje's tutorial.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing Zoetje and nearby players.
+/// * `cn` - Zoetje character index receiving the message.
+/// * `msg_type` - Message type constant.
+/// * `dat1` - First message payload value, normally the nearby/looked-at character.
+/// * `_dat2` - Second message payload value.
+/// * `_dat3` - Third message payload value.
+/// * `_dat4` - Fourth message payload value.
+///
+/// # Returns
+///
+/// * `true` when a tutorial notification was handled, otherwise `false`.
+pub fn npc_zoetje_msg(
+    gs: &mut GameState,
+    cn: usize,
+    msg_type: i32,
+    dat1: i32,
+    _dat2: i32,
+    _dat3: i32,
+    _dat4: i32,
+) -> bool {
+    let player = dat1 as usize;
+    if player == 0
+        || player >= MAXCHARS
+        || gs.characters[player].used != USE_ACTIVE
+        || gs.characters[player].flags & CharacterFlags::Player.bits() == 0
+    {
+        return false;
+    }
+
+    if msg_type == i32::from(NT_LOOK) {
+        return npc_zoetje_advance_tutorial(gs, cn, player, Some(ZoetjeGate::Look), false);
+    }
+
+    if msg_type != i32::from(NT_SEE) {
+        return false;
+    }
+
+    let step = gs.characters[player].future3[ZOETJE_TUTORIAL_STEP_IDX];
+    if step >= ZOETJE_TUTORIAL_DONE_STEP {
+        return false;
+    }
+    // The opening greeting fires as soon as she notices a newcomer.
+    let throttled = step != 0
+        && gs.globals.ticker < gs.characters[player].future3[ZOETJE_TUTORIAL_NEXT_TICK_IDX];
+
+    npc_zoetje_advance_tutorial(gs, cn, player, None, throttled)
+}
+
+/// Returns the high-priority result for Malte's special NPC driver.
 ///
 /// # Arguments
 ///
@@ -1159,5 +1873,437 @@ pub fn npc_malte_msg(
             log::warn!("Unknown NPC message for {} ({}): {}", cn, name, msg_type);
             false
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        ZOETJE_FALLBACK_POS, ZOETJE_FLASK_STEP, ZOETJE_PRACTICE_ENEMY_LIFETIME,
+        ZOETJE_PRACTICE_ENEMY_TEMPLATE, ZOETJE_SLAIN_STEP, ZOETJE_START_ROOM_POS,
+        ZOETJE_TUTORIAL_DONE_STEP, ZOETJE_TUTORIAL_STEP_IDX, ZoetjeGate, npc_zoetje_low,
+        npc_zoetje_msg, zoetje_action_gate_just_cleared, zoetje_gate_satisfied,
+        zoetje_player_has_potion, zoetje_player_in_practice_room, zoetje_practice_enemy_killed,
+        zoetje_send_to_aston, zoetje_spawn_practice_enemy, zoetje_tell_parts,
+        zoetje_tutorial_dialogue,
+    };
+    use crate::test_helpers::{add_test_player, with_test_gs};
+    use core::constants::NT_SEE;
+    use core::constants::{
+        CharacterFlags, DR_IDLE, DR_TURN, DX_DOWN, DX_UP, IT_FLASK, IT_HEALING_POTION,
+        IT_RED_FLOWER, SERVER_MAPX, USE_ACTIVE, WN_BODY, WN_RHAND,
+    };
+    use core::traits::Class;
+
+    #[test]
+    fn zoetje_tutorial_dialogue_personalizes_greeting_and_class_weapon() {
+        assert_eq!(
+            zoetje_tutorial_dialogue(0, "Ada", Class::Templar).map(|(text, _)| text),
+            Some(
+                "Ada, welcome to the Temple of Rebirth. You've come back to our lands- a familiar face, reborn as a stranger."
+                    .to_owned()
+            )
+        );
+        assert!(
+            zoetje_tutorial_dialogue(2, "Ada", Class::Harakim)
+                .unwrap()
+                .0
+                .contains("Harakim Dagger")
+        );
+        assert!(
+            zoetje_tutorial_dialogue(2, "Ada", Class::Mercenary)
+                .unwrap()
+                .0
+                .contains("Mercenary Sword")
+        );
+        assert!(
+            zoetje_tutorial_dialogue(2, "Ada", Class::Templar)
+                .unwrap()
+                .0
+                .contains("Templar Two-Handed Blade")
+        );
+    }
+
+    #[test]
+    fn zoetje_tutorial_gates_wait_on_player_actions() {
+        assert_eq!(
+            zoetje_tutorial_dialogue(2, "Ada", Class::Mercenary)
+                .unwrap()
+                .1,
+            ZoetjeGate::Look
+        );
+        assert_eq!(
+            zoetje_tutorial_dialogue(4, "Ada", Class::Mercenary)
+                .unwrap()
+                .1,
+            ZoetjeGate::Equipped
+        );
+        assert_eq!(
+            zoetje_tutorial_dialogue(6, "Ada", Class::Mercenary)
+                .unwrap()
+                .1,
+            ZoetjeGate::Potion
+        );
+        assert_eq!(
+            zoetje_tutorial_dialogue(ZOETJE_SLAIN_STEP, "Ada", Class::Mercenary)
+                .unwrap()
+                .1,
+            ZoetjeGate::Slain
+        );
+    }
+
+    #[test]
+    fn zoetje_tutorial_dialogue_has_no_line_after_completion() {
+        assert!(
+            zoetje_tutorial_dialogue(ZOETJE_TUTORIAL_DONE_STEP, "Ada", Class::Mercenary).is_none()
+        );
+    }
+
+    /// Places Zoetje at her world position and returns her character index.
+    fn place_zoetje(gs: &mut crate::game_state::GameState) -> usize {
+        let zoetje = 2;
+        gs.characters[zoetje] = core::types::Character::default();
+        gs.characters[zoetje].used = USE_ACTIVE;
+        gs.characters[zoetje].x = 484;
+        gs.characters[zoetje].y = 128;
+        gs.characters[zoetje].data[25] = 4;
+        gs.map[484 + 128 * SERVER_MAPX as usize].ch = zoetje as u32;
+        zoetje
+    }
+
+    #[test]
+    fn slaying_practice_enemy_returns_player_to_zoetje_without_rebinding_home() {
+        with_test_gs(|gs| {
+            let (player, _) = add_test_player(gs);
+            place_zoetje(gs);
+            let (start_x, start_y) = ZOETJE_START_ROOM_POS;
+            gs.characters[player].x = 498;
+            gs.characters[player].y = 125;
+            gs.characters[player].temple_x = start_x as u16;
+            gs.characters[player].temple_y = start_y as u16;
+            gs.characters[player].future3[ZOETJE_TUTORIAL_STEP_IDX] = ZOETJE_SLAIN_STEP;
+
+            zoetje_practice_enemy_killed(gs, 13, player);
+            assert_eq!(
+                gs.characters[player].future3[ZOETJE_TUTORIAL_STEP_IDX],
+                ZOETJE_SLAIN_STEP
+            );
+
+            zoetje_practice_enemy_killed(gs, ZOETJE_PRACTICE_ENEMY_TEMPLATE as u16, player);
+
+            let ch = &gs.characters[player];
+            assert_eq!(
+                ch.future3[ZOETJE_TUTORIAL_STEP_IDX],
+                ZOETJE_TUTORIAL_DONE_STEP
+            );
+            assert_eq!((ch.temple_x, ch.temple_y), (start_x as u16, start_y as u16));
+            assert!((i32::from(ch.x) - start_x as i32).abs() <= 3);
+            assert!((i32::from(ch.y) - start_y as i32).abs() <= 3);
+        });
+    }
+
+    #[test]
+    fn exit_portal_sends_player_to_aston_and_binds_home_there() {
+        with_test_gs(|gs| {
+            let (player, _) = add_test_player(gs);
+
+            let portal = 50;
+            gs.items[portal] = core::types::Item::default();
+            gs.items[portal].used = USE_ACTIVE;
+            gs.items[portal].data[0] = 512;
+            gs.items[portal].data[1] = 512;
+
+            crate::driver::teleport3(gs, player, portal);
+
+            let ch = &gs.characters[player];
+            assert_eq!((ch.temple_x, ch.temple_y), (512, 512));
+            assert_eq!((ch.tavern_x, ch.tavern_y), (512, 512));
+            assert!((i32::from(ch.x) - 512).abs() <= 3 && (i32::from(ch.y) - 512).abs() <= 3);
+        });
+    }
+
+    #[test]
+    fn zoetje_sends_player_back_to_fight_after_leaving_practice_room() {
+        with_test_gs(|gs| {
+            let (player, _) = add_test_player(gs);
+            let zoetje = place_zoetje(gs);
+            gs.characters[player].x = 484;
+            gs.characters[player].y = 125;
+            gs.characters[player].future3[ZOETJE_TUTORIAL_STEP_IDX] = ZOETJE_SLAIN_STEP;
+            gs.character_templates[ZOETJE_PRACTICE_ENEMY_TEMPLATE].used = USE_ACTIVE;
+
+            assert!(npc_zoetje_msg(
+                gs,
+                zoetje,
+                i32::from(NT_SEE),
+                player as i32,
+                0,
+                0,
+                0
+            ));
+
+            assert!(zoetje_player_in_practice_room(gs, player));
+            assert_eq!(
+                gs.characters[player].future3[ZOETJE_TUTORIAL_STEP_IDX],
+                ZOETJE_SLAIN_STEP
+            );
+            assert!(
+                gs.characters.iter().any(|c| c.used == USE_ACTIVE
+                    && usize::from(c.temp) == ZOETJE_PRACTICE_ENEMY_TEMPLATE)
+            );
+        });
+    }
+
+    #[test]
+    fn zoetje_equipped_gate_requires_both_armor_and_weapon() {
+        with_test_gs(|gs| {
+            let player = 1;
+            gs.characters[player] = core::types::Character::default();
+            gs.characters[player].used = USE_ACTIVE;
+
+            assert!(!zoetje_gate_satisfied(gs, player, ZoetjeGate::Equipped));
+
+            gs.characters[player].worn[WN_BODY] = 10;
+            assert!(!zoetje_gate_satisfied(gs, player, ZoetjeGate::Equipped));
+
+            gs.characters[player].worn[WN_RHAND] = 11;
+            assert!(zoetje_gate_satisfied(gs, player, ZoetjeGate::Equipped));
+        });
+    }
+
+    #[test]
+    fn zoetje_potion_gate_matches_carried_and_held_potions() {
+        with_test_gs(|gs| {
+            let player = 1;
+            gs.characters[player] = core::types::Character::default();
+            gs.characters[player].used = USE_ACTIVE;
+            gs.items[20].temp = IT_HEALING_POTION as u16;
+            gs.items[21].temp = IT_FLASK as u16;
+            gs.items[22].temp = IT_RED_FLOWER as u16;
+
+            assert!(!zoetje_player_has_potion(gs, player));
+
+            gs.characters[player].item[3] = 21;
+            gs.characters[player].item[4] = 22;
+            assert!(!zoetje_player_has_potion(gs, player));
+
+            gs.characters[player].item[5] = 20;
+            assert!(zoetje_player_has_potion(gs, player));
+
+            gs.characters[player].item[5] = 0;
+            gs.characters[player].citem = 20;
+            assert!(zoetje_player_has_potion(gs, player));
+        });
+    }
+
+    #[test]
+    fn zoetje_action_gate_skips_timer_only_when_cleared() {
+        with_test_gs(|gs| {
+            let player = 1;
+            gs.characters[player] = core::types::Character::default();
+            gs.characters[player].used = USE_ACTIVE;
+
+            assert!(!zoetje_action_gate_just_cleared(
+                gs,
+                player,
+                0,
+                ZoetjeGate::Pause
+            ));
+            assert!(!zoetje_action_gate_just_cleared(
+                gs,
+                player,
+                2,
+                ZoetjeGate::Look
+            ));
+            assert!(!zoetje_action_gate_just_cleared(
+                gs,
+                player,
+                ZOETJE_FLASK_STEP,
+                ZoetjeGate::Equipped
+            ));
+
+            gs.characters[player].worn[WN_BODY] = 10;
+            gs.characters[player].worn[WN_RHAND] = 11;
+            assert!(zoetje_action_gate_just_cleared(
+                gs,
+                player,
+                ZOETJE_FLASK_STEP,
+                ZoetjeGate::Equipped
+            ));
+        });
+    }
+
+    #[test]
+    fn zoetje_flask_step_waits_on_timer_when_inventory_is_full() {
+        with_test_gs(|gs| {
+            let player = 1;
+            gs.characters[player] = core::types::Character::default();
+            gs.characters[player].used = USE_ACTIVE;
+            gs.characters[player].worn[WN_BODY] = 10;
+            gs.characters[player].worn[WN_RHAND] = 11;
+            gs.characters[player].item.fill(30);
+
+            assert!(!zoetje_action_gate_just_cleared(
+                gs,
+                player,
+                ZOETJE_FLASK_STEP,
+                ZoetjeGate::Equipped
+            ));
+        });
+    }
+
+    #[test]
+    fn zoetje_practice_enemy_spawns_passive_beside_player() {
+        with_test_gs(|gs| {
+            let player = 1;
+            gs.characters[player] = core::types::Character::default();
+            gs.characters[player].used = USE_ACTIVE;
+            gs.characters[player].x = 10;
+            gs.characters[player].y = 10;
+            gs.map[10 + 10 * SERVER_MAPX as usize].ch = player as u32;
+
+            let template = &mut gs.character_templates[ZOETJE_PRACTICE_ENEMY_TEMPLATE];
+            *template = core::types::Character::default();
+            template.used = USE_ACTIVE;
+            template.flags = CharacterFlags::Respawn.bits();
+            template.data[43] = 1;
+            template.data[44] = 2;
+            template.data[29] = 556556;
+            template.set_name("Thief");
+
+            let cc = zoetje_spawn_practice_enemy(gs, player).expect("enemy spawned");
+            let enemy = &gs.characters[cc];
+
+            assert_eq!(enemy.get_name(), "Thief");
+            assert_eq!(enemy.flags & CharacterFlags::Respawn.bits(), 0);
+            assert_eq!(enemy.data[43], 0);
+            assert_eq!(enemy.data[44], 0);
+            assert_eq!(enemy.data[29], 0);
+            assert_eq!(enemy.data[64], ZOETJE_PRACTICE_ENEMY_LIFETIME);
+            assert_ne!((enemy.x, enemy.y), (10, 10));
+            assert!((i32::from(enemy.x) - 10).abs() <= 2 && (i32::from(enemy.y) - 10).abs() <= 2);
+        });
+    }
+
+    #[test]
+    fn zoetje_send_to_aston_rebinds_home_and_ends_tutorial() {
+        with_test_gs(|gs| {
+            let (zoetje, player) = (2, 1);
+            gs.characters[zoetje] = core::types::Character::default();
+            gs.characters[zoetje].used = USE_ACTIVE;
+            gs.characters[player] = core::types::Character::default();
+            gs.characters[player].used = USE_ACTIVE;
+            gs.characters[player].flags = CharacterFlags::Player.bits();
+            gs.characters[player].x = 10;
+            gs.characters[player].y = 10;
+            gs.characters[player].future3[ZOETJE_TUTORIAL_STEP_IDX] = 6;
+            gs.characters[player].set_name("Ada");
+
+            zoetje_send_to_aston(gs, zoetje, player);
+
+            let (x, y) = ZOETJE_FALLBACK_POS;
+            let ch = &gs.characters[player];
+            assert_eq!((ch.temple_x, ch.temple_y), (x as u16, y as u16));
+            assert_eq!((ch.tavern_x, ch.tavern_y), (x as u16, y as u16));
+            assert_eq!(
+                ch.future3[ZOETJE_TUTORIAL_STEP_IDX],
+                ZOETJE_TUTORIAL_DONE_STEP
+            );
+            assert!((i32::from(ch.x) - x as i32).abs() <= 3);
+            assert!((i32::from(ch.y) - y as i32).abs() <= 3);
+        });
+    }
+
+    #[test]
+    fn zoetje_flask_step_hands_over_one_flask_despite_transfer_renotify() {
+        with_test_gs(|gs| {
+            let (player, _) = add_test_player(gs);
+            let zoetje = 2;
+            gs.item_templates[IT_FLASK].used = USE_ACTIVE;
+
+            gs.characters[zoetje] = core::types::Character::default();
+            gs.characters[zoetje].used = USE_ACTIVE;
+            gs.characters[zoetje].x = 484;
+            gs.characters[zoetje].y = 128;
+            gs.characters[zoetje].data[25] = 4;
+            gs.map[484 + 128 * SERVER_MAPX as usize].ch = zoetje as u32;
+
+            gs.characters[player].worn[WN_BODY] = 10;
+            gs.characters[player].worn[WN_RHAND] = 11;
+            gs.characters[player].future3[ZOETJE_TUTORIAL_STEP_IDX] = ZOETJE_FLASK_STEP;
+
+            // Landing in the garden re-notifies Zoetje through NT_SEE.
+            assert!(npc_zoetje_msg(
+                gs,
+                zoetje,
+                i32::from(NT_SEE),
+                player as i32,
+                0,
+                0,
+                0
+            ));
+
+            let flasks = gs.characters[player]
+                .item
+                .iter()
+                .filter(|&&it| it != 0 && usize::from(gs.items[it as usize].temp) == IT_FLASK)
+                .count();
+            assert_eq!(flasks, 1);
+            assert_eq!(
+                gs.characters[player].future3[ZOETJE_TUTORIAL_STEP_IDX],
+                ZOETJE_FLASK_STEP + 1
+            );
+        });
+    }
+
+    #[test]
+    fn zoetje_tell_parts_preserve_long_messages_without_exceeding_tell_limit() {
+        let (message, _) = zoetje_tutorial_dialogue(2, "Ada", Class::Templar).unwrap();
+        let parts = zoetje_tell_parts(&message);
+
+        assert_eq!(parts.len(), 2);
+        assert!(parts.iter().all(|part| part.chars().count() <= 200));
+        assert_eq!(format!("{} {}", parts[0], parts[1]), message);
+    }
+
+    #[test]
+    fn zoetje_low_turns_toward_resting_direction_then_stops() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            gs.characters[cn] = core::types::Character::default();
+            gs.characters[cn].used = USE_ACTIVE;
+            gs.characters[cn].x = 484;
+            gs.characters[cn].y = 128;
+            gs.characters[cn].dir = DX_DOWN;
+            gs.characters[cn].misc_action = DR_IDLE as u16;
+            gs.characters[cn].data[30] = i32::from(DX_UP);
+
+            assert!(npc_zoetje_low(gs, cn));
+            assert_eq!(gs.characters[cn].misc_action, DR_TURN as u16);
+            assert_eq!(gs.characters[cn].misc_target1, 484);
+            assert_eq!(gs.characters[cn].misc_target2, 127);
+
+            gs.characters[cn].dir = DX_UP;
+            gs.characters[cn].misc_action = DR_IDLE as u16;
+            assert!(!npc_zoetje_low(gs, cn));
+            assert_eq!(gs.characters[cn].misc_action, DR_IDLE as u16);
+        });
+    }
+
+    #[test]
+    fn zoetje_low_does_nothing_without_a_resting_direction() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            gs.characters[cn] = core::types::Character::default();
+            gs.characters[cn].used = USE_ACTIVE;
+            gs.characters[cn].x = 484;
+            gs.characters[cn].y = 128;
+            gs.characters[cn].dir = DX_DOWN;
+            gs.characters[cn].misc_action = DR_IDLE as u16;
+            gs.characters[cn].data[30] = 0;
+
+            assert!(!npc_zoetje_low(gs, cn));
+            assert_eq!(gs.characters[cn].misc_action, DR_IDLE as u16);
+        });
     }
 }

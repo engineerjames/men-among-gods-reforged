@@ -49,6 +49,7 @@ struct Cli {
         long = "admin-token",
         visible_alias = "api-token",
         env = "MAG_ADMIN_API_TOKEN",
+        hide_env_values = true,
         global = true,
         help = "Admin bearer token"
     )]
@@ -427,6 +428,9 @@ struct WordsInput {
 }
 
 fn main() -> ExitCode {
+    // Must precede `Cli::parse()` so clap's `env = ...` fallbacks see `.env`.
+    server_utils::load_dotenv();
+
     let cli = Cli::parse();
     match run(cli) {
         Ok(()) => ExitCode::SUCCESS,

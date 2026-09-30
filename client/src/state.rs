@@ -35,6 +35,9 @@ pub struct ApiTokenState {
     pub username: Option<String>,
     pub token: Option<String>,
     pub login_target: Option<GameLoginTarget>,
+    /// Set when the session was dropped because the API rejected the JWT.
+    /// Consumed by the login scene to explain the forced sign-out.
+    pub session_expired: bool,
 }
 
 impl ApiTokenState {
@@ -52,7 +55,35 @@ impl ApiTokenState {
             username: None,
             token: None,
             login_target: None,
+            session_expired: false,
         }
+    }
+
+    /// Drops the current session after the API rejected the JWT with a 401.
+    ///
+    /// Flags `session_expired` so the login scene can tell the player why they
+    /// were signed out.
+    pub fn expire_session(&mut self) {
+        self.username = None;
+        self.token = None;
+        self.login_target = None;
+        self.session_expired = true;
+    }
+
+    /// Drops the current session after an explicit user-initiated log out.
+    pub fn log_out(&mut self) {
+        self.username = None;
+        self.token = None;
+        self.login_target = None;
+        self.session_expired = false;
+    }
+
+    /// Returns and clears the pending session-expired flag.
+    ///
+    /// # Returns
+    /// * `true` if the session was expired by the API since the last call.
+    pub fn take_session_expired(&mut self) -> bool {
+        std::mem::take(&mut self.session_expired)
     }
 }
 
