@@ -454,6 +454,10 @@ impl GameState {
                 (i32::from(co_x) + i32::from(co_y) * core::constants::SERVER_MAPX) as usize;
             EffectManager::finalize_death_mist(self, map_index, corpse_id, killer_id as i32);
         }
+
+        if killer_id != 0 && !is_player {
+            crate::driver::zoetje_practice_enemy_killed(self, co_temp, killer_id);
+        }
     }
 
     /// Handles player-specific death processing.
