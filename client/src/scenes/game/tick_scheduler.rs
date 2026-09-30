@@ -1,34 +1,50 @@
+//! Paces the application of queued server ticks independently of the render
+//! rate and exposes how far the current tick has progressed for interpolation.
+//!
+//! The scheduler keeps a small jitter buffer: it steers toward having one
+//! complete batch still queued when a tick is applied, slowing playback
+//! slightly when the buffer runs dry and speeding up when it grows. Playback
+//! never runs slower than `1 + STARVATION_SLOWDOWN_PERCENT`% of the server
+//! tick, so a shallow queue can no longer stall rendering.
+
 use std::time::{Duration, Instant};
 
 use mag_core::constants::TICKS;
 
-use crate::scenes::scene::FramePresentation;
-
 use super::QSIZE;
 
-/// Legacy guard that forces a visible frame after prolonged catch-up.
-const MAX_CONSECUTIVE_SKIPS: u32 = 100;
+/// Queue depth (after consuming one batch) the controller steers toward.
+const TARGET_QUEUE_DEPTH: usize = 1;
+/// Extra playback time, in percent, applied while the buffer is below target.
+const STARVATION_SLOWDOWN_PERCENT: u32 = 5;
+/// Maximum ticks applied in one frame before yielding to rendering.
+pub(super) const MAX_TICKS_PER_FRAME: usize = 4;
 
-/// Schedules gameplay iterations using the legacy client's queue-depth rule.
-pub(super) struct LegacyTickScheduler {
+/// Fixed-cadence tick pacer with a one-tick jitter buffer.
+pub(super) struct TickScheduler {
+    /// Time at which the next queued tick becomes due.
     next_deadline: Instant,
-    consecutive_skips: u32,
+    /// Scheduled time of the most recently applied tick.
+    current_tick_at: Instant,
+    /// Interval the current tick is displayed for before the next one is due.
+    current_interval: Duration,
 }
 
-impl LegacyTickScheduler {
-    /// Creates a scheduler whose first iteration is due immediately.
+impl TickScheduler {
+    /// Creates a scheduler whose first tick is due immediately.
     ///
     /// # Arguments
     ///
-    /// * `now` - Initial presentation deadline.
+    /// * `now` - Time of the first tick deadline.
     ///
     /// # Returns
     ///
-    /// * A scheduler ready to complete its first iteration.
+    /// * A scheduler ready to apply its first tick.
     pub(super) fn new(now: Instant) -> Self {
         Self {
             next_deadline: now,
-            consecutive_skips: 0,
+            current_tick_at: now,
+            current_interval: base_interval(),
         }
     }
 
@@ -36,58 +52,92 @@ impl LegacyTickScheduler {
     ///
     /// # Arguments
     ///
-    /// * `now` - Deadline for the first iteration of the new session.
+    /// * `now` - Deadline for the first tick of the new session.
     pub(super) fn reset(&mut self, now: Instant) {
-        self.next_deadline = now;
-        self.consecutive_skips = 0;
+        *self = Self::new(now);
     }
 
-    /// Completes one gameplay iteration and schedules the next one.
-    ///
-    /// The queue depth is measured after consuming at most one tick, matching
-    /// `tick=TICK*QSIZE/t_size` in the C client.
+    /// Returns whether the next tick should be applied at `now`.
     ///
     /// # Arguments
     ///
-    /// * `now` - Time after network application and simulation work.
-    /// * `remaining_queue_depth` - Complete tick batches still queued.
-    /// * `animation_started` - Whether this tick began a character animation.
+    /// * `now` - Current time.
     ///
     /// # Returns
     ///
-    /// * Whether this iteration should be presented or skipped.
-    pub(super) fn complete_iteration(
-        &mut self,
-        now: Instant,
-        remaining_queue_depth: usize,
-        animation_started: bool,
-    ) -> FramePresentation {
-        let deadline = self.next_deadline;
-        let should_present =
-            animation_started || now < deadline || self.consecutive_skips > MAX_CONSECUTIVE_SKIPS;
+    /// * `true` once the next deadline has been reached.
+    pub(super) fn is_due(&self, now: Instant) -> bool {
+        now >= self.next_deadline
+    }
 
-        let presentation = if should_present {
-            self.consecutive_skips = 0;
-            FramePresentation::PresentAt(deadline)
-        } else {
-            self.consecutive_skips = self.consecutive_skips.saturating_add(1);
-            FramePresentation::Skip
-        };
+    /// Records that the due tick was applied and schedules the next one.
+    ///
+    /// # Arguments
+    ///
+    /// * `remaining_queue_depth` - Complete batches still queued after this tick.
+    pub(super) fn tick_applied(&mut self, remaining_queue_depth: usize) {
+        self.current_tick_at = self.next_deadline;
+        self.current_interval = interval_for_queue_depth(remaining_queue_depth);
+        self.next_deadline += self.current_interval;
+    }
 
-        self.next_deadline += interval_for_queue_depth(remaining_queue_depth);
-        presentation
+    /// Records that a tick was due but no batch had arrived yet.
+    ///
+    /// The schedule is re-anchored to `now` so the late batch is applied as
+    /// soon as it arrives and no phantom deadlines accumulate during a stall.
+    ///
+    /// # Arguments
+    ///
+    /// * `now` - Current time.
+    pub(super) fn starved(&mut self, now: Instant) {
+        self.next_deadline = now;
+    }
+
+    /// Returns the interpolation progress from the current tick toward the next.
+    ///
+    /// # Arguments
+    ///
+    /// * `now` - Current time.
+    ///
+    /// # Returns
+    ///
+    /// * A value in `[0, 1]`; it saturates at `1` while waiting on a late tick.
+    pub(super) fn interpolation_alpha(&self, now: Instant) -> f32 {
+        let elapsed = now.saturating_duration_since(self.current_tick_at);
+        let interval = self.current_interval.as_secs_f32();
+        if interval <= 0.0 {
+            return 1.0;
+        }
+        (elapsed.as_secs_f32() / interval).clamp(0.0, 1.0)
     }
 }
 
-/// Computes the next iteration interval from post-consumption queue depth.
+/// Returns the nominal server tick interval.
+fn base_interval() -> Duration {
+    Duration::from_nanos(1_000_000_000 / TICKS as u64)
+}
+
+/// Computes the playback interval from the queue depth left after applying a tick.
+///
+/// # Arguments
+///
+/// * `queue_depth` - Complete batches still queued.
+///
+/// # Returns
+///
+/// * Slightly longer than a tick below the target depth, exactly a tick at the
+///   target, and progressively shorter as the backlog grows.
 fn interval_for_queue_depth(queue_depth: usize) -> Duration {
-    let base_nanos = 1_000_000_000u128 / TICKS as u128;
-    let interval_nanos = if queue_depth == 0 {
-        base_nanos
+    let base = base_interval();
+    if queue_depth < TARGET_QUEUE_DEPTH {
+        base * (100 + STARVATION_SLOWDOWN_PERCENT) / 100
+    } else if queue_depth == TARGET_QUEUE_DEPTH {
+        base
     } else {
-        (base_nanos * u128::from(QSIZE) / queue_depth as u128).max(1)
-    };
-    Duration::from_nanos(interval_nanos.min(u128::from(u64::MAX)) as u64)
+        let excess = (queue_depth - TARGET_QUEUE_DEPTH) as u32;
+        let divisor = QSIZE.saturating_add(excess).max(1);
+        (base * QSIZE / divisor).max(Duration::from_nanos(1))
+    }
 }
 
 #[cfg(test)]
@@ -95,79 +145,102 @@ mod tests {
     use super::*;
 
     #[test]
-    fn empty_queue_uses_base_interval() {
+    fn target_depth_uses_base_interval() {
         assert_eq!(
-            interval_for_queue_depth(0),
-            Duration::from_nanos(1_000_000_000 / TICKS as u64)
+            interval_for_queue_depth(TARGET_QUEUE_DEPTH),
+            base_interval()
         );
     }
 
     #[test]
-    fn target_queue_depth_uses_base_interval() {
-        assert_eq!(
-            interval_for_queue_depth(QSIZE as usize),
-            interval_for_queue_depth(0)
-        );
+    fn empty_queue_slows_only_slightly() {
+        let base = base_interval();
+        let slowed = interval_for_queue_depth(0);
+        assert!(slowed > base);
+        assert!(slowed < base * 2);
     }
 
     #[test]
-    fn shallow_queue_slows_and_deep_queue_accelerates() {
-        let base = interval_for_queue_depth(0);
-        assert!(interval_for_queue_depth(1) > base);
-        assert!(interval_for_queue_depth(16) < base);
-    }
-
-    #[test]
-    fn late_iterations_skip_until_deadline_recovers() {
-        let start = Instant::now();
-        let mut scheduler = LegacyTickScheduler::new(start);
-
-        assert_eq!(
-            scheduler.complete_iteration(start, 0, false),
-            FramePresentation::Skip
-        );
-        assert_eq!(
-            scheduler.complete_iteration(start, 0, false),
-            FramePresentation::PresentAt(start + interval_for_queue_depth(0))
-        );
-    }
-
-    #[test]
-    fn prolonged_lateness_forces_a_presentation() {
-        let start = Instant::now();
-        let mut scheduler = LegacyTickScheduler::new(start);
-        let late = start + Duration::from_secs(60);
-
-        for _ in 0..=MAX_CONSECUTIVE_SKIPS {
-            assert_eq!(
-                scheduler.complete_iteration(late, 0, false),
-                FramePresentation::Skip
-            );
+    fn backlog_accelerates_and_never_stalls() {
+        let base = base_interval();
+        let mut previous = base;
+        for depth in 2..64 {
+            let interval = interval_for_queue_depth(depth);
+            assert!(interval < base, "depth {depth} must run faster than base");
+            assert!(interval <= previous, "depth {depth} must not slow down");
+            assert!(interval > Duration::ZERO);
+            previous = interval;
         }
-        assert!(matches!(
-            scheduler.complete_iteration(late, 0, false),
-            FramePresentation::PresentAt(_)
-        ));
     }
 
     #[test]
-    fn animation_start_forces_presentation_while_late() {
+    fn no_depth_ever_exceeds_the_slowdown_bound() {
+        let bound = base_interval() * (100 + STARVATION_SLOWDOWN_PERCENT) / 100;
+        for depth in 0..256 {
+            assert!(interval_for_queue_depth(depth) <= bound);
+        }
+    }
+
+    #[test]
+    fn first_tick_is_due_immediately() {
         let start = Instant::now();
-        let mut scheduler = LegacyTickScheduler::new(start);
-        let late = start + Duration::from_secs(1);
-
-        assert_eq!(
-            scheduler.complete_iteration(late, 16, false),
-            FramePresentation::Skip
-        );
-        assert!(matches!(
-            scheduler.complete_iteration(late, 16, true),
-            FramePresentation::PresentAt(_)
-        ));
+        let scheduler = TickScheduler::new(start);
+        assert!(scheduler.is_due(start));
     }
 
     #[test]
-    fn extreme_queue_depth_never_produces_zero_interval() {
-        assert!(interval_for_queue_depth(usize::MAX) > Duration::ZERO);
+    fn applied_tick_schedules_next_one_tick_later() {
+        let start = Instant::now();
+        let mut scheduler = TickScheduler::new(start);
+        scheduler.tick_applied(TARGET_QUEUE_DEPTH);
+
+        assert!(!scheduler.is_due(start));
+        assert!(!scheduler.is_due(start + base_interval() - Duration::from_millis(1)));
+        assert!(scheduler.is_due(start + base_interval()));
+    }
+
+    #[test]
+    fn interpolation_alpha_progresses_and_saturates() {
+        let start = Instant::now();
+        let mut scheduler = TickScheduler::new(start);
+        scheduler.tick_applied(TARGET_QUEUE_DEPTH);
+        let half = base_interval() / 2;
+
+        assert_eq!(scheduler.interpolation_alpha(start), 0.0);
+        assert!((scheduler.interpolation_alpha(start + half) - 0.5).abs() < 0.01);
+        assert_eq!(
+            scheduler.interpolation_alpha(start + base_interval() * 3),
+            1.0
+        );
+    }
+
+    #[test]
+    fn starvation_reanchors_schedule_to_now() {
+        let start = Instant::now();
+        let mut scheduler = TickScheduler::new(start);
+        scheduler.tick_applied(TARGET_QUEUE_DEPTH);
+        let late = start + Duration::from_secs(2);
+
+        scheduler.starved(late);
+        assert!(scheduler.is_due(late));
+        assert!(!scheduler.is_due(late - Duration::from_millis(1)));
+
+        scheduler.tick_applied(TARGET_QUEUE_DEPTH);
+        assert_eq!(scheduler.interpolation_alpha(late), 0.0);
+        assert!(scheduler.is_due(late + base_interval()));
+    }
+
+    #[test]
+    fn deep_backlog_makes_several_ticks_due_in_one_frame() {
+        let start = Instant::now();
+        let mut scheduler = TickScheduler::new(start);
+        let frame = start + Duration::from_millis(16);
+
+        let mut applied = 0;
+        while scheduler.is_due(frame) && applied < MAX_TICKS_PER_FRAME {
+            scheduler.tick_applied(40 - applied);
+            applied += 1;
+        }
+        assert_eq!(applied, MAX_TICKS_PER_FRAME);
     }
 }

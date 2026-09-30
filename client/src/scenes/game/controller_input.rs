@@ -565,7 +565,7 @@ impl GameScene {
                     // Hold threshold not reached (would have been consumed
                     // in update()), so this is a short press → select.
                     if let Some(ps) = app_state.player_state.as_ref() {
-                        let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
+                        let (cam_xoff, cam_yoff) = self.camera_offsets(ps);
                         if let Some((mx, my)) =
                             Self::screen_to_map_tile(self.mouse_x, self.mouse_y, cam_xoff, cam_yoff)
                         {
