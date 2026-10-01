@@ -327,6 +327,7 @@ pub fn plr_map_set(gs: &mut GameState, cn: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index requesting the map update
+///
 /// Legacy entry point: build and send the player's visible map.
 ///
 /// Production runs the context form via `update::run_player_updates`; this
