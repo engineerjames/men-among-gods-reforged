@@ -179,10 +179,7 @@ fn main() {
             }
         }
         wanted.sort_by_key(|(id, _)| *id);
-        println!(
-            "{:<5} {:<30} {:<26} {}",
-            "id", "name", "reference", "wanted_by"
-        );
+        println!("{:<5} {:<30} {:<26} wanted_by", "id", "name", "reference");
         for (id, npc) in wanted {
             let item = &snapshot.item_templates[id];
             println!(
@@ -198,8 +195,8 @@ fn main() {
 
     if cli.chars {
         println!(
-            "{:<5} {:<30} {:<30} {:<6} {}",
-            "id", "name", "reference", "sprite", "flags"
+            "{:<5} {:<30} {:<30} {:<6} flags",
+            "id", "name", "reference", "sprite"
         );
         for (id, ch) in snapshot.character_templates.iter().enumerate() {
             if ch.used == 0 {
@@ -250,8 +247,8 @@ fn main() {
     }
 
     println!(
-        "{:<5} {:<28} {:<26} {:<6} {:<5} {:<9} {}",
-        "id", "name", "reference", "driver", "place", "value", "flags"
+        "{:<5} {:<28} {:<26} {:<6} {:<5} {:<9} flags",
+        "id", "name", "reference", "driver", "place", "value"
     );
     for (id, item) in snapshot.item_templates.iter().enumerate() {
         if item.used == 0 {
@@ -267,15 +264,15 @@ fn main() {
         if cli.bonus && !has_bonus(item) {
             continue;
         }
-        if let Some(driver) = cli.driver {
-            if item.driver != driver {
-                continue;
-            }
+        if let Some(driver) = cli.driver
+            && item.driver != driver
+        {
+            continue;
         }
-        if let Some(placement) = cli.placement {
-            if item.placement & placement == 0 {
-                continue;
-            }
+        if let Some(placement) = cli.placement
+            && item.placement & placement == 0
+        {
+            continue;
         }
         let name = item.get_name();
         let reference = c_string_to_str(&item.reference);
@@ -286,10 +283,10 @@ fn main() {
                 continue;
             }
         }
-        if let Some(n) = &desc_needle {
-            if !description.to_ascii_lowercase().contains(n) {
-                continue;
-            }
+        if let Some(n) = &desc_needle
+            && !description.to_ascii_lowercase().contains(n)
+        {
+            continue;
         }
         println!(
             "{:<5} {:<28} {:<26} {:<6} {:<5} {:<9} {}",
