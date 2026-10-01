@@ -6,6 +6,8 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
+use mag_core::autoloot::AutolootConfig;
+
 use crate::types::controller::ControllerBindings;
 use crate::types::mouse::MouseModifierBindings;
 use crate::ui::widget::KeyBindings;
@@ -73,6 +75,10 @@ pub struct CharacterSettings {
     /// each server tick. Defaults to `true`. Toggle with `/autoloot`.
     #[serde(default = "default_auto_loot_graves")]
     pub auto_loot_graves: bool,
+    /// Which item categories the auto-looter takes from graves. Uploaded to
+    /// the server after login and whenever it changes.
+    #[serde(default)]
+    pub autoloot: AutolootConfig,
 }
 
 /// Returns the default value of `true` for
@@ -95,6 +101,7 @@ impl Default for CharacterSettings {
             controller_bindings: ControllerBindings::default(),
             mouse_modifier_bindings: MouseModifierBindings::default(),
             auto_loot_graves: true,
+            autoloot: AutolootConfig::default(),
         }
     }
 }
@@ -624,6 +631,24 @@ mod tests {
             deserialized.character.mouse_modifier_bindings,
             defaults.character.mouse_modifier_bindings
         );
+        assert_eq!(deserialized.character.autoloot, AutolootConfig::default());
+    }
+
+    #[test]
+    fn character_settings_autoloot_config_roundtrip() {
+        use mag_core::autoloot::{AutolootCategories, EyeRank};
+
+        let settings = CharacterSettings {
+            autoloot: AutolootConfig {
+                categories: AutolootCategories::GOLD | AutolootCategories::GREENLING_EYES,
+                ratling_min_rank: EyeRank::Count,
+                greenling_min_rank: EyeRank::King,
+            },
+            ..CharacterSettings::default()
+        };
+        let json = serde_json::to_string(&settings).unwrap();
+        let deserialized: CharacterSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.autoloot, settings.autoloot);
     }
 
     #[test]

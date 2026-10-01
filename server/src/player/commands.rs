@@ -551,9 +551,10 @@ pub fn plr_cmd_use(gs: &mut GameState, nr: usize) {
 
 /// Handle an auto-loot graves command.
 ///
-/// Silently transfers all items whose template ID appears in
-/// [`core::constants::AUTOLOOT_ITEM_IDS`] — and unconditionally takes all
-/// gold — from the corpse whose tombstone is located at `(x, y)`.
+/// Silently transfers every corpse item accepted by the player's uploaded
+/// [`core::autoloot::AutolootConfig`] — and the corpse's gold when the `GOLD`
+/// category is enabled — from the corpse whose tombstone is located at
+/// `(x, y)`.
 ///
 /// Performs the same ownership checks as [`use_bag`]: if the grave belongs to
 /// another player who has not issued `#ALLOW`, the transfer is silently
@@ -614,14 +615,15 @@ pub fn plr_cmd_autoloot(gs: &mut GameState, nr: usize) {
         }
     }
 
+    let config = gs.players[nr].autoloot;
+
     // --- Inventory slots 0..40 ---
     for slot in 0..40usize {
         let it = gs.characters[co].item[slot] as usize;
         if it == 0 {
             continue;
         }
-        let temp = gs.items[it].temp;
-        if core::constants::AUTOLOOT_ITEM_IDS.contains(&temp) {
+        if config.wants_item(&gs.items[it]) {
             gs.do_shop_char(cn, co, slot as i32, 1);
         }
     }
@@ -632,16 +634,33 @@ pub fn plr_cmd_autoloot(gs: &mut GameState, nr: usize) {
         if it == 0 {
             continue;
         }
-        let temp = gs.items[it].temp;
-        if core::constants::AUTOLOOT_ITEM_IDS.contains(&temp) {
+        if config.wants_item(&gs.items[it]) {
             gs.do_shop_char(cn, co, (40 + slot) as i32, 1);
         }
     }
 
-    // --- Gold (slot 61) — always take ---
-    if gs.characters[co].gold > 0 {
+    // --- Gold (slot 61) ---
+    if config.wants_gold() && gs.characters[co].gold > 0 {
         gs.do_shop_char(cn, co, 61, 1);
     }
+}
+
+/// Handle an auto-loot configuration upload.
+///
+/// Decodes the [`core::autoloot::AutolootConfig`] payload and stores it on the
+/// player's session so subsequent [`plr_cmd_autoloot`] requests honour it.
+/// Malformed payloads are ignored and leave the previous config in place.
+///
+/// # Arguments
+///
+/// * `gs` - Mutable reference to the full game state.
+/// * `nr` - Player slot index issuing the command.
+pub fn plr_cmd_autoloot_config(gs: &mut GameState, nr: usize) {
+    let Some(config) = core::autoloot::AutolootConfig::from_wire_bytes(&gs.players[nr].inbuf[1..])
+    else {
+        return;
+    };
+    gs.players[nr].autoloot = config;
 }
 
 /// Handle inventory manipulation command
@@ -2571,6 +2590,19 @@ mod tests {
             configure_item(gs, inv_item, "Bone", "bone", "A bone.", 0, 1, None);
             gs.characters[corpse].item[0] = inv_item as u32;
 
+            let potion = 22;
+            configure_item(
+                gs,
+                potion,
+                "Healing Potion",
+                "healing potion",
+                "A potion.",
+                core::constants::ItemFlags::IF_TAKE.bits(),
+                core::constants::IT_HEALING_POTION as u16,
+                None,
+            );
+            gs.characters[corpse].item[1] = potion as u32;
+
             let worn_item = 21;
             configure_item(gs, worn_item, "Skull", "skull", "A skull.", 0, 2, None);
             gs.characters[corpse].worn[0] = worn_item as u32;
@@ -2596,7 +2628,52 @@ mod tests {
             assert_eq!(gs.characters[cn].gold, 123);
             assert_eq!(gs.characters[corpse].gold, 0);
             assert_eq!(gs.characters[corpse].item[0], inv_item as u32);
+            assert_eq!(
+                gs.characters[corpse].item[1], 0,
+                "default config should take potions"
+            );
             assert_eq!(gs.characters[corpse].worn[0], worn_item as u32);
+        });
+    }
+
+    #[test]
+    fn plr_cmd_autoloot_config_updates_session_and_gates_gold() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+
+            let mut cfg = core::autoloot::AutolootConfig::default();
+            cfg.set(core::autoloot::AutolootCategories::GOLD, false);
+            cfg.ratling_min_rank = core::autoloot::EyeRank::Duke;
+            let mut packet = [0u8; 5];
+            packet[1..5].copy_from_slice(&cfg.to_wire_bytes());
+            write_inbuf(gs, nr, &packet);
+            plr_cmd_autoloot_config(gs, nr);
+            assert_eq!(gs.players[nr].autoloot, cfg);
+
+            let corpse = 2;
+            place_character(gs, corpse, 11, 10, CharacterFlags::Body.bits(), "Corpse");
+            gs.characters[corpse].gold = 99;
+            configure_item(
+                gs,
+                30,
+                "Tombstone",
+                "tombstone",
+                "A marked tombstone.",
+                0,
+                core::constants::IT_TOMBSTONE as u16,
+                Some((11, 10)),
+            );
+            gs.items[30].data[0] = corpse as u32;
+
+            let mut packet = [0u8; 5];
+            packet[1..3].copy_from_slice(&(11u16).to_le_bytes());
+            packet[3..5].copy_from_slice(&(10u16).to_le_bytes());
+            write_inbuf(gs, nr, &packet);
+            plr_cmd_autoloot(gs, nr);
+
+            assert_eq!(gs.characters[cn].gold, 0);
+            assert_eq!(gs.characters[corpse].gold, 99);
         });
     }
 

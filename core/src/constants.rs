@@ -746,18 +746,275 @@ pub const POTION_TEMPLATE_IDS: &[usize] = &[
     IT_GOLEM_POTION,
 ];
 
-/// Item template IDs that are automatically looted from graves when the
-/// auto-loot feature is enabled. Gold (grave slot 61) is always taken
-/// regardless of this list.
+/// Lab 6 potion variants (green/red/blue/brown) carried out of the labyrinth.
+pub const IT_LAB6_GREEN_POTION: usize = 635;
+pub const IT_LAB6_RED_POTION: usize = 637;
+pub const IT_LAB6_BLUE_POTION: usize = 639;
+pub const IT_LAB6_BROWN_POTION: usize = 641;
+/// High-value greater potion variants dropped by end-game content.
+pub const IT_GREATER_HEALING_POTION_3: usize = 1116;
+pub const IT_GREATER_MANA_POTION_3: usize = 1117;
+
+/// Every potion template an auto-looter may pick up from a grave.
 ///
-/// TODO: verify these template IDs against the live world data.
-pub const AUTOLOOT_ITEM_IDS: &[u16] = &[
-    // Health potions
-    // TODO: insert health potion template IDs
-    // Endurance potions
-    // TODO: insert endurance potion template IDs
-    // Mana potions
-    // TODO: insert mana potion template IDs
+/// Superset of [`POTION_TEMPLATE_IDS`] (flask-based potions) plus the
+/// labyrinth and end-game variants that do not refill a flask.
+pub const AUTOLOOT_POTION_TEMPLATE_IDS: &[usize] = &[
+    IT_HEALING_POTION,
+    IT_MANA_POTION,
+    IT_GREATER_HEALING_POTION,
+    IT_GREATER_MANA_POTION,
+    IT_STRENGTH_POTION,
+    IT_GREEN_POTION,
+    IT_YELLOW_POTION,
+    IT_BLUE_POTION,
+    IT_BLACK_POTION,
+    IT_ORANGE_POTION,
+    IT_POTION_OF_LIFE,
+    IT_YELLOW_AND_GREEN_POTION,
+    IT_RED_AND_GREEN_POTION,
+    IT_BLUE_AND_GREEN_POTION,
+    IT_BLUE_YELLOW_AND_GREEN_POTION,
+    IT_BLUE_RED_AND_GREEN_POTION,
+    IT_RED_YELLOW_AND_GREEN_POTION,
+    IT_AGILITY_POTION,
+    IT_GREATER_MANA_POTION_2,
+    IT_GREATER_HEALING_POTION_2,
+    IT_YELLOW_TULIP_POTION,
+    IT_GOLEM_POTION,
+    IT_LAB6_GREEN_POTION,
+    IT_LAB6_RED_POTION,
+    IT_LAB6_BLUE_POTION,
+    IT_LAB6_BROWN_POTION,
+    IT_GREATER_HEALING_POTION_3,
+    IT_GREATER_MANA_POTION_3,
+];
+
+// Skill scrolls (item drivers 8, 10, 11, 12, 13).
+pub const IT_SCROLL_OF_HEAL: usize = 175;
+pub const IT_SCROLL_OF_REST: usize = 176;
+pub const IT_SCROLL_OF_REGENERATION: usize = 177;
+pub const IT_SCROLL_OF_MEDITATION: usize = 178;
+pub const IT_SCROLL_OF_GUARDIAN_ANGEL: usize = 181;
+pub const IT_SCROLL_OF_BRAVENESS: usize = 182;
+pub const IT_SCROLL_OF_WILLPOWER: usize = 183;
+pub const IT_SCROLL_OF_INTUITION: usize = 184;
+pub const IT_SCROLL_OF_AGILITY: usize = 185;
+pub const IT_SCROLL_OF_STRENGTH: usize = 186;
+pub const IT_SCROLL_OF_HITPOINTS: usize = 187;
+pub const IT_SCROLL_OF_ENDURANCE: usize = 188;
+pub const IT_SCROLL_OF_MANA: usize = 189;
+// Teleport scrolls (item driver 23).
+pub const IT_TAVERN_SCROLL: usize = 331;
+pub const IT_GORN_SCROLL: usize = 592;
+pub const IT_FOREST_SCROLL: usize = 903;
+pub const IT_STAFFERS_CORNER_SCROLL: usize = 1114;
+pub const IT_ASTONIAN_INN_SCROLL: usize = 1118;
+pub const IT_ARENA_SCROLL: usize = 1144;
+// Spell parchments (item driver 48): "<Spell> of Skua/Ishtar/Ankh", "Spell of <Spell>".
+pub const IT_BLESS_OF_SKUA: usize = 693;
+pub const IT_ENHANCE_OF_SKUA: usize = 694;
+pub const IT_PROTECT_OF_SKUA: usize = 695;
+pub const IT_MAGIC_SHIELD_OF_SKUA: usize = 696;
+pub const IT_CURSE_OF_SKUA: usize = 697;
+pub const IT_STUN_OF_SKUA: usize = 698;
+pub const IT_BLESS_OF_ISHTAR: usize = 699;
+pub const IT_ENHANCE_OF_ISHTAR: usize = 700;
+pub const IT_PROTECT_OF_ISHTAR: usize = 701;
+pub const IT_MAGIC_SHIELD_OF_ISHTAR: usize = 702;
+pub const IT_CURSE_OF_ISHTAR: usize = 703;
+pub const IT_STUN_OF_ISHTAR: usize = 704;
+pub const IT_BLESS_OF_ANKH: usize = 705;
+pub const IT_ENHANCE_OF_ANKH: usize = 706;
+pub const IT_PROTECT_OF_ANKH: usize = 707;
+pub const IT_MAGIC_SHIELD_OF_ANKH: usize = 708;
+pub const IT_CURSE_OF_ANKH: usize = 709;
+pub const IT_STUN_OF_ANKH: usize = 710;
+pub const IT_SPELL_OF_BLESS: usize = 711;
+pub const IT_SPELL_OF_ENHANCE: usize = 712;
+pub const IT_SPELL_OF_PROTECT: usize = 713;
+pub const IT_SPELL_OF_MAGIC_SHIELD: usize = 714;
+pub const IT_SPELL_OF_CURSE: usize = 715;
+pub const IT_SPELL_OF_STUN: usize = 716;
+
+/// Every scroll / parchment template an auto-looter may pick up.
+pub const AUTOLOOT_SCROLL_TEMPLATE_IDS: &[usize] = &[
+    IT_SCROLL_OF_HEAL,
+    IT_SCROLL_OF_REST,
+    IT_SCROLL_OF_REGENERATION,
+    IT_SCROLL_OF_MEDITATION,
+    IT_SCROLL_OF_GUARDIAN_ANGEL,
+    IT_SCROLL_OF_BRAVENESS,
+    IT_SCROLL_OF_WILLPOWER,
+    IT_SCROLL_OF_INTUITION,
+    IT_SCROLL_OF_AGILITY,
+    IT_SCROLL_OF_STRENGTH,
+    IT_SCROLL_OF_HITPOINTS,
+    IT_SCROLL_OF_ENDURANCE,
+    IT_SCROLL_OF_MANA,
+    IT_TAVERN_SCROLL,
+    IT_LAGSCROLL as usize,
+    IT_GORN_SCROLL,
+    IT_FOREST_SCROLL,
+    IT_STAFFERS_CORNER_SCROLL,
+    IT_ASTONIAN_INN_SCROLL,
+    IT_ARENA_SCROLL,
+    IT_BLESS_OF_SKUA,
+    IT_ENHANCE_OF_SKUA,
+    IT_PROTECT_OF_SKUA,
+    IT_MAGIC_SHIELD_OF_SKUA,
+    IT_CURSE_OF_SKUA,
+    IT_STUN_OF_SKUA,
+    IT_BLESS_OF_ISHTAR,
+    IT_ENHANCE_OF_ISHTAR,
+    IT_PROTECT_OF_ISHTAR,
+    IT_MAGIC_SHIELD_OF_ISHTAR,
+    IT_CURSE_OF_ISHTAR,
+    IT_STUN_OF_ISHTAR,
+    IT_BLESS_OF_ANKH,
+    IT_ENHANCE_OF_ANKH,
+    IT_PROTECT_OF_ANKH,
+    IT_MAGIC_SHIELD_OF_ANKH,
+    IT_CURSE_OF_ANKH,
+    IT_STUN_OF_ANKH,
+    IT_SPELL_OF_BLESS,
+    IT_SPELL_OF_ENHANCE,
+    IT_SPELL_OF_PROTECT,
+    IT_SPELL_OF_MAGIC_SHIELD,
+    IT_SPELL_OF_CURSE,
+    IT_SPELL_OF_STUN,
+];
+
+/// Template every soulstone is created from (`do_make_soulstone`), whatever
+/// its rank; the rank lives in `data[0]`.
+pub const IT_GENERIC_SOULSTONE: usize = 1146;
+
+// Ratling eyes, one template per social rank (lowest to highest).
+pub const IT_RATLING_EYE: usize = 254;
+pub const IT_RATLING_FIGHTER_EYE: usize = 255;
+pub const IT_RATLING_WARRIOR_EYE: usize = 256;
+pub const IT_RATLING_KNIGHT_EYE: usize = 257;
+pub const IT_RATLING_BARON_EYE: usize = 258;
+pub const IT_RATLING_COUNT_EYE: usize = 259;
+pub const IT_RATLING_DUKE_EYE: usize = 260;
+pub const IT_RATLING_PRINCE_EYE: usize = 261;
+pub const IT_RATLING_KING_EYE: usize = 262;
+
+/// Ratling eye templates indexed by [`crate::autoloot::EyeRank`].
+pub const RATLING_EYE_TEMPLATE_IDS: [usize; 9] = [
+    IT_RATLING_EYE,
+    IT_RATLING_FIGHTER_EYE,
+    IT_RATLING_WARRIOR_EYE,
+    IT_RATLING_KNIGHT_EYE,
+    IT_RATLING_BARON_EYE,
+    IT_RATLING_COUNT_EYE,
+    IT_RATLING_DUKE_EYE,
+    IT_RATLING_PRINCE_EYE,
+    IT_RATLING_KING_EYE,
+];
+
+// Greenling eyes, one template per social rank (lowest to highest).
+pub const IT_GREENLING_EYE: usize = 824;
+pub const IT_GREENLING_FIGHTER_EYE: usize = 825;
+pub const IT_GREENLING_WARRIOR_EYE: usize = 826;
+pub const IT_GREENLING_KNIGHT_EYE: usize = 827;
+pub const IT_GREENLING_BARON_EYE: usize = 828;
+pub const IT_GREENLING_COUNT_EYE: usize = 829;
+pub const IT_GREENLING_DUKE_EYE: usize = 830;
+pub const IT_GREENLING_PRINCE_EYE: usize = 831;
+pub const IT_GREENLING_KING_EYE: usize = 832;
+
+/// Greenling eye templates indexed by [`crate::autoloot::EyeRank`].
+pub const GREENLING_EYE_TEMPLATE_IDS: [usize; 9] = [
+    IT_GREENLING_EYE,
+    IT_GREENLING_FIGHTER_EYE,
+    IT_GREENLING_WARRIOR_EYE,
+    IT_GREENLING_KNIGHT_EYE,
+    IT_GREENLING_BARON_EYE,
+    IT_GREENLING_COUNT_EYE,
+    IT_GREENLING_DUKE_EYE,
+    IT_GREENLING_PRINCE_EYE,
+    IT_GREENLING_KING_EYE,
+];
+
+// Named weapons that are special but carry neither `IF_MAGIC` nor `IF_UNIQUE`.
+pub const IT_BARBARIAN_SWORD: usize = 129;
+pub const IT_LAVA_TWO_HANDED_SWORD: usize = 442;
+pub const IT_BURNING_TWO_HANDED_SWORD: usize = 503;
+
+/// Weapon templates treated as magical by the auto-looter in addition to
+/// anything flagged `IF_MAGIC`/`IF_UNIQUE`/`IF_SOULSTONE` or carrying a
+/// stat bonus (see [`crate::autoloot`]).
+pub const AUTOLOOT_MAGICAL_WEAPON_TEMPLATE_IDS: &[usize] = &[
+    IT_BARBARIAN_SWORD,
+    IT_LAVA_TWO_HANDED_SWORD,
+    IT_BURNING_TWO_HANDED_SWORD,
+];
+
+// Quest hand-in items: every template some NPC asks for via `data[49]`.
+pub const IT_AMULET: usize = 105;
+pub const IT_RUBY_AMULET: usize = 107;
+pub const IT_BELT: usize = 113;
+pub const IT_RUBY: usize = 115;
+pub const IT_BONE_SWORD: usize = 116;
+pub const IT_BRONZE_ARMOR_MAGIC: usize = 118;
+pub const IT_SWORD_OF_STEALTH: usize = 136;
+pub const IT_AMULET_OF_RESISTANCE: usize = 191;
+pub const IT_COCONUT: usize = 205;
+pub const IT_LIZARD_TEETH_NECKLACE: usize = 216;
+pub const IT_RATLING_EYE_COLLECTION: usize = 266;
+pub const IT_SILVER_SMALL_RUBY_RING: usize = 348;
+pub const IT_BLACK_CANDLE: usize = 740;
+pub const IT_ICE_EGG: usize = 908;
+pub const IT_BOOK_OF_WISDOM_1: usize = 1061;
+pub const IT_BOOK_OF_WISDOM_2: usize = 1067;
+pub const IT_BOOK_OF_WISDOM_3: usize = 1073;
+pub const IT_BOOK_OF_WISDOM_4: usize = 1078;
+pub const IT_BOOK_OF_WISDOM_5: usize = 1086;
+pub const IT_TOWER_RATLING_EYE: usize = 1205;
+pub const IT_TOWER_GREENLING_EYE: usize = 1206;
+pub const IT_TOWER_GOLDEN_AXE: usize = 1207;
+pub const IT_TOWER_BONE_SWORD: usize = 1208;
+pub const IT_TOWER_POTION: usize = 1209;
+pub const IT_SPIDER_QUEEN_HEAD: usize = 1270;
+pub const IT_GHOST_KING_SOUL: usize = 1295;
+
+/// Item templates requested by quest NPCs (`Character::data[49]`), derived
+/// from the world seed with `template-search --quest-items`.
+pub const AUTOLOOT_QUEST_ITEM_TEMPLATE_IDS: &[usize] = &[
+    IT_RED_FLOWER,
+    IT_AMULET,
+    IT_RUBY_AMULET,
+    IT_BELT,
+    IT_RUBY,
+    IT_BONE_SWORD,
+    IT_BRONZE_ARMOR_MAGIC,
+    IT_GREATER_HEALING_POTION,
+    IT_BARBARIAN_SWORD,
+    IT_GREATER_MANA_POTION,
+    IT_SWORD_OF_STEALTH,
+    IT_POTION_OF_LIFE,
+    IT_AMULET_OF_RESISTANCE,
+    IT_COCONUT,
+    IT_LIZARD_TEETH_NECKLACE,
+    IT_AGILITY_POTION,
+    IT_RATLING_FIGHTER_EYE,
+    IT_RATLING_EYE_COLLECTION,
+    IT_SILVER_SMALL_RUBY_RING,
+    IT_BLACK_CANDLE,
+    IT_ICE_EGG,
+    IT_BOOK_OF_WISDOM_1,
+    IT_BOOK_OF_WISDOM_2,
+    IT_BOOK_OF_WISDOM_3,
+    IT_BOOK_OF_WISDOM_4,
+    IT_BOOK_OF_WISDOM_5,
+    IT_TOWER_RATLING_EYE,
+    IT_TOWER_GREENLING_EYE,
+    IT_TOWER_GOLDEN_AXE,
+    IT_TOWER_BONE_SWORD,
+    IT_TOWER_POTION,
+    IT_SPIDER_QUEEN_HEAD,
+    IT_GHOST_KING_SOUL,
 ];
 
 // =============================================================================

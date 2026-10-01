@@ -33,6 +33,8 @@ pub struct Dropdown {
     changed: bool,
     /// Additive tint alpha for hovered items (0–255).
     hover_alpha: u8,
+    /// When `true` the option list expands above the header instead of below.
+    opens_upward: bool,
 }
 
 impl Dropdown {
@@ -70,7 +72,24 @@ impl Dropdown {
             font,
             changed: false,
             hover_alpha: 80,
+            opens_upward: false,
         }
+    }
+
+    /// Makes the option list expand above the header instead of below it.
+    ///
+    /// Useful for dropdowns placed near the bottom of a panel or the screen.
+    ///
+    /// # Arguments
+    ///
+    /// * `upward` - `true` to open upward.
+    ///
+    /// # Returns
+    ///
+    /// * `self`, for builder-style chaining.
+    pub fn with_opens_upward(mut self, upward: bool) -> Self {
+        self.opens_upward = upward;
+        self
     }
 
     /// Returns the index of the currently selected option.
@@ -132,13 +151,23 @@ impl Dropdown {
         self.hovered = hovered;
     }
 
+    /// Returns the top edge of the expanded option list.
+    fn list_top(&self) -> i32 {
+        if self.opens_upward {
+            self.bounds.y - (self.options.len() as u32 * OPTION_ROW_H) as i32
+        } else {
+            self.bounds.y + self.bounds.height as i32
+        }
+    }
+
     /// Returns the bounding rectangle of the full expanded area
     /// (header + option list).
     fn expanded_bounds(&self) -> Bounds {
         let list_h = self.options.len() as u32 * OPTION_ROW_H;
+        let top = self.bounds.y.min(self.list_top());
         Bounds::new(
             self.bounds.x,
-            self.bounds.y,
+            top,
             self.bounds.width,
             self.bounds.height + list_h,
         )
@@ -147,7 +176,7 @@ impl Dropdown {
     /// Returns the option index at the given absolute `(x, y)` position
     /// within the expanded list area, or `None` if outside.
     fn option_at(&self, x: i32, y: i32) -> Option<usize> {
-        let list_top = self.bounds.y + self.bounds.height as i32;
+        let list_top = self.list_top();
         let list_bottom = list_top + (self.options.len() as u32 * OPTION_ROW_H) as i32;
         if x >= self.bounds.x
             && x < self.bounds.x + self.bounds.width as i32
@@ -266,8 +295,12 @@ impl Widget for Dropdown {
             )?;
         }
 
-        // Arrow indicator "▼" on the right
-        let arrow_text = if self.expanded { "^" } else { "v" };
+        // Arrow indicator on the right
+        let arrow_text = if self.expanded != self.opens_upward {
+            "^"
+        } else {
+            "v"
+        };
         let arrow_x = self.bounds.x + self.bounds.width as i32
             - font_cache::text_width(arrow_text) as i32
             - H_PAD;
@@ -283,7 +316,7 @@ impl Widget for Dropdown {
 
         // --- Expanded option list ---
         if self.expanded {
-            let list_top = self.bounds.y + self.bounds.height as i32;
+            let list_top = self.list_top();
             let list_h = self.options.len() as u32 * OPTION_ROW_H;
             let list_rect =
                 sdl2::rect::Rect::new(self.bounds.x, list_top, self.bounds.width, list_h);
@@ -473,5 +506,40 @@ mod tests {
         });
         assert!(!dd.is_expanded());
         assert!(!dd.was_changed());
+    }
+
+    #[test]
+    fn upward_dropdown_lists_options_above_header() {
+        let mut dd = Dropdown::new(
+            Bounds::new(10, 100, 150, 16),
+            vec!["A".into(), "B".into(), "C".into()],
+            0,
+            0,
+        )
+        .with_opens_upward(true);
+        dd.handle_event(&UiEvent::MouseClick {
+            x: 50,
+            y: 105,
+            button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
+        });
+        assert!(dd.is_expanded());
+        assert_eq!(dd.list_top(), 100 - 3 * OPTION_ROW_H as i32);
+        assert_eq!(dd.expanded_bounds().y, dd.list_top());
+
+        // Last option sits directly above the header.
+        let last_row_y = 100 - (OPTION_ROW_H as i32) / 2;
+        assert_eq!(dd.option_at(50, last_row_y), Some(2));
+        // Nothing below the header.
+        assert_eq!(dd.option_at(50, 100 + 16 + 2), None);
+
+        dd.handle_event(&UiEvent::MouseClick {
+            x: 50,
+            y: last_row_y,
+            button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
+        });
+        assert_eq!(dd.selected_index(), 2);
+        assert!(dd.was_changed());
     }
 }
