@@ -35,9 +35,9 @@ pub enum ClientCommandType {
     /// Auto-loot a grave at the given tile coordinates.
     ///
     /// Encoded identically to `CmdUse` (i16 x + i32 y). The server silently
-    /// transfers all items whose template ID is in
-    /// [`AUTOLOOT_ITEM_IDS`](crate::constants::AUTOLOOT_ITEM_IDS) plus all
-    /// gold from the tombstone corpse at that position.
+    /// transfers every item matching the player's uploaded
+    /// [`AutolootConfig`](crate::autoloot::AutolootConfig) (plus gold when
+    /// enabled) from the tombstone corpse at that position.
     CmdAutoloot = 36,
     /// Spend one talent point on the node identified by `(layer, mask)`.
     ///
@@ -56,6 +56,13 @@ pub enum ClientCommandType {
     /// * byte 1: rune slot index (`0..=3`, see `core::seyan_runes::SeyanRune`)
     /// * bytes 2..16: zero-padding
     CmdSetActiveRune = 39,
+    /// Upload the caller's grave auto-loot preferences.
+    ///
+    /// Wire format:
+    /// * byte 0: opcode `40`
+    /// * bytes 1..5: [`AutolootConfig::to_wire_bytes`](crate::autoloot::AutolootConfig::to_wire_bytes)
+    /// * bytes 5..16: zero-padding
+    CmdAutolootConfig = 40,
     CmdCTick = 255,
 }
 
@@ -95,6 +102,7 @@ impl From<u8> for ClientCommandType {
             37 => ClientCommandType::CmdLearnTalent,
             38 => ClientCommandType::CmdResetTalents,
             39 => ClientCommandType::CmdSetActiveRune,
+            40 => ClientCommandType::CmdAutolootConfig,
             255 => ClientCommandType::CmdCTick,
             _ => {
                 log::error!("Unknown client command type: {}", value);
@@ -530,10 +538,9 @@ impl ClientCommand {
 
     /// Creates an auto-loot graves command targeting the tombstone at `(x, y)`.
     ///
-    /// The server will silently take all items matching
-    /// [`AUTOLOOT_ITEM_IDS`](crate::constants::AUTOLOOT_ITEM_IDS) and all
-    /// gold from the corpse whose tombstone is at the given world tile
-    /// coordinates.
+    /// The server will silently take every item matching the player's
+    /// uploaded [`AutolootConfig`](crate::autoloot::AutolootConfig) from the
+    /// corpse whose tombstone is at the given world tile coordinates.
     ///
     /// # Arguments
     ///
@@ -609,6 +616,29 @@ impl ClientCommand {
         cmd.context = Some(format!("rune_idx={rune_idx}"));
         cmd
     }
+
+    /// Creates an auto-loot configuration upload packet.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - Preferences to send to the server.
+    ///
+    /// # Returns
+    ///
+    /// * A new instance configured by `new_autoloot_config`.
+    pub fn new_autoloot_config(config: &crate::autoloot::AutolootConfig) -> Self {
+        let mut cmd = Self::new(
+            ClientCommandType::CmdAutolootConfig,
+            config.to_wire_bytes().to_vec(),
+        );
+        cmd.context = Some(format!(
+            "categories=0x{:03x} ratling>={:?} greenling>={:?}",
+            config.categories.bits(),
+            config.ratling_min_rank,
+            config.greenling_min_rank
+        ));
+        cmd
+    }
 }
 
 #[cfg(test)]
@@ -648,6 +678,26 @@ mod tests {
         assert_eq!(
             i32::from_le_bytes([bytes[3], bytes[4], bytes[5], bytes[6]]),
             999i32
+        );
+    }
+
+    #[test]
+    fn autoloot_config_opcode_and_payload_roundtrip() {
+        use crate::autoloot::{AutolootCategories, AutolootConfig, EyeRank};
+
+        let cfg = AutolootConfig {
+            categories: AutolootCategories::GOLD | AutolootCategories::QUEST_ITEMS,
+            ratling_min_rank: EyeRank::Baron,
+            greenling_min_rank: EyeRank::King,
+        };
+        let bytes = ClientCommand::new_autoloot_config(&cfg).to_bytes();
+        assert_eq!(bytes.len(), 16);
+        assert_eq!(bytes[0], ClientCommandType::CmdAutolootConfig as u8);
+        assert_eq!(bytes[0], 40u8, "CmdAutolootConfig must be opcode 40");
+        assert_eq!(AutolootConfig::from_wire_bytes(&bytes[1..]), Some(cfg));
+        assert_eq!(
+            ClientCommandType::from(40u8),
+            ClientCommandType::CmdAutolootConfig
         );
     }
 

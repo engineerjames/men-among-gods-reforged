@@ -1,3 +1,4 @@
+pub mod autoloot_settings_panel;
 pub mod button_bar;
 pub mod chat_box;
 pub mod inventory_panel;

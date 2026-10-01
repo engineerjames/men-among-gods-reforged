@@ -4,11 +4,12 @@ use crate::{
     game_state::GameState,
     player::{
         commands::{
-            plr_cmd_attack, plr_cmd_autoloot, plr_cmd_ctick, plr_cmd_drop, plr_cmd_exit,
-            plr_cmd_give, plr_cmd_input, plr_cmd_inv, plr_cmd_inv_look, plr_cmd_learn_talent,
-            plr_cmd_look, plr_cmd_look_item, plr_cmd_mode, plr_cmd_move, plr_cmd_pickup,
-            plr_cmd_ping, plr_cmd_reset, plr_cmd_reset_talents, plr_cmd_set_active_rune,
-            plr_cmd_shop, plr_cmd_skill, plr_cmd_stat, plr_cmd_turn, plr_cmd_use,
+            plr_cmd_attack, plr_cmd_autoloot, plr_cmd_autoloot_config, plr_cmd_ctick, plr_cmd_drop,
+            plr_cmd_exit, plr_cmd_give, plr_cmd_input, plr_cmd_inv, plr_cmd_inv_look,
+            plr_cmd_learn_talent, plr_cmd_look, plr_cmd_look_item, plr_cmd_mode, plr_cmd_move,
+            plr_cmd_pickup, plr_cmd_ping, plr_cmd_reset, plr_cmd_reset_talents,
+            plr_cmd_set_active_rune, plr_cmd_shop, plr_cmd_skill, plr_cmd_stat, plr_cmd_turn,
+            plr_cmd_use,
         },
         connection::plr_api_login,
     },
@@ -131,6 +132,11 @@ pub fn plr_cmd(gs: &mut GameState, nr: usize) {
         ClientCommandType::CmdSetActiveRune => {
             log::debug!("PLR_CMD_SET_ACTIVE_RUNE received for player {}", nr);
             plr_cmd_set_active_rune(gs, nr);
+            return;
+        }
+        ClientCommandType::CmdAutolootConfig => {
+            log::debug!("PLR_CMD_AUTOLOOT_CONFIG received for player {}", nr);
+            plr_cmd_autoloot_config(gs, nr);
             return;
         }
         _ => {}

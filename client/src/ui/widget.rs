@@ -355,6 +355,10 @@ pub enum WidgetAction {
     SetShowHelperText(bool),
     /// Toggle rendering the cursor's logical screen coordinates as helper text.
     SetShowPositions(bool),
+    /// Enable or disable grave auto-looting for the active character.
+    SetAutolootEnabled(bool),
+    /// Replace the active character's grave auto-loot category configuration.
+    SetAutolootConfig(mag_core::autoloot::AutolootConfig),
     /// Update a keyboard binding for a game action.
     UpdateKeyBinding {
         /// The action whose binding changed.

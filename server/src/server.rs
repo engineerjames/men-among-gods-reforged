@@ -131,6 +131,11 @@ pub struct ServerPlayer {
     /// Wire flags currently applied to the active weather, including the
     /// admin-override bit (`core::weather::WEATHER_FLAG_OVERRIDE`).
     pub weather_flags: u8,
+
+    /// Grave auto-loot preferences most recently uploaded by the client via
+    /// `CmdAutolootConfig`. Transient per-session state; the client owns the
+    /// persisted copy and re-sends it after every login.
+    pub autoloot: core::autoloot::AutolootConfig,
 }
 
 impl ServerPlayer {
@@ -195,6 +200,7 @@ impl ServerPlayer {
             weather_expire_tick: 0,
             weather_tint: [0; 4],
             weather_flags: 0,
+            autoloot: core::autoloot::AutolootConfig::default(),
         }
     }
 

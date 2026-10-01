@@ -38,4 +38,8 @@ path = "src/bin/map_viewer.rs"
 name = "mag-admin"
 path = "src/bin/mag_admin.rs"
 
+[[bin]]
+name = "template-search"
+path = "src/bin/template_search.rs"
+
 
