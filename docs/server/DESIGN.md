@@ -95,6 +95,31 @@ Important implication of the ordering above:
 
 - **Inbound bytes read during `handle_network_io()` are generally processed on the next `game_tick()`**, because `game_tick()` runs before `rec_player()` within a single scheduling iteration.
 
+### Parallel per-player view updates
+
+Everything in `game_tick()` runs on the tick thread **except** the per-player
+view/delta pass (`plr_getmap` + `plr_change`, label
+`player.send_normal_state_updates`). That pass only *reads* shared world state
+and only *writes* the player's own slot (`ServerPlayer`) and that character's
+`SeeMap`, so `server/src/player/update.rs` fans it out over a rayon pool:
+
+- Each worker gets an immutable `WorldView` (map, characters, items, globals)
+  and exclusive `&mut` access to one player + see-map via
+  `PlayerUpdateCtx`. The borrow checker enforces the disjointness.
+- The few world mutations the legacy code did inline — clearing `IF_UPDATE`
+  on worn/spell/cursor items, disconnecting on tick-buffer overflow, the
+  visibility hit/miss counters — are recorded in `Deferred` and replayed on
+  the tick thread after the join, so the per-client byte stream is identical
+  to the serial pass (`update::tests::parallel_and_serial_updates_produce_identical_output`).
+- Pool size: `MAG_TICK_WORKERS` if set (>= 1, clamped to the available
+  CPUs), otherwise `available_parallelism() - 1` capped at
+  `MAX_DEFAULT_TICK_WORKERS` (8); 1-2 CPU hosts run serially. `1` disables
+  the pool. Fewer than `PARALLEL_MIN_PLAYERS` (4) online players always run
+  serially.
+- Everything else in the tick (NPC AI, combat, effects, `compress_ticks`,
+  socket I/O) is still single threaded; do not call `xsend`/`csend` or mutate
+  `GameState` from the context functions.
+
 ## Socket Options
 
 The Rust server mirrors the meaningful socket setup from the legacy C server:

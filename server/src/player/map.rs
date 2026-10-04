@@ -10,8 +10,15 @@ use core::{
 };
 
 use crate::{
-    driver, game_state::GameState, helpers, network_manager, player::connection::plr_logout,
+    driver,
+    game_state::GameState,
+    helpers,
+    player::{connection::plr_logout, update::PlayerUpdateCtx},
+    server::ServerPlayer,
 };
+
+#[cfg(test)]
+use crate::player::update;
 
 /// Client-side map tile
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -37,27 +44,42 @@ pub struct CMap {
     pub it_status: u8,  // for items with animation (burning torches etc)
 }
 
-/// Mirrors the NPC driver's on-sight aggro rule: whether `target` would add
-/// `viewer` to its kill list because of its `data[43..47]` aggro list.
+/// Mirrors the NPC driver's on-sight aggro rule: `data[43..47]` lists the
+/// groups `target` is friendly with, and it attacks anyone not on that list.
 fn npc_aggroes_on_sight(viewer: &core::types::Character, target: &core::types::Character) -> bool {
-    let viewer_group = viewer.data[core::constants::CHD_GROUP];
-    if target.data[core::constants::CHD_GROUP] == viewer_group {
+    if target.data[43] == 0 {
         return false;
     }
 
-    let viewer_is_player = viewer.flags & CharacterFlags::Player.bits() != 0;
-    target.data[43..47]
-        .iter()
-        .any(|&entry| entry != 0 && (entry == viewer_group || (entry == 65536 && viewer_is_player)))
+    let viewer_group = viewer.data[core::constants::CHD_GROUP];
+    let viewer_is_friendly_player = viewer.flags & CharacterFlags::Player.bits() != 0
+        || viewer.temp == core::constants::CT_COMPANION as u16;
+    !target.data[43..47].iter().any(|&entry| {
+        entry != 0 && (entry == viewer_group || (entry == 65536 && viewer_is_friendly_player))
+    })
+}
+
+/// Whether `target` is currently fighting `viewer` or has it on its kill list.
+fn npc_targets_viewer(
+    viewer_cn: usize,
+    viewer: &core::types::Character,
+    target: &core::types::Character,
+) -> bool {
+    if target.attack_cn as usize == viewer_cn {
+        return true;
+    }
+    let idx = viewer_cn as i32 | (helpers::char_id(viewer) << 16);
+    target.data[80..92].contains(&idx)
 }
 
 /// Classifies a visible NPC relative to the viewing character.
 ///
 /// Players, merchants, and bodies never receive a danger glyph. NPCs are
 /// classified from their rank difference rather than transient combat state,
-/// so the nameplate remains stable while the target is visible. NPCs that do
-/// not attack the viewer on sight (per their aggro group list) get no glyph.
+/// so the nameplate remains stable while the target is visible. NPCs that
+/// neither attack the viewer on sight nor are currently targeting it get no glyph.
 fn danger_glyph_for(
+    viewer_cn: usize,
     viewer: &core::types::Character,
     target: &core::types::Character,
 ) -> DangerGlyph {
@@ -70,7 +92,7 @@ fn danger_glyph_for(
         return DangerGlyph::None;
     }
 
-    if !npc_aggroes_on_sight(viewer, target) {
+    if !npc_aggroes_on_sight(viewer, target) && !npc_targets_viewer(viewer_cn, viewer, target) {
         return DangerGlyph::None;
     }
 
@@ -330,15 +352,16 @@ pub fn plr_map_set(gs: &mut GameState, cn: usize) {
     );
 }
 
-/// Choose and dispatch the appropriate map update implementation.
+/// Legacy entry point: build and send the player's visible map.
 ///
-/// Decides between the full (`plr_getmap_complete`) or fast (`plr_getmap_fast`)
-/// small-map generation based on server load and global flags. When entering
-/// or leaving "speed savings" mode the function clears map caches and
-/// announces the mode change.
+/// Production runs the context form via `update::run_player_updates`; this
+/// shim keeps the `(gs, nr)` call shape for unit tests.
 ///
 /// # Arguments
-/// * `nr` - Player slot index requesting the map update
+///
+/// * `gs` - Active game state.
+/// * `nr` - Player slot index requesting the map update.
+#[cfg(test)]
 pub fn plr_getmap(gs: &mut GameState, nr: usize) {
     plr_getmap_complete(gs, nr);
 }
@@ -353,24 +376,49 @@ pub fn plr_getmap(gs: &mut GameState, nr: usize) {
 /// # Panics
 ///
 /// * Panics if `nr`, the player's character index, or a calculated map index is invalid.
+#[cfg(test)]
 pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
-    let cn = gs.players[nr].usnr;
-    let daylight_changed = gs.players[nr].last_dlight != gs.globals.dlight;
+    update::with_player_ctx(gs, nr, plr_getmap_ctx);
+}
+
+/// Context form of [`plr_getmap`]; runs on a tick worker.
+///
+/// # Arguments
+///
+/// * `ctx` - Per-player update context.
+pub fn plr_getmap_ctx(ctx: &mut PlayerUpdateCtx) {
+    plr_getmap_complete_ctx(ctx);
+}
+
+/// Context form of [`plr_getmap_complete`]: rebuilds the player's `smap`
+/// from the shared world without touching any other player.
+///
+/// # Arguments
+///
+/// * `ctx` - Per-player update context.
+///
+/// # Panics
+///
+/// * Panics if the player's character index or a calculated map index is invalid.
+pub fn plr_getmap_complete_ctx(ctx: &mut PlayerUpdateCtx) {
+    let cn = ctx.cn;
+    let world = ctx.world;
+    let daylight_changed = ctx.player.last_dlight != world.globals.dlight;
 
     const YSCUT: i32 = 3;
     const YECUT: i32 = 1;
     const XSCUT: i32 = 2;
     const XECUT: i32 = 2;
 
-    let ys = i32::from(gs.characters[cn].y) - (core::constants::TILEY as i32 / 2) + YSCUT;
-    let ye = i32::from(gs.characters[cn].y) + (core::constants::TILEY as i32 / 2) - YECUT;
-    let xs = i32::from(gs.characters[cn].x) - (core::constants::TILEX as i32 / 2) + XSCUT;
-    let xe = i32::from(gs.characters[cn].x) + (core::constants::TILEX as i32 / 2) - XECUT;
+    let viewer = &world.characters[cn];
+    let ys = i32::from(viewer.y) - (core::constants::TILEY as i32 / 2) + YSCUT;
+    let ye = i32::from(viewer.y) + (core::constants::TILEY as i32 / 2) - YECUT;
+    let xs = i32::from(viewer.x) - (core::constants::TILEX as i32 / 2) + XSCUT;
+    let xe = i32::from(viewer.x) + (core::constants::TILEX as i32 / 2) - XECUT;
 
-    let current_x = i32::from(gs.characters[cn].x);
-    let current_y = i32::from(gs.characters[cn].y);
-    gs.can_see(
-        Some(cn),
+    let current_x = i32::from(viewer.x);
+    let current_y = i32::from(viewer.y);
+    ctx.can_see(
         current_x,
         current_y,
         current_x + 1,
@@ -378,19 +426,11 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
         (core::constants::TILEX / 2) as i32, // TODO: Re-evaluate if this is the right size...
     );
 
-    let player_vx = gs.players[nr].vx;
-    let player_vy = gs.players[nr].vy;
-    let player_visi = gs.players[nr].visi;
-
-    let see_x = gs.see_map[cn].x;
-    let see_y = gs.see_map[cn].y;
-    let see_vis = gs.see_map[cn].vis;
-
     let mut do_all = false;
-    if player_vx != see_x || player_vy != see_y || player_visi != see_vis {
-        gs.players[nr].vx = see_x;
-        gs.players[nr].vy = see_y;
-        gs.players[nr].visi = see_vis;
+    if ctx.player.vx != ctx.see.x || ctx.player.vy != ctx.see.y || ctx.player.visi != ctx.see.vis {
+        ctx.player.vx = ctx.see.x;
+        ctx.player.vy = ctx.see.y;
+        ctx.player.visi = ctx.see.vis;
         do_all = true;
     }
 
@@ -406,9 +446,9 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
 
     // Light depends on the viewer only through these three values, so resolve
     // them once instead of re-reading the character on all ~5.8k tiles.
-    let dlight = gs.globals.dlight;
-    let percept = i32::from(gs.characters[cn].skill[core::skills::SK_PERCEPT][5]);
-    let infrared = gs.characters[cn].flags & CharacterFlags::Infrared.bits() != 0;
+    let dlight = world.globals.dlight;
+    let percept = i32::from(viewer.skill[core::skills::SK_PERCEPT][5]);
+    let infrared = viewer.flags & CharacterFlags::Infrared.bits() != 0;
     let percept_scale = std::cmp::min(percept, 10);
 
     let mut n = (YSCUT * core::constants::TILEX as i32 + XSCUT) as usize;
@@ -423,12 +463,11 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
                 || x >= core::constants::SERVER_MAPX
                 || y >= core::constants::SERVER_MAPY
             {
-                let needs_update = do_all
-                    || gs.players[nr].xmap[n] != empty_map
-                    || gs.players[nr].smap[n] != empty_cmap;
+                let needs_update =
+                    do_all || ctx.player.xmap[n] != empty_map || ctx.player.smap[n] != empty_cmap;
                 if needs_update {
-                    gs.players[nr].xmap[n] = empty_map;
-                    gs.players[nr].smap[n] = empty_cmap;
+                    ctx.player.xmap[n] = empty_map;
+                    ctx.player.smap[n] = empty_cmap;
                 }
 
                 x += 1;
@@ -438,14 +477,14 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
 
             let mi = (x + y * core::constants::SERVER_MAPX) as usize;
 
-            let map_m = gs.map[mi];
+            let map_m = world.map[mi];
             if daylight_changed
                 || do_all
                 || map_m.it != 0
                 || map_m.ch as usize != 0
-                || gs.players[nr].xmap[n] != map_m
+                || ctx.player.xmap[n] != map_m
             {
-                gs.players[nr].xmap[n] = map_m;
+                ctx.player.xmap[n] = map_m;
             } else {
                 // Still need to advance indices
                 x += 1;
@@ -482,7 +521,7 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
 
             // no light, nothing visible
             if light == 0 {
-                gs.players[nr].smap[n] = CMap {
+                ctx.player.smap[n] = CMap {
                     flags: INVIS,
                     ..empty_cmap
                 };
@@ -494,7 +533,7 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
             // Scratch copy of just this tile; committed below. Cloning the
             // player's whole 6400-tile map here instead would cost ~180 KB of
             // memcpy per player per tick.
-            let mut tile = gs.players[nr].smap[n];
+            let mut tile = ctx.player.smap[n];
 
             // Begin of flags
             tile.flags = 0;
@@ -570,7 +609,7 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
                     false
                 } else {
                     let tmp_vis = rel_x as usize + rel_y as usize * core::constants::VISI_STRIDE;
-                    let see = &gs.see_map[cn];
+                    let see = &*ctx.see;
                     see.vis[tmp_vis] != 0
                         || see.vis[tmp_vis + core::constants::VISI_STRIDE] != 0
                         || see.vis[tmp_vis - core::constants::VISI_STRIDE] != 0
@@ -626,14 +665,14 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
                 // Begin of character
                 let co = map_m.ch as usize;
                 let tmp_see = if visible && co != 0 {
-                    gs.do_char_can_see(cn, co)
+                    ctx.char_can_see(co)
                 } else {
                     0
                 };
 
                 if tmp_see != 0 {
-                    let char_co = gs.characters[co];
-                    tile.flags2 |= danger_glyph_for(&gs.characters[cn], &char_co).bits();
+                    let char_co = &world.characters[co];
+                    tile.flags2 |= danger_glyph_for(cn, viewer, char_co).bits();
                     if char_co.sprite_override != 0 {
                         tile.ch_sprite = char_co.sprite_override;
                     } else {
@@ -644,7 +683,7 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
                     tile.ch_speed = char_co.speed as u8;
                     tile.ch_aspeed = char_co.future3[2] as u8;
                     tile.ch_nr = co as u16;
-                    tile.ch_id = helpers::char_id(&char_co) as u16;
+                    tile.ch_id = helpers::char_id(char_co) as u16;
 
                     if tmp_see <= 75 && char_co.hp[5] > 0 {
                         tile.ch_proz = (((char_co.a_hp + 5) / 10) / i32::from(char_co.hp[5])) as u8;
@@ -677,16 +716,14 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
                 let item_on_m = if map_m.it == 0 {
                     None
                 } else {
-                    Some(gs.items[map_m.it as usize])
+                    Some(&world.items[map_m.it as usize])
                 };
                 if map_m.fsprite != 0 {
                     tile.it_sprite = map_m.fsprite as i16;
                     tile.it_status = 0;
-                } else if item_on_m.is_some()
-                    && (item_on_m.unwrap().flags & ItemFlags::IF_HIDDEN.bits()) == 0
+                } else if let Some(item) =
+                    item_on_m.filter(|item| item.flags & ItemFlags::IF_HIDDEN.bits() == 0)
                 {
-                    let item = item_on_m.unwrap();
-
                     if item.active != 0 {
                         tile.it_sprite = item.sprite[1];
                         tile.it_status = item.status[1];
@@ -718,7 +755,7 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
                 }
             }
 
-            gs.players[nr].smap[n] = tile;
+            ctx.player.smap[n] = tile;
 
             x += 1;
             n += 1;
@@ -728,152 +765,96 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
         n += (XSCUT + XECUT) as usize;
     }
 
-    gs.players[nr].vx = gs.see_map[cn].x;
-    gs.players[nr].vy = gs.see_map[cn].y;
-    gs.players[nr].last_dlight = gs.globals.dlight;
+    ctx.player.vx = ctx.see.x;
+    ctx.player.vy = ctx.see.y;
+    ctx.player.last_dlight = world.globals.dlight;
 }
 
-/// Light update functions - calculate efficiency of batch updates
-/// Updates a single light tile (least efficient)
-fn cl_light_one(gs: &mut GameState, n: usize, dosend: usize, update_only: bool) -> usize {
-    if !update_only {
-        // Return efficiency score: 50 * 1 / 3
+/// One light-delta packet shape: how many tiles it covers and how it is
+/// scored against the alternatives.
+struct LightBatch {
+    /// Tiles covered starting at the changed index.
+    span: usize,
+    /// Wire command for this shape.
+    cmd: ServerCommandType,
+    /// Bytes sent for this shape.
+    packet_len: usize,
+    /// Efficiency divisor (`50 * changed / divisor`).
+    divisor: usize,
+}
+
+/// Light batch shapes in legacy evaluation order (one, three, seven, 27).
+const LIGHT_BATCHES: [LightBatch; 4] = [
+    LightBatch {
+        span: 1,
+        cmd: ServerCommandType::SetMap4,
+        packet_len: 4,
+        divisor: 3,
+    },
+    LightBatch {
+        span: 3,
+        cmd: ServerCommandType::SetMap5,
+        packet_len: 5,
+        divisor: 4,
+    },
+    LightBatch {
+        span: 7,
+        cmd: ServerCommandType::SetMap6,
+        packet_len: 7,
+        divisor: 6,
+    },
+    LightBatch {
+        span: 27,
+        cmd: ServerCommandType::SetMap3,
+        packet_len: 17,
+        divisor: 16,
+    },
+];
+
+/// Score a light batch shape at tile `n` (higher is better).
+fn cl_light_efficiency(player: &ServerPlayer, n: usize, batch: &LightBatch) -> usize {
+    if batch.span == 1 {
         return 50 / 3;
     }
 
-    let smap_light = gs.players[dosend].smap[n].light;
-    gs.players[dosend].cmap[n].light = smap_light;
-
-    // Packet layout: [cmd, idx_lo, idx_hi, light]
-    // index is a full u16 (supports up to 65535 tiles; TILEX*TILEY=6400).
-    let mut buf: [u8; 4] = [0; 4];
-    buf[0] = ServerCommandType::SetMap4 as u8;
-    buf[1] = (n & 0xff) as u8;
-    buf[2] = ((n >> 8) & 0xff) as u8;
-    buf[3] = smap_light & 0x0f;
-
-    network_manager::xsend(gs, dosend, &buf, 4);
-    1
+    let total = core::constants::TILEX * core::constants::TILEY;
+    let count = (n..std::cmp::min(n + batch.span, total))
+        .filter(|&m| player.cmap[m].light != player.smap[m].light)
+        .count();
+    50 * count / batch.divisor
 }
 
-/// Updates three light tiles
-fn cl_light_three(gs: &mut GameState, n: usize, dosend: usize, update_only: bool) -> usize {
-    if !update_only {
-        let mut count = 0;
-        let total = core::constants::TILEX * core::constants::TILEY;
-        for m in n..std::cmp::min(n + 3, total) {
-            if gs.players[dosend].cmap[m].light != gs.players[dosend].smap[m].light {
-                count += 1;
-            }
-        }
-        return 50 * count / 4;
-    }
+/// Emit one light batch starting at tile `n` and sync `cmap` for the tiles
+/// it carries.
+///
+/// Packet layout: `[cmd, idx_lo, idx_hi, light, nibble_pairs...]`; the index
+/// is a full u16 (`TILEX * TILEY = 6400`).
+fn cl_light_send(ctx: &mut PlayerUpdateCtx, n: usize, batch: &LightBatch) {
+    let mut buf = [0u8; 17];
+    buf[0] = batch.cmd as u8;
 
-    // Packet layout: [cmd, idx_lo, idx_hi, light, nibble_pairs...]
-    let mut buf: [u8; 5] = [0; 5];
-    buf[0] = ServerCommandType::SetMap5 as u8;
-
-    let smap_light = gs.players[dosend].smap[n].light;
-    gs.players[dosend].cmap[n].light = smap_light;
+    let smap_light = ctx.player.smap[n].light;
+    ctx.player.cmap[n].light = smap_light;
     buf[1] = (n & 0xff) as u8;
     buf[2] = ((n >> 8) & 0xff) as u8;
     buf[3] = smap_light & 0x0f;
 
-    let total = core::constants::TILEX * core::constants::TILEY;
-    let mut p = 4;
-    let mut m = n + 2;
-    while m < std::cmp::min(n + 2 + 2, total) {
-        let light_m = gs.players[dosend].smap[m].light;
-        let light_m1 = gs.players[dosend].smap[m - 1].light;
-        buf[p] = light_m | (light_m1 << 4);
-        gs.players[dosend].cmap[m].light = light_m;
-        gs.players[dosend].cmap[m - 1].light = light_m1;
-        m += 2;
-        p += 1;
-    }
-
-    network_manager::xsend(gs, dosend, &buf, 5);
-    1
-}
-
-/// Updates seven light tiles
-fn cl_light_seven(gs: &mut GameState, n: usize, dosend: usize, update_only: bool) -> usize {
-    if !update_only {
-        let mut count = 0;
+    if batch.span > 1 {
         let total = core::constants::TILEX * core::constants::TILEY;
-        for m in n..std::cmp::min(n + 7, total) {
-            if gs.players[dosend].cmap[m].light != gs.players[dosend].smap[m].light {
-                count += 1;
-            }
+        let mut p = 4;
+        let mut m = n + 2;
+        while m < std::cmp::min(n + batch.span + 1, total) {
+            let light_m = ctx.player.smap[m].light;
+            let light_m1 = ctx.player.smap[m - 1].light;
+            buf[p] = light_m | (light_m1 << 4);
+            ctx.player.cmap[m].light = light_m;
+            ctx.player.cmap[m - 1].light = light_m1;
+            m += 2;
+            p += 1;
         }
-        return 50 * count / 6;
     }
 
-    // Packet layout: [cmd, idx_lo, idx_hi, light, nibble_pairs...]
-    let mut buf: [u8; 7] = [0; 7];
-    buf[0] = ServerCommandType::SetMap6 as u8;
-
-    let smap_light = gs.players[dosend].smap[n].light;
-    gs.players[dosend].cmap[n].light = smap_light;
-    buf[1] = (n & 0xff) as u8;
-    buf[2] = ((n >> 8) & 0xff) as u8;
-    buf[3] = smap_light & 0x0f;
-
-    let total = core::constants::TILEX * core::constants::TILEY;
-    let mut p = 4;
-    let mut m = n + 2;
-    while m < std::cmp::min(n + 6 + 2, total) {
-        let light_m = gs.players[dosend].smap[m].light;
-        let light_m1 = gs.players[dosend].smap[m - 1].light;
-        buf[p] = light_m | (light_m1 << 4);
-        gs.players[dosend].cmap[m].light = light_m;
-        gs.players[dosend].cmap[m - 1].light = light_m1;
-        m += 2;
-        p += 1;
-    }
-
-    network_manager::xsend(gs, dosend, &buf, 7);
-    1
-}
-
-/// Updates 27 light tiles (most efficient for large batches)
-fn cl_light_26(gs: &mut GameState, n: usize, dosend: usize, update_only: bool) -> usize {
-    if !update_only {
-        let mut count = 0;
-        let total = core::constants::TILEX * core::constants::TILEY;
-        for m in n..std::cmp::min(n + 27, total) {
-            if gs.players[dosend].cmap[m].light != gs.players[dosend].smap[m].light {
-                count += 1;
-            }
-        }
-        return 50 * count / 16;
-    }
-
-    // Packet layout: [cmd, idx_lo, idx_hi, light, nibble_pairs...]
-    let mut buf: [u8; 17] = [0; 17];
-    buf[0] = ServerCommandType::SetMap3 as u8;
-
-    let smap_light = gs.players[dosend].smap[n].light;
-    gs.players[dosend].cmap[n].light = smap_light;
-    buf[1] = (n & 0xff) as u8;
-    buf[2] = ((n >> 8) & 0xff) as u8;
-    buf[3] = smap_light & 0x0f;
-
-    let total = core::constants::TILEX * core::constants::TILEY;
-    let mut p = 4;
-    let mut m = n + 2;
-    while m < std::cmp::min(n + 26 + 2, total) {
-        let light_m = gs.players[dosend].smap[m].light;
-        let light_m1 = gs.players[dosend].smap[m - 1].light;
-        buf[p] = light_m | (light_m1 << 4);
-        gs.players[dosend].cmap[m].light = light_m;
-        gs.players[dosend].cmap[m - 1].light = light_m1;
-        m += 2;
-        p += 1;
-    }
-
-    network_manager::xsend(gs, dosend, &buf, 17);
-    1
+    ctx.xsend(&buf, batch.packet_len);
 }
 
 /// Send light updates for all changed tiles
@@ -882,31 +863,36 @@ fn cl_light_26(gs: &mut GameState, n: usize, dosend: usize, update_only: bool) -
 ///
 /// * `gs` - Active game state used by this function.
 /// * `nr` - Numeric identifier used by this function.
+#[cfg(test)]
 pub fn plr_change_light(gs: &mut GameState, nr: usize) {
+    update::with_player_ctx(gs, nr, plr_change_light_ctx);
+}
+
+/// Context form of [`plr_change_light`].
+///
+/// # Arguments
+///
+/// * `ctx` - Per-player update context.
+pub fn plr_change_light_ctx(ctx: &mut PlayerUpdateCtx) {
     let total = core::constants::TILEX * core::constants::TILEY;
 
     for n in 0..total {
-        let light_changed = gs.players[nr].cmap[n].light != gs.players[nr].smap[n].light;
+        let light_changed = ctx.player.cmap[n].light != ctx.player.smap[n].light;
 
         if light_changed {
-            // Try each light update function and pick the most efficient
+            // Try each light batch shape and pick the most efficient
             let mut best_efficiency = 0;
-            let mut best_func = 0;
+            let mut best_batch = 0;
 
-            #[allow(clippy::type_complexity)]
-            let lfuncs: [fn(&mut GameState, usize, usize, bool) -> usize; 4] =
-                [cl_light_one, cl_light_three, cl_light_seven, cl_light_26];
-
-            for (idx, func) in lfuncs.iter().enumerate() {
-                let efficiency = func(gs, n, nr, false);
+            for (idx, batch) in LIGHT_BATCHES.iter().enumerate() {
+                let efficiency = cl_light_efficiency(ctx.player, n, batch);
                 if efficiency >= best_efficiency {
                     best_efficiency = efficiency;
-                    best_func = idx;
+                    best_batch = idx;
                 }
             }
 
-            // Execute the best function
-            lfuncs[best_func](gs, n, nr, true);
+            cl_light_send(ctx, n, &LIGHT_BATCHES[best_batch]);
         }
     }
 }
@@ -917,16 +903,26 @@ pub fn plr_change_light(gs: &mut GameState, nr: usize) {
 ///
 /// * `gs` - Active game state used by this function.
 /// * `nr` - Numeric identifier used by this function.
+#[cfg(test)]
 pub fn plr_change_map(gs: &mut GameState, nr: usize) {
+    update::with_player_ctx(gs, nr, plr_change_map_ctx);
+}
+
+/// Context form of [`plr_change_map`].
+///
+/// # Arguments
+///
+/// * `ctx` - Per-player update context.
+pub fn plr_change_map_ctx(ctx: &mut PlayerUpdateCtx) {
     let total = core::constants::TILEX * core::constants::TILEY;
     let mut lastn: i32 = -1;
     let mut n = 0;
 
     while n < total {
         // Find next difference (matching C++ fdiff behavior)
-        let next_diff = gs.players[nr].cmap[n..]
+        let next_diff = ctx.player.cmap[n..]
             .iter()
-            .zip(gs.players[nr].smap[n..].iter())
+            .zip(ctx.player.smap[n..].iter())
             .position(|(c, s)| c != s);
 
         match next_diff {
@@ -956,8 +952,8 @@ pub fn plr_change_map(gs: &mut GameState, nr: usize) {
                 p = 4;
             }
 
-            let cmap = &gs.players[nr].cmap[n];
-            let smap = &gs.players[nr].smap[n];
+            let cmap = &ctx.player.cmap[n];
+            let smap = &ctx.player.smap[n];
 
             // Check each field and add to update if changed
             if cmap.ba_sprite != smap.ba_sprite {
@@ -1045,10 +1041,10 @@ pub fn plr_change_map(gs: &mut GameState, nr: usize) {
             // Only send if we actually found changes (matching C++ if (buf[1]))
             let did_update = buf[1] != 0;
             if did_update {
-                network_manager::xsend(gs, nr, &buf, p);
+                ctx.xsend(&buf, p);
             }
 
-            gs.players[nr].cmap[n] = gs.players[nr].smap[n];
+            ctx.player.cmap[n] = ctx.player.smap[n];
 
             did_update
         };
@@ -1069,11 +1065,25 @@ pub fn plr_change_map(gs: &mut GameState, nr: usize) {
 /// * `gs` - Active game state used by this function.
 /// * `nr` - Numeric identifier used by this function.
 /// * `cn` - Character index used by this function.
+#[cfg(test)]
 pub fn plr_change_position(gs: &mut GameState, nr: usize, cn: usize) {
-    let x = gs.characters[cn].x;
-    let y = gs.characters[cn].y;
-    let cpl_x = gs.players[nr].cpl.x;
-    let cpl_y = gs.players[nr].cpl.y;
+    update::with_player_ctx(gs, nr, |ctx| {
+        ctx.cn = cn;
+        plr_change_position_ctx(ctx);
+    });
+}
+
+/// Context form of [`plr_change_position`].
+///
+/// # Arguments
+///
+/// * `ctx` - Per-player update context.
+pub fn plr_change_position_ctx(ctx: &mut PlayerUpdateCtx) {
+    let ch = &ctx.world.characters[ctx.cn];
+    let x = ch.x;
+    let y = ch.y;
+    let cpl_x = ctx.player.cpl.x;
+    let cpl_y = ctx.player.cpl.y;
 
     if i32::from(x) != cpl_x || i32::from(y) != cpl_y {
         let mut buf: [u8; 16] = [0; 16];
@@ -1082,48 +1092,48 @@ pub fn plr_change_position(gs: &mut GameState, nr: usize, cn: usize) {
 
         if cpl_x == (i32::from(x) - 1) && cpl_y == i32::from(y) {
             buf[0] = ServerCommandType::ScrollRight as u8;
-            network_manager::xsend(gs, nr, &buf, 1);
-            gs.players[nr].cmap.copy_within(1..total, 0);
+            ctx.xsend(&buf, 1);
+            ctx.player.cmap.copy_within(1..total, 0);
         } else if cpl_x == (i32::from(x) + 1) && cpl_y == i32::from(y) {
             buf[0] = ServerCommandType::ScrollLeft as u8;
-            network_manager::xsend(gs, nr, &buf, 1);
-            gs.players[nr].cmap.copy_within(0..(total - 1), 1);
+            ctx.xsend(&buf, 1);
+            ctx.player.cmap.copy_within(0..(total - 1), 1);
         } else if cpl_x == i32::from(x) && cpl_y == (i32::from(y) - 1) {
             buf[0] = ServerCommandType::ScrollDown as u8;
-            network_manager::xsend(gs, nr, &buf, 1);
-            gs.players[nr].cmap.copy_within(tilex..total, 0);
+            ctx.xsend(&buf, 1);
+            ctx.player.cmap.copy_within(tilex..total, 0);
         } else if cpl_x == i32::from(x) && cpl_y == (i32::from(y) + 1) {
             buf[0] = ServerCommandType::ScrollUp as u8;
-            network_manager::xsend(gs, nr, &buf, 1);
-            gs.players[nr].cmap.copy_within(0..(total - tilex), tilex);
+            ctx.xsend(&buf, 1);
+            ctx.player.cmap.copy_within(0..(total - tilex), tilex);
         } else if cpl_x == (i32::from(x) + 1) && cpl_y == (i32::from(y) + 1) {
             buf[0] = ServerCommandType::ScrollLeftUp as u8;
-            network_manager::xsend(gs, nr, &buf, 1);
-            gs.players[nr]
+            ctx.xsend(&buf, 1);
+            ctx.player
                 .cmap
                 .copy_within(0..(total - tilex - 1), tilex + 1);
         } else if cpl_x == (i32::from(x) + 1) && cpl_y == (i32::from(y) - 1) {
             buf[0] = ServerCommandType::ScrollLeftDown as u8;
-            network_manager::xsend(gs, nr, &buf, 1);
-            gs.players[nr].cmap.copy_within((tilex - 1)..total, 0);
+            ctx.xsend(&buf, 1);
+            ctx.player.cmap.copy_within((tilex - 1)..total, 0);
         } else if cpl_x == (i32::from(x) - 1) && cpl_y == (i32::from(y) + 1) {
             buf[0] = ServerCommandType::ScrollRightUp as u8;
-            network_manager::xsend(gs, nr, &buf, 1);
-            gs.players[nr]
+            ctx.xsend(&buf, 1);
+            ctx.player
                 .cmap
                 .copy_within(0..(total - tilex + 1), tilex - 1);
         } else if cpl_x == (i32::from(x) - 1) && cpl_y == (i32::from(y) - 1) {
             buf[0] = ServerCommandType::ScrollRightDown as u8;
-            network_manager::xsend(gs, nr, &buf, 1);
+            ctx.xsend(&buf, 1);
             let src_start = tilex + 1;
             let count = total - tilex - 1;
-            gs.players[nr]
+            ctx.player
                 .cmap
                 .copy_within(src_start..(src_start + count), 0);
         }
 
-        gs.players[nr].cpl.x = i32::from(x);
-        gs.players[nr].cpl.y = i32::from(y);
+        ctx.player.cpl.x = i32::from(x);
+        ctx.player.cpl.y = i32::from(y);
 
         buf[0] = ServerCommandType::SetOrigin as u8;
         let ox: i16 = (i32::from(x) - (core::constants::TILEX as i32 / 2)) as i16;
@@ -1134,7 +1144,7 @@ pub fn plr_change_position(gs: &mut GameState, nr: usize, cn: usize) {
         buf[2] = ox_b[1];
         buf[3] = oy_b[0];
         buf[4] = oy_b[1];
-        network_manager::xsend(gs, nr, &buf, 5);
+        ctx.xsend(&buf, 5);
     }
 }
 
@@ -1191,73 +1201,121 @@ mod tests {
         }
     }
 
-    #[test]
-    fn danger_glyph_for_only_marks_severe_rank_buckets() {
+    const VIEWER_CN: usize = 3;
+
+    fn test_viewer() -> Character {
         let mut viewer = Character {
             flags: CharacterFlags::Player.bits(),
             ..Character::default()
         };
-        let mut target = Character::default();
+        viewer.data[core::constants::CHD_GROUP] = 1;
+        viewer
+    }
+
+    /// NPC in group 5 that is only friendly with its own group.
+    fn hostile_npc(points_tot: i32) -> Character {
+        let mut target = Character {
+            points_tot,
+            ..Character::default()
+        };
         target.data[core::constants::CHD_GROUP] = 5;
-        target.data[43] = 65536;
+        target.data[43] = 5;
+        target
+    }
+
+    #[test]
+    fn danger_glyph_for_only_marks_severe_rank_buckets() {
+        let mut viewer = test_viewer();
+        let mut target = hostile_npc(0);
 
         viewer.points_tot = 48_950;
-        target.points_tot = 0;
-        assert_eq!(danger_glyph_for(&viewer, &target), DangerGlyph::None);
+        assert_eq!(
+            danger_glyph_for(VIEWER_CN, &viewer, &target),
+            DangerGlyph::None
+        );
 
         viewer.points_tot = 850;
         target.points_tot = 17_700;
-        assert_eq!(danger_glyph_for(&viewer, &target), DangerGlyph::None);
+        assert_eq!(
+            danger_glyph_for(VIEWER_CN, &viewer, &target),
+            DangerGlyph::None
+        );
 
         viewer.points_tot = 0;
         target.points_tot = 17_700;
-        assert_eq!(danger_glyph_for(&viewer, &target), DangerGlyph::Skull);
+        assert_eq!(
+            danger_glyph_for(VIEWER_CN, &viewer, &target),
+            DangerGlyph::Skull
+        );
 
         target.points_tot = 48_950;
         assert_eq!(
-            danger_glyph_for(&viewer, &target),
+            danger_glyph_for(VIEWER_CN, &viewer, &target),
             DangerGlyph::FlamingSkull
         );
     }
 
     #[test]
     fn danger_glyph_for_requires_on_sight_aggro() {
-        let viewer = Character {
-            flags: CharacterFlags::Player.bits(),
-            ..Character::default()
-        };
-        let mut target = Character {
-            points_tot: 48_950,
-            ..Character::default()
-        };
-        target.data[core::constants::CHD_GROUP] = 5;
+        let viewer = test_viewer();
+        let mut target = hostile_npc(48_950);
 
-        assert_eq!(danger_glyph_for(&viewer, &target), DangerGlyph::None);
-
-        target.data[43] = 65536;
         assert_eq!(
-            danger_glyph_for(&viewer, &target),
+            danger_glyph_for(VIEWER_CN, &viewer, &target),
             DangerGlyph::FlamingSkull
         );
 
-        target.data[core::constants::CHD_GROUP] = 0;
-        assert_eq!(danger_glyph_for(&viewer, &target), DangerGlyph::None);
-
-        target.data[core::constants::CHD_GROUP] = 5;
+        // Empty friend list: NPC never attacks on sight.
         target.data[43] = 0;
-        target.data[44] = 7;
-        assert_eq!(danger_glyph_for(&viewer, &target), DangerGlyph::None);
+        assert_eq!(
+            danger_glyph_for(VIEWER_CN, &viewer, &target),
+            DangerGlyph::None
+        );
+
+        // Friendly with all players.
+        target.data[43] = 5;
+        target.data[44] = 65536;
+        assert_eq!(
+            danger_glyph_for(VIEWER_CN, &viewer, &target),
+            DangerGlyph::None
+        );
+
+        // Friendly with the viewer's group.
+        target.data[44] = 1;
+        assert_eq!(
+            danger_glyph_for(VIEWER_CN, &viewer, &target),
+            DangerGlyph::None
+        );
+    }
+
+    #[test]
+    fn danger_glyph_for_marks_npcs_actively_targeting_viewer() {
+        let viewer = test_viewer();
+        let mut target = hostile_npc(48_950);
+        target.data[43] = 0;
+        assert_eq!(
+            danger_glyph_for(VIEWER_CN, &viewer, &target),
+            DangerGlyph::None
+        );
+
+        target.attack_cn = VIEWER_CN as u16;
+        assert_eq!(
+            danger_glyph_for(VIEWER_CN, &viewer, &target),
+            DangerGlyph::FlamingSkull
+        );
+
+        target.attack_cn = 0;
+        target.data[85] = VIEWER_CN as i32 | (helpers::char_id(&viewer) << 16);
+        assert_eq!(
+            danger_glyph_for(VIEWER_CN, &viewer, &target),
+            DangerGlyph::FlamingSkull
+        );
     }
 
     #[test]
     fn danger_glyph_for_excludes_players_merchants_and_bodies() {
-        let viewer = Character::default();
-        let mut target = Character {
-            points_tot: i32::MAX,
-            ..Character::default()
-        };
-        target.data[core::constants::CHD_GROUP] = 5;
-        target.data[43] = 65536;
+        let viewer = test_viewer();
+        let mut target = hostile_npc(i32::MAX);
 
         for excluded_flag in [
             CharacterFlags::Player,
@@ -1265,7 +1323,10 @@ mod tests {
             CharacterFlags::Body,
         ] {
             target.flags = excluded_flag.bits();
-            assert_eq!(danger_glyph_for(&viewer, &target), DangerGlyph::None);
+            assert_eq!(
+                danger_glyph_for(VIEWER_CN, &viewer, &target),
+                DangerGlyph::None
+            );
         }
     }
 
@@ -1502,10 +1563,12 @@ mod tests {
             let (_, nr) = add_test_player(gs);
             attach_test_socket(gs, nr);
 
+            let [one, three, seven, twenty_seven] = &LIGHT_BATCHES;
+
             gs.players[nr].smap[3].light = 5;
-            assert_eq!(cl_light_one(gs, 3, nr, false), 16);
+            assert_eq!(cl_light_efficiency(&gs.players[nr], 3, one), 16);
             reset_tbuf(gs, nr);
-            cl_light_one(gs, 3, nr, true);
+            update::with_player_ctx(gs, nr, |ctx| cl_light_send(ctx, 3, one));
             assert_eq!(gs.players[nr].cmap[3].light, 5);
             assert_eq!(gs.players[nr].tptr, 4);
             assert_eq!(gs.players[nr].tbuf[0], ServerCommandType::SetMap4 as u8);
@@ -1517,8 +1580,8 @@ mod tests {
             gs.players[nr].smap[8].light = 1;
             gs.players[nr].smap[9].light = 2;
             gs.players[nr].smap[10].light = 3;
-            assert_eq!(cl_light_three(gs, 8, nr, false), 37);
-            cl_light_three(gs, 8, nr, true);
+            assert_eq!(cl_light_efficiency(&gs.players[nr], 8, three), 37);
+            update::with_player_ctx(gs, nr, |ctx| cl_light_send(ctx, 8, three));
             assert_eq!(gs.players[nr].tptr, 5);
             assert_eq!(gs.players[nr].tbuf[0], ServerCommandType::SetMap5 as u8);
             assert_eq!(gs.players[nr].tbuf[4], 3 | (2 << 4));
@@ -1528,8 +1591,8 @@ mod tests {
                 gs.players[nr].cmap[idx].light = 0;
                 gs.players[nr].smap[idx].light = (idx - 19) as u8;
             }
-            assert_eq!(cl_light_seven(gs, 20, nr, false), 58);
-            cl_light_seven(gs, 20, nr, true);
+            assert_eq!(cl_light_efficiency(&gs.players[nr], 20, seven), 58);
+            update::with_player_ctx(gs, nr, |ctx| cl_light_send(ctx, 20, seven));
             assert_eq!(gs.players[nr].tptr, 7);
             assert_eq!(gs.players[nr].tbuf[0], ServerCommandType::SetMap6 as u8);
 
@@ -1538,8 +1601,8 @@ mod tests {
                 gs.players[nr].cmap[idx].light = 0;
                 gs.players[nr].smap[idx].light = (((idx - 39) % 15) + 1) as u8;
             }
-            assert_eq!(cl_light_26(gs, 40, nr, false), 84);
-            cl_light_26(gs, 40, nr, true);
+            assert_eq!(cl_light_efficiency(&gs.players[nr], 40, twenty_seven), 84);
+            update::with_player_ctx(gs, nr, |ctx| cl_light_send(ctx, 40, twenty_seven));
             assert_eq!(gs.players[nr].tptr, 17);
             assert_eq!(gs.players[nr].tbuf[0], ServerCommandType::SetMap3 as u8);
         });

@@ -27,6 +27,7 @@ chrono = "0.4"
 log.workspace = true
 bincode.workspace = true
 rand.workspace = true
+rayon = "1.10"
 ctrlc = { version = "3.5.1", features = ["termination"] }
 redis.workspace = true
 dotenvy = "0.15"

@@ -1,41 +1,64 @@
 use core::constants::{CharacterFlags, ItemFlags};
-use core::types::Character;
-use core::{skills, traits};
+use core::skills;
+use core::types::{Character, SeeMap};
 use std::cmp;
 
 use crate::game_state::GameState;
+use crate::player::update::{self, Deferred, WorldView};
 
 impl GameState {
-    #[inline]
-    fn vis_buf(&mut self) -> &[i8; core::constants::VISI_BUFFER_LEN] {
-        if self.vis_is_global {
-            &mut self._visi
-        } else {
-            &mut self.visi
+    /// Run `f` against the shared visibility code with character `cn`'s
+    /// see-map, folding its hit/miss counters back into `self`.
+    ///
+    /// # Panics
+    ///
+    /// * Panics if `cn` is out of range for `see_map`.
+    fn with_char_see<R>(
+        &mut self,
+        cn: usize,
+        f: impl FnOnce(&WorldView, &mut SeeMap, &mut Deferred) -> R,
+    ) -> R {
+        let mut counters = Deferred::default();
+        let result = {
+            let (world, _, see_map) = update::split_world(self);
+            f(&world, &mut see_map[cn], &mut counters)
+        };
+
+        if counters.see_hit + counters.see_miss > 0 {
+            // Legacy per-character lookups invalidated the global/path cache.
+            self.vis_is_global = false;
         }
+        self.see_hit += counters.see_hit;
+        self.see_miss += counters.see_miss;
+        result
     }
 
-    #[inline]
-    fn vis_buf_mut(&mut self) -> &mut [i8; core::constants::VISI_BUFFER_LEN] {
-        if self.vis_is_global {
-            &mut self._visi
-        } else {
-            &mut self.visi
-        }
-    }
-
-    #[inline]
-    fn vis_index(&mut self, x: i32, y: i32) -> Option<usize> {
-        let rx = x - self.ox + core::constants::VISI_CENTER;
-        let ry = y - self.oy + core::constants::VISI_CENTER;
-
-        if !(0..core::constants::VISI_STRIDE as i32).contains(&rx)
-            || !(0..core::constants::VISI_STRIDE as i32).contains(&ry)
-        {
-            None
-        } else {
-            Some((rx + ry * core::constants::VISI_STRIDE as i32) as usize)
-        }
+    /// Borrow the read-only world plus the global vis buffer and origin.
+    fn global_vis_parts(
+        &mut self,
+    ) -> (
+        WorldView<'_>,
+        &mut [i8; core::constants::VISI_BUFFER_LEN],
+        &mut i32,
+        &mut i32,
+    ) {
+        let GameState {
+            map,
+            characters,
+            items,
+            globals,
+            _visi,
+            ox,
+            oy,
+            ..
+        } = self;
+        let world = WorldView {
+            map: map.as_slice(),
+            characters: characters.as_slice(),
+            items: items.as_slice(),
+            globals,
+        };
+        (world, _visi, ox, oy)
     }
 
     /// Port of `do_add_light(x, y, strength)` from the original `helper.cpp`.
@@ -260,46 +283,20 @@ impl GameState {
         max_distance: i32,
     ) -> i32 {
         if let Some(cn) = cn {
-            // Use the per-character see-map cache. In the C++ original, `visi`
-            // pointed directly at `see[cn].vis`; in Rust we copy it into `self.visi`
-            // and write it back after rebuilding.
-            self.vis_is_global = false;
-            self.visi = self.see_map[cn].vis;
+            return self.with_char_see(cn, |world, see, counters| {
+                update::can_see(world, see, cn, fx, fy, tx, ty, max_distance, counters)
+            });
+        }
 
-            let (see_x, see_y) = (self.see_map[cn].x, self.see_map[cn].y);
+        // Global visibility buffer (used by lighting and non-character LOS checks)
+        if !self.vis_is_global {
+            self.vis_is_global = true;
+            self.ox = 0;
+            self.oy = 0;
+        }
 
-            if fx != see_x || fy != see_y {
-                let (ch_kindred, ch_flags) =
-                    (self.characters[cn].kindred, self.characters[cn].flags);
-
-                self.is_monster = ch_kindred & traits::KIN_MONSTER as i32 != 0
-                    && (ch_flags & (CharacterFlags::Usurp.bits() | CharacterFlags::Thrall.bits()))
-                        == 0;
-
-                self.can_map_see(fx, fy, max_distance);
-
-                self.see_map[cn].x = fx;
-                self.see_map[cn].y = fy;
-                self.see_map[cn].vis = self.visi;
-
-                self.see_miss += 1;
-            } else {
-                self.see_hit += 1;
-                self.ox = fx;
-                self.oy = fy;
-            }
-        } else {
-            // Global visibility buffer (used by lighting and non-character LOS checks)
-            if !self.vis_is_global {
-                self.vis_is_global = true;
-                self.ox = 0;
-                self.oy = 0;
-            }
-
-            if self.ox != fx || self.oy != fy {
-                self.is_monster = false;
-                self.can_map_see(fx, fy, max_distance);
-            }
+        if self.ox != fx || self.oy != fy {
+            self.can_map_see(fx, fy, max_distance);
         }
 
         self.check_vis(tx, ty)
@@ -317,7 +314,7 @@ impl GameState {
     pub(crate) fn can_map_go(&mut self, fx: i32, fy: i32, max_distance: i32) {
         // `can_go` always uses the global buffer.
         self.vis_is_global = true;
-        self.vis_buf_mut().fill(0);
+        self._visi.fill(0);
 
         self.ox = fx;
         self.oy = fy;
@@ -366,44 +363,10 @@ impl GameState {
     /// * `fx, fy` - Origin coordinates
     /// * `max_distance` - Maximum radius to compute
     fn can_map_see(&mut self, fx: i32, fy: i32, max_distance: i32) {
-        // Clear the active visibility buffer (global or per-character).
-        self.vis_buf_mut().fill(0);
-
-        self.ox = fx;
-        self.oy = fy;
-
-        let xc = fx;
-        let yc = fy;
-
-        self.add_vis(fx, fy, 1);
-
-        for dist in 1..(max_distance + 1) {
-            // Top and bottom horizontal lines
-            for x in (xc - dist)..=(xc + dist) {
-                let y = yc - dist;
-                if self.close_vis_see(x, y, dist as i8) {
-                    self.add_vis(x, y, dist + 1);
-                }
-
-                let y = yc + dist;
-                if self.close_vis_see(x, y, dist as i8) {
-                    self.add_vis(x, y, dist + 1);
-                }
-            }
-
-            // Left and right vertical lines (excluding corners already done)
-            for y in (yc - dist + 1)..=(yc + dist - 1) {
-                let x = xc - dist;
-                if self.close_vis_see(x, y, dist as i8) {
-                    self.add_vis(x, y, dist + 1);
-                }
-
-                let x = xc + dist;
-                if self.close_vis_see(x, y, dist as i8) {
-                    self.add_vis(x, y, dist + 1);
-                }
-            }
-        }
+        let (world, vis, ox, oy) = self.global_vis_parts();
+        update::build_vis(&world, vis, fx, fy, false, max_distance);
+        *ox = fx;
+        *oy = fy;
     }
 
     /// Port of `can_go(fx,fy,target_x,target_y)` from original helper code.
@@ -450,11 +413,7 @@ impl GameState {
     /// # Arguments
     /// * `map_index` - Linear map index
     pub(crate) fn check_dlightm(&mut self, map_index: usize) -> i32 {
-        if self.map[map_index].flags & u64::from(core::constants::MF_INDOORS) == 0 {
-            self.globals.dlight
-        } else {
-            (self.globals.dlight * i32::from(self.map[map_index].dlight)) / 256
-        }
+        update::tile_daylight(&self.map[map_index], self.globals.dlight)
     }
 
     /// Port of `do_character_calculate_light(cn, light)` from original code.
@@ -467,26 +426,7 @@ impl GameState {
     /// * `cn` - Character id
     /// * `light` - Raw light value
     pub(crate) fn do_character_calculate_light(&mut self, cn: usize, light: i32) -> i32 {
-        let character = &mut self.characters[cn];
-        let mut adjusted_light = light;
-
-        if light == 0 && character.skill[skills::SK_PERCEPT][5] > 150 {
-            adjusted_light = 1;
-        }
-
-        adjusted_light = adjusted_light
-            * std::cmp::min(i32::from(character.skill[skills::SK_PERCEPT][5]), 10)
-            / 10;
-
-        if adjusted_light > 255 {
-            adjusted_light = 255;
-        }
-
-        if character.flags & CharacterFlags::Infrared.bits() != 0 && adjusted_light < 5 {
-            adjusted_light = 5;
-        }
-
-        adjusted_light
+        update::calculate_light(&self.characters[cn], light)
     }
 
     /// Port of `do_char_can_see(cn, co)` from original server logic.
@@ -504,105 +444,9 @@ impl GameState {
             return 1;
         }
 
-        if co == 0 || cn == 0 {
-            log::debug!(
-                "do_char_can_see called with invalid character id(s): cn={}, co={}",
-                cn,
-                co
-            );
-            return 0;
-        }
-
-        if self.characters[co].used != core::constants::USE_ACTIVE {
-            return 0;
-        }
-
-        if self.characters[co].flags & CharacterFlags::Invisible.bits() != 0
-            && (self.characters[cn].get_invisibility_level()
-                < self.characters[co].get_invisibility_level())
-        {
-            return 0;
-        }
-
-        if self.characters[co].flags & CharacterFlags::Body.bits() != 0 {
-            return 0;
-        }
-
-        let d1 = i32::from((self.characters[cn].x - self.characters[co].x).abs());
-        let d2 = i32::from((self.characters[cn].y - self.characters[co].y).abs());
-
-        let rd = d1 * d1 + d2 * d2;
-        let mut d = rd;
-
-        if d > 1000 {
-            return 0;
-        }
-
-        // Modify by perception and stealth
-        match self.characters[co].mode {
-            0 => {
-                d = (d * (i32::from(self.characters[co].skill[skills::SK_STEALTH][5]) + 20)) / 20;
-            }
-            1 => {
-                d = (d * (i32::from(self.characters[co].skill[skills::SK_STEALTH][5]) + 50)) / 50;
-            }
-            _ => {
-                d = (d * (i32::from(self.characters[co].skill[skills::SK_STEALTH][5]) + 100)) / 100;
-            }
-        }
-
-        d -= i32::from(self.characters[cn].skill[skills::SK_PERCEPT][5]) * 2;
-
-        // Modify by light
-        if self.characters[cn].flags & CharacterFlags::Infrared.bits() == 0 {
-            let map_index = self.characters[co].x as usize
-                + self.characters[co].y as usize * core::constants::SERVER_MAPX as usize;
-            let mut light = std::cmp::max(
-                i32::from(self.map[map_index].light),
-                self.check_dlight(
-                    self.characters[co].x as usize,
-                    self.characters[co].y as usize,
-                ),
-            );
-
-            light = self.do_character_calculate_light(cn, light);
-
-            if light == 0 {
-                return 0;
-            }
-
-            if light > 64 {
-                light = 64;
-            }
-
-            d += (64 - light) * 2;
-        }
-
-        if rd < 3 && d > 70 {
-            d = 70;
-        }
-
-        if d > 200 {
-            return 0;
-        }
-
-        if self.can_see(
-            Some(cn),
-            i32::from(self.characters[cn].x),
-            i32::from(self.characters[cn].y),
-            i32::from(self.characters[co].x),
-            i32::from(self.characters[co].y),
-            (core::constants::TILEX / 2) as i32,
-        ) == 0
-        {
-            return 0;
-        }
-
-        if d < 1 {
-            return 1;
-        }
-
-        d
+        self.with_char_see(cn, |world, see, counters| {
+            update::char_can_see(world, see, cn, co, counters)
+        })
     }
 
     /// Port of `do_char_can_see_item(cn, in_idx)` from original server logic.
@@ -697,62 +541,7 @@ impl GameState {
     /// # Arguments
     /// * `x, y` - Target coordinates relative to current origin
     fn check_vis(&mut self, x: i32, y: i32) -> i32 {
-        let mut best = 99;
-
-        let x = x - self.ox + core::constants::VISI_CENTER;
-        let y = y - self.oy + core::constants::VISI_CENTER;
-        let stride = core::constants::VISI_STRIDE as i32;
-        let edge = core::constants::VISI_STRIDE as i32 - 1;
-
-        // Needs a 1-tile border for +/-1 neighbor checks.
-        if x <= 0 || x >= edge || y <= 0 || y >= edge {
-            return 0;
-        }
-
-        let visi = self.vis_buf();
-
-        if visi[((x + 1) + y * stride) as usize] != 0
-            && visi[((x + 1) + y * stride) as usize] < best
-        {
-            best = visi[((x + 1) + y * stride) as usize];
-        }
-        if visi[((x - 1) + y * stride) as usize] != 0
-            && visi[((x - 1) + y * stride) as usize] < best
-        {
-            best = visi[((x - 1) + y * stride) as usize];
-        }
-        if visi[(x + (y + 1) * stride) as usize] != 0
-            && visi[(x + (y + 1) * stride) as usize] < best
-        {
-            best = visi[(x + (y + 1) * stride) as usize];
-        }
-        if visi[(x + (y - 1) * stride) as usize] != 0
-            && visi[(x + (y - 1) * stride) as usize] < best
-        {
-            best = visi[(x + (y - 1) * stride) as usize];
-        }
-        if visi[((x + 1) + (y + 1) * stride) as usize] != 0
-            && visi[((x + 1) + (y + 1) * stride) as usize] < best
-        {
-            best = visi[((x + 1) + (y + 1) * stride) as usize];
-        }
-        if visi[((x + 1) + (y - 1) * stride) as usize] != 0
-            && visi[((x + 1) + (y - 1) * stride) as usize] < best
-        {
-            best = visi[((x + 1) + (y - 1) * stride) as usize];
-        }
-        if visi[((x - 1) + (y + 1) * stride) as usize] != 0
-            && visi[((x - 1) + (y + 1) * stride) as usize] < best
-        {
-            best = visi[((x - 1) + (y + 1) * stride) as usize];
-        }
-        if visi[((x - 1) + (y - 1) * stride) as usize] != 0
-            && visi[((x - 1) + (y - 1) * stride) as usize] < best
-        {
-            best = visi[((x - 1) + (y - 1) * stride) as usize];
-        }
-
-        if best == 99 { 0 } else { i32::from(best) }
+        update::check_vis(&self._visi, self.ox, self.oy, x, y)
     }
 
     /// Port of `add_vis(x,y,value)` from original helper code.
@@ -764,120 +553,7 @@ impl GameState {
     /// * `x, y` - World coordinates to write
     /// * `value` - Visibility value to store
     pub(crate) fn add_vis(&mut self, x: i32, y: i32, value: i32) {
-        let Some(index) = self.vis_index(x, y) else {
-            return;
-        };
-
-        let visi = self.vis_buf_mut();
-        if visi[index] == 0 {
-            visi[index] = value as i8;
-        }
-    }
-
-    /// Port of `close_vis_see(x,y,value)` from original helper code.
-    ///
-    /// Returns `true` if tile `(x,y)` allows line-of-sight and is adjacent to
-    /// an already-visible tile with the specified `value`. Used by the wave
-    /// expansion algorithm while building visibility maps.
-    ///
-    /// # Arguments
-    /// * `x, y` - Tile coordinates
-    /// * `value` - Neighbor visibility value to match
-    fn close_vis_see(&mut self, x: i32, y: i32, value: i8) -> bool {
-        if !self.check_map_see(x, y) {
-            return false;
-        }
-
-        let x = x - self.ox + core::constants::VISI_CENTER;
-        let y = y - self.oy + core::constants::VISI_CENTER;
-        let stride = core::constants::VISI_STRIDE as i32;
-        let edge = core::constants::VISI_STRIDE as i32 - 1;
-
-        if x <= 0 || x >= edge || y <= 0 || y >= edge {
-            return false;
-        }
-
-        let visi = self.vis_buf();
-
-        if visi[((x + 1) + y * stride) as usize] == value {
-            return true;
-        }
-        if visi[((x - 1) + y * stride) as usize] == value {
-            return true;
-        }
-        if visi[(x + (y + 1) * stride) as usize] == value {
-            return true;
-        }
-        if visi[(x + (y - 1) * stride) as usize] == value {
-            return true;
-        }
-        if visi[((x + 1) + (y + 1) * stride) as usize] == value {
-            return true;
-        }
-        if visi[((x + 1) + (y - 1) * stride) as usize] == value {
-            return true;
-        }
-        if visi[((x - 1) + (y + 1) * stride) as usize] == value {
-            return true;
-        }
-        if visi[((x - 1) + (y - 1) * stride) as usize] == value {
-            return true;
-        }
-
-        false
-    }
-
-    /// Port of `check_map_see(x,y)` from original helper code.
-    ///
-    /// Returns `true` when the map tile at `(x,y)` does not block line of
-    /// sight. Considers map flags, monster/blocking rules, and items with
-    /// `IF_SIGHTBLOCK` flag.
-    ///
-    /// # Arguments
-    /// * `x, y` - Tile coordinates to test
-    fn check_map_see(&mut self, x: i32, y: i32) -> bool {
-        // Check boundaries
-        if x <= 0
-            || x >= core::constants::SERVER_MAPX
-            || y <= 0
-            || y >= core::constants::SERVER_MAPY
-        {
-            return false;
-        }
-
-        let m = (x + y * core::constants::SERVER_MAPX) as usize;
-
-        // Check if it's a monster and the map blocks monsters
-        if self.is_monster {
-            let blocked = self.map[m].flags
-                & u64::from(core::constants::MF_SIGHTBLOCK | core::constants::MF_NOMONST)
-                != 0;
-            if blocked {
-                return false;
-            }
-        } else {
-            // Check for sight blocking flags
-            let blocked = self.map[m].flags & u64::from(core::constants::MF_SIGHTBLOCK) != 0;
-            if blocked {
-                return false;
-            }
-        }
-
-        // Check if there's an item that blocks sight
-        let item_idx = self.map[m].it as usize;
-        let blocks_sight = if item_idx != 0 {
-            item_idx < self.items.len()
-                && self.items[item_idx].flags & core::constants::ItemFlags::IF_SIGHTBLOCK.bits()
-                    != 0
-        } else {
-            false
-        };
-
-        if blocks_sight {
-            return false;
-        }
-
-        true
+        update::add_vis(&mut self._visi, self.ox, self.oy, x, y, value);
     }
 
     /// Port of `check_map_go(x,y)` from original helper code.
@@ -916,46 +592,7 @@ impl GameState {
     /// Returns `true` if tile `(x,y)` is traversable and is adjacent to a
     /// reachable tile with the specified `value`.
     fn close_vis_go(&mut self, x: i32, y: i32, value: i8) -> bool {
-        if !self.check_map_go(x, y) {
-            return false;
-        }
-
-        let x = x - self.ox + core::constants::VISI_CENTER;
-        let y = y - self.oy + core::constants::VISI_CENTER;
-        let stride = core::constants::VISI_STRIDE as i32;
-        let edge = core::constants::VISI_STRIDE as i32 - 1;
-
-        if x <= 0 || x >= edge || y <= 0 || y >= edge {
-            return false;
-        }
-
-        let visi = self.vis_buf();
-
-        if visi[((x + 1) + y * stride) as usize] == value {
-            return true;
-        }
-        if visi[((x - 1) + y * stride) as usize] == value {
-            return true;
-        }
-        if visi[(x + (y + 1) * stride) as usize] == value {
-            return true;
-        }
-        if visi[(x + (y - 1) * stride) as usize] == value {
-            return true;
-        }
-        if visi[((x + 1) + (y + 1) * stride) as usize] == value {
-            return true;
-        }
-        if visi[((x + 1) + (y - 1) * stride) as usize] == value {
-            return true;
-        }
-        if visi[((x - 1) + (y + 1) * stride) as usize] == value {
-            return true;
-        }
-        if visi[((x - 1) + (y - 1) * stride) as usize] == value {
-            return true;
-        }
-        false
+        self.check_map_go(x, y) && update::neighbour_has(&self._visi, self.ox, self.oy, x, y, value)
     }
 
     /// Port of `reset_go(xc,yc)` from original helper code.

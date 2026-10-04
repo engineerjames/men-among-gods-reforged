@@ -1,37 +1,28 @@
 use core::logout_reasons::LogoutReason;
-use core::server_commands::ServerCommandType;
 use std::net::Shutdown;
-use std::sync::{OnceLock, RwLock};
 
 use crate::{game_state::GameState, player};
 
-static PACKET_STATS: OnceLock<RwLock<PacketStats>> = OnceLock::new();
-
-struct PacketStats {
-    cnt: [usize; 256],
-    pkt_mapshort: usize,
-    pkt_light: usize,
-}
-
-impl PacketStats {
-    fn new() -> Self {
-        PacketStats {
-            cnt: [0usize; 256],
-            pkt_mapshort: 0,
-            pkt_light: 0,
-        }
+/// Disconnect a player whose tick buffer overflowed.
+///
+/// Logs the character out, shuts the socket, and drops the compressor so the
+/// slot can be reused.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state.
+/// * `player_id` - Player slot to disconnect.
+pub fn disconnect_after_tick_overflow(gs: &mut GameState, player_id: usize) {
+    let cn = gs.players[player_id].usnr;
+    player::connection::plr_logout(gs, cn, player_id, LogoutReason::Unknown);
+    if let Some(mut s) = gs.players[player_id].sock.take() {
+        let _ = s.shutdown(Shutdown::Both);
     }
-}
-
-/// Initializes global packet statistics storage.
-///
-/// # Returns
-///
-/// * `Ok(())` when storage was initialized, or `Err(String)` if it was already initialized.
-pub fn initialize_packet_stats() -> Result<(), String> {
-    PACKET_STATS
-        .set(RwLock::new(PacketStats::new()))
-        .map_err(|_| "PacketStats already initialized".to_owned())
+    gs.players[player_id].ltick = 0;
+    gs.players[player_id].rtick = 0;
+    if let Some(z) = gs.players[player_id].zs.take().as_mut() {
+        let _ = z.try_finish();
+    }
 }
 
 /// Send bytes to a player's tick buffer.
@@ -63,16 +54,7 @@ pub fn xsend(gs: &mut GameState, player_id: usize, data: &[u8], length: usize) {
             "#INTERNAL ERROR# ticksize too large for player {}, terminating connection",
             player_id
         );
-        let cn = gs.players[player_id].usnr;
-        player::connection::plr_logout(gs, cn, player_id, LogoutReason::Unknown);
-        if let Some(mut s) = gs.players[player_id].sock.take() {
-            let _ = s.shutdown(Shutdown::Both);
-        }
-        gs.players[player_id].ltick = 0;
-        gs.players[player_id].rtick = 0;
-        if let Some(z) = gs.players[player_id].zs.take().as_mut() {
-            let _ = z.try_finish();
-        }
+        disconnect_after_tick_overflow(gs, player_id);
         return;
     }
 
@@ -81,27 +63,6 @@ pub fn xsend(gs: &mut GameState, player_id: usize, data: &[u8], length: usize) {
     if end <= gs.players[player_id].tbuf.len() {
         gs.players[player_id].tbuf[start..end].copy_from_slice(&data[..send_len]);
         gs.players[player_id].tptr = end;
-
-        if let Some(stats_lock) = PACKET_STATS.get() {
-            let mut stats = stats_lock.write().unwrap();
-            let pnr = if !data.is_empty() {
-                data[0] as usize
-            } else {
-                0
-            };
-            if pnr < stats.cnt.len() {
-                stats.cnt[pnr] = stats.cnt[pnr].saturating_add(send_len);
-                if pnr > 128 {
-                    stats.pkt_mapshort = stats.pkt_mapshort.saturating_add(send_len);
-                } else if pnr == ServerCommandType::SetMap3 as usize
-                    || pnr == ServerCommandType::SetMap4 as usize
-                    || pnr == ServerCommandType::SetMap5 as usize
-                    || pnr == ServerCommandType::SetMap6 as usize
-                {
-                    stats.pkt_light = stats.pkt_light.saturating_add(send_len);
-                }
-            }
-        }
     } else {
         log::warn!(
             "xsend: computed end {} out of bounds for player {} tbuf len {}",

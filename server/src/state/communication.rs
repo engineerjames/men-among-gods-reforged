@@ -278,7 +278,10 @@ impl GameState {
             let is_player = self.characters[cn].flags & CharacterFlags::Player.bits() != 0;
 
             if is_player {
-                self.characters[cn].data[71] += core::constants::CNTSAY;
+                // Capped so rejected spam can't build unbounded throttle debt (it persists across logins).
+                self.characters[cn].data[71] = (self.characters[cn].data[71]
+                    + core::constants::CNTSAY)
+                    .min(core::constants::MAXSAY + core::constants::CNTSAY);
                 let can_proceed = self.characters[cn].data[71] <= core::constants::MAXSAY;
 
                 if !can_proceed {
@@ -976,7 +979,9 @@ impl GameState {
         if (self.characters[cn].flags & CharacterFlags::Player.bits()) != 0
             && !text.starts_with('|')
         {
-            self.characters[cn].data[71] += core::constants::CNTSAY;
+            // Capped so rejected spam can't build unbounded throttle debt (it persists across logins).
+            self.characters[cn].data[71] = (self.characters[cn].data[71] + core::constants::CNTSAY)
+                .min(core::constants::MAXSAY + core::constants::CNTSAY);
             let can_proceed = self.characters[cn].data[71] <= core::constants::MAXSAY;
 
             if !can_proceed {
@@ -1837,6 +1842,23 @@ mod tests {
             let found = gs.area_occupants(0, 0, 0, 1);
 
             assert_eq!(found, vec![22]);
+        });
+    }
+
+    #[test]
+    fn do_say_rate_limit_counter_is_capped_after_spam() {
+        use core::constants::{CNTSAY, MAXSAY};
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].data[71] = 100_000;
+
+            gs.do_say(cn, "hello");
+            assert_eq!(gs.characters[cn].data[71], MAXSAY + CNTSAY);
+
+            for _ in 0..50 {
+                gs.do_say(cn, "hello");
+            }
+            assert_eq!(gs.characters[cn].data[71], MAXSAY + CNTSAY);
         });
     }
 

@@ -21,6 +21,7 @@ pub mod map;
 pub mod seyan_runes;
 pub mod talent_trees;
 pub mod tick;
+pub mod update;
 
 /// Port of `plr_cmd` from `svr_tick.cpp`
 /// Dispatches player commands from inbuf

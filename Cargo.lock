@@ -4747,6 +4747,7 @@ dependencies = [
  "flate2",
  "log",
  "rand 0.9.5",
+ "rayon",
  "redis",
  "rustls",
  "rustls-pemfile",

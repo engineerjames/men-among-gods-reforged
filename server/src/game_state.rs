@@ -124,9 +124,8 @@ pub struct GameState {
     // -- Visibility state (formerly State) --
     /// Scratch visibility buffer (underscore prefix preserved from original).
     pub _visi: [i8; core::constants::VISI_BUFFER_LEN],
-    /// Primary visibility buffer.
-    pub visi: [i8; core::constants::VISI_BUFFER_LEN],
-    /// Whether visibility is computed globally or per-character.
+    /// Whether `_visi`/`ox`/`oy` hold a reusable global see/go map; cleared
+    /// by per-character lookups to keep the legacy invalidation.
     pub vis_is_global: bool,
     /// Cache miss counter for visibility lookups.
     pub see_miss: u64,
@@ -136,8 +135,6 @@ pub struct GameState {
     pub ox: i32,
     /// Current visibility origin Y.
     pub oy: i32,
-    /// Whether current visibility target is a monster.
-    pub is_monster: bool,
     /// Number of pentagram items needed for a quest completion.
     pub penta_needed: usize,
 
@@ -251,13 +248,11 @@ impl GameState {
             item_tick_expire_budget: 0,
             // Visibility state
             _visi: [0; core::constants::VISI_BUFFER_LEN],
-            visi: [0; core::constants::VISI_BUFFER_LEN],
             vis_is_global: true,
             see_miss: 0,
             see_hit: 0,
             ox: 0,
             oy: 0,
-            is_monster: false,
             penta_needed: 5,
             talent_primary_hit_counts: vec![0; core::constants::MAXCHARS],
             talent_runtime: vec![TalentRuntimeBonuses::default(); core::constants::MAXCHARS],
