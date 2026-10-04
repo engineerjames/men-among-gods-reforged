@@ -646,8 +646,8 @@ pub struct GameScene {
     pub(super) spell_effect_icons: SpellEffectIcons,
     pub(super) skill_bar: SkillBar,
     pub(super) skill_picker: SkillPickerPopup,
-    /// Lazily loaded placeholder textures for NPC danger glyphs.
-    pub(super) danger_glyph_ids: [Option<usize>; 4],
+    /// Lazily loaded textures for NPC danger glyphs (skull, flaming skull).
+    pub(super) danger_glyph_ids: [Option<usize>; 2],
     pub(super) last_synced_log_len: usize,
     pub(super) pending_exit: Option<String>,
     pub(super) certificate_mismatch: Option<cert_trust::FingerprintMismatch>,
@@ -889,7 +889,7 @@ impl GameScene {
             ),
             skill_bar: SkillBar::new(),
             skill_picker: SkillPickerPopup::new(),
-            danger_glyph_ids: [None; 4],
+            danger_glyph_ids: [None; 2],
             last_synced_log_len: 0,
             pending_exit: None,
             certificate_mismatch: None,
