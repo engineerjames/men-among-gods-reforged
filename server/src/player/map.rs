@@ -44,27 +44,42 @@ pub struct CMap {
     pub it_status: u8,  // for items with animation (burning torches etc)
 }
 
-/// Mirrors the NPC driver's on-sight aggro rule: whether `target` would add
-/// `viewer` to its kill list because of its `data[43..47]` aggro list.
+/// Mirrors the NPC driver's on-sight aggro rule: `data[43..47]` lists the
+/// groups `target` is friendly with, and it attacks anyone not on that list.
 fn npc_aggroes_on_sight(viewer: &core::types::Character, target: &core::types::Character) -> bool {
-    let viewer_group = viewer.data[core::constants::CHD_GROUP];
-    if target.data[core::constants::CHD_GROUP] == viewer_group {
+    if target.data[43] == 0 {
         return false;
     }
 
-    let viewer_is_player = viewer.flags & CharacterFlags::Player.bits() != 0;
-    target.data[43..47]
-        .iter()
-        .any(|&entry| entry != 0 && (entry == viewer_group || (entry == 65536 && viewer_is_player)))
+    let viewer_group = viewer.data[core::constants::CHD_GROUP];
+    let viewer_is_friendly_player = viewer.flags & CharacterFlags::Player.bits() != 0
+        || viewer.temp == core::constants::CT_COMPANION as u16;
+    !target.data[43..47].iter().any(|&entry| {
+        entry != 0 && (entry == viewer_group || (entry == 65536 && viewer_is_friendly_player))
+    })
+}
+
+/// Whether `target` is currently fighting `viewer` or has it on its kill list.
+fn npc_targets_viewer(
+    viewer_cn: usize,
+    viewer: &core::types::Character,
+    target: &core::types::Character,
+) -> bool {
+    if target.attack_cn as usize == viewer_cn {
+        return true;
+    }
+    let idx = viewer_cn as i32 | ((helpers::char_id(viewer) as i32) << 16);
+    target.data[80..92].contains(&idx)
 }
 
 /// Classifies a visible NPC relative to the viewing character.
 ///
 /// Players, merchants, and bodies never receive a danger glyph. NPCs are
 /// classified from their rank difference rather than transient combat state,
-/// so the nameplate remains stable while the target is visible. NPCs that do
-/// not attack the viewer on sight (per their aggro group list) get no glyph.
+/// so the nameplate remains stable while the target is visible. NPCs that
+/// neither attack the viewer on sight nor are currently targeting it get no glyph.
 fn danger_glyph_for(
+    viewer_cn: usize,
     viewer: &core::types::Character,
     target: &core::types::Character,
 ) -> DangerGlyph {
@@ -77,7 +92,7 @@ fn danger_glyph_for(
         return DangerGlyph::None;
     }
 
-    if !npc_aggroes_on_sight(viewer, target) {
+    if !npc_aggroes_on_sight(viewer, target) && !npc_targets_viewer(viewer_cn, viewer, target) {
         return DangerGlyph::None;
     }
 
@@ -657,7 +672,7 @@ pub fn plr_getmap_complete_ctx(ctx: &mut PlayerUpdateCtx) {
 
                 if tmp_see != 0 {
                     let char_co = &world.characters[co];
-                    tile.flags2 |= danger_glyph_for(viewer, char_co).bits();
+                    tile.flags2 |= danger_glyph_for(cn, viewer, char_co).bits();
                     if char_co.sprite_override != 0 {
                         tile.ch_sprite = char_co.sprite_override;
                     } else {
@@ -1186,73 +1201,121 @@ mod tests {
         }
     }
 
-    #[test]
-    fn danger_glyph_for_only_marks_severe_rank_buckets() {
+    const VIEWER_CN: usize = 3;
+
+    fn test_viewer() -> Character {
         let mut viewer = Character {
             flags: CharacterFlags::Player.bits(),
             ..Character::default()
         };
-        let mut target = Character::default();
+        viewer.data[core::constants::CHD_GROUP] = 1;
+        viewer
+    }
+
+    /// NPC in group 5 that is only friendly with its own group.
+    fn hostile_npc(points_tot: i32) -> Character {
+        let mut target = Character {
+            points_tot,
+            ..Character::default()
+        };
         target.data[core::constants::CHD_GROUP] = 5;
-        target.data[43] = 65536;
+        target.data[43] = 5;
+        target
+    }
+
+    #[test]
+    fn danger_glyph_for_only_marks_severe_rank_buckets() {
+        let mut viewer = test_viewer();
+        let mut target = hostile_npc(0);
 
         viewer.points_tot = 48_950;
-        target.points_tot = 0;
-        assert_eq!(danger_glyph_for(&viewer, &target), DangerGlyph::None);
+        assert_eq!(
+            danger_glyph_for(VIEWER_CN, &viewer, &target),
+            DangerGlyph::None
+        );
 
         viewer.points_tot = 850;
         target.points_tot = 17_700;
-        assert_eq!(danger_glyph_for(&viewer, &target), DangerGlyph::None);
+        assert_eq!(
+            danger_glyph_for(VIEWER_CN, &viewer, &target),
+            DangerGlyph::None
+        );
 
         viewer.points_tot = 0;
         target.points_tot = 17_700;
-        assert_eq!(danger_glyph_for(&viewer, &target), DangerGlyph::Skull);
+        assert_eq!(
+            danger_glyph_for(VIEWER_CN, &viewer, &target),
+            DangerGlyph::Skull
+        );
 
         target.points_tot = 48_950;
         assert_eq!(
-            danger_glyph_for(&viewer, &target),
+            danger_glyph_for(VIEWER_CN, &viewer, &target),
             DangerGlyph::FlamingSkull
         );
     }
 
     #[test]
     fn danger_glyph_for_requires_on_sight_aggro() {
-        let viewer = Character {
-            flags: CharacterFlags::Player.bits(),
-            ..Character::default()
-        };
-        let mut target = Character {
-            points_tot: 48_950,
-            ..Character::default()
-        };
-        target.data[core::constants::CHD_GROUP] = 5;
+        let viewer = test_viewer();
+        let mut target = hostile_npc(48_950);
 
-        assert_eq!(danger_glyph_for(&viewer, &target), DangerGlyph::None);
-
-        target.data[43] = 65536;
         assert_eq!(
-            danger_glyph_for(&viewer, &target),
+            danger_glyph_for(VIEWER_CN, &viewer, &target),
             DangerGlyph::FlamingSkull
         );
 
-        target.data[core::constants::CHD_GROUP] = 0;
-        assert_eq!(danger_glyph_for(&viewer, &target), DangerGlyph::None);
-
-        target.data[core::constants::CHD_GROUP] = 5;
+        // Empty friend list: NPC never attacks on sight.
         target.data[43] = 0;
-        target.data[44] = 7;
-        assert_eq!(danger_glyph_for(&viewer, &target), DangerGlyph::None);
+        assert_eq!(
+            danger_glyph_for(VIEWER_CN, &viewer, &target),
+            DangerGlyph::None
+        );
+
+        // Friendly with all players.
+        target.data[43] = 5;
+        target.data[44] = 65536;
+        assert_eq!(
+            danger_glyph_for(VIEWER_CN, &viewer, &target),
+            DangerGlyph::None
+        );
+
+        // Friendly with the viewer's group.
+        target.data[44] = 1;
+        assert_eq!(
+            danger_glyph_for(VIEWER_CN, &viewer, &target),
+            DangerGlyph::None
+        );
+    }
+
+    #[test]
+    fn danger_glyph_for_marks_npcs_actively_targeting_viewer() {
+        let viewer = test_viewer();
+        let mut target = hostile_npc(48_950);
+        target.data[43] = 0;
+        assert_eq!(
+            danger_glyph_for(VIEWER_CN, &viewer, &target),
+            DangerGlyph::None
+        );
+
+        target.attack_cn = VIEWER_CN as u16;
+        assert_eq!(
+            danger_glyph_for(VIEWER_CN, &viewer, &target),
+            DangerGlyph::FlamingSkull
+        );
+
+        target.attack_cn = 0;
+        target.data[85] = VIEWER_CN as i32 | (helpers::char_id(&viewer) << 16);
+        assert_eq!(
+            danger_glyph_for(VIEWER_CN, &viewer, &target),
+            DangerGlyph::FlamingSkull
+        );
     }
 
     #[test]
     fn danger_glyph_for_excludes_players_merchants_and_bodies() {
-        let viewer = Character::default();
-        let mut target = Character {
-            points_tot: i32::MAX,
-            ..Character::default()
-        };
-        target.data[core::constants::CHD_GROUP] = 5;
-        target.data[43] = 65536;
+        let viewer = test_viewer();
+        let mut target = hostile_npc(i32::MAX);
 
         for excluded_flag in [
             CharacterFlags::Player,
@@ -1260,7 +1323,10 @@ mod tests {
             CharacterFlags::Body,
         ] {
             target.flags = excluded_flag.bits();
-            assert_eq!(danger_glyph_for(&viewer, &target), DangerGlyph::None);
+            assert_eq!(
+                danger_glyph_for(VIEWER_CN, &viewer, &target),
+                DangerGlyph::None
+            );
         }
     }
 
