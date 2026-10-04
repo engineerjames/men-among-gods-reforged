@@ -6,8 +6,10 @@ use mag_core::constants::{
 };
 
 use crate::{
-    filepaths, font_cache, gfx_cache::GraphicsCache, player_state::PlayerState,
-    types::map::SUBPIXEL_UNIT,
+    filepaths, font_cache,
+    gfx_cache::GraphicsCache,
+    player_state::PlayerState,
+    types::map::{CMapTile, SUBPIXEL_UNIT},
 };
 
 use super::{FLOOR_TILE_HEIGHT, FLOOR_TILE_WIDTH, GameScene};
@@ -65,6 +67,110 @@ fn danger_glyph_width(tex_w: u32, tex_h: u32, height: i32) -> i32 {
         return height;
     }
     ((tex_w as i32 * height + tex_h as i32 / 2) / tex_h as i32).max(1)
+}
+
+/// Replacement sprite for a mine-wall object hidden by autohide, or `None` for other objects.
+fn mine_wall_sprite(obj: i32) -> Option<i32> {
+    let is_mine_wall = obj > 16335
+        && obj < 16422
+        && !matches!(
+            obj,
+            16357 | 16365 | 16373 | 16381 | 16389 | 16397 | 16405 | 16413 | 16421
+        );
+    if !is_mine_wall {
+        return None;
+    }
+    Some(if obj < 16358 {
+        457
+    } else if obj < 16366 {
+        456
+    } else if obj < 16374 {
+        455
+    } else if obj < 16382 {
+        466
+    } else if obj < 16390 {
+        459
+    } else if obj < 16398 {
+        458
+    } else if obj < 16406 {
+        468
+    } else {
+        467
+    })
+}
+
+/// Builds the nameplate label from the optional name and health percentage.
+fn nameplate_text(
+    show_names: bool,
+    show_proz: bool,
+    name: Option<&str>,
+    proz: Option<u8>,
+) -> String {
+    match (show_names, show_proz, name, proz) {
+        (true, true, Some(n), Some(p)) if !n.is_empty() => format!("{} {}%", n, p),
+        (true, true, _, Some(p)) => format!("{}%", p),
+        (true, _, Some(n), _) if !n.is_empty() => n.to_owned(),
+        (false, true, _, Some(p)) => format!("{}%", p),
+        _ => String::new(),
+    }
+}
+
+/// Sprite for the injury overlay encoded in tile flags, if any.
+fn injured_sprite(flags: u32) -> Option<i32> {
+    let mask = flags & (INJURED | INJURED1 | INJURED2);
+    if mask == INJURED {
+        Some(1079)
+    } else if mask == (INJURED | INJURED1) {
+        Some(1080)
+    } else if mask == (INJURED | INJURED2) {
+        Some(1081)
+    } else if mask == (INJURED | INJURED1 | INJURED2) {
+        Some(1082)
+    } else {
+        None
+    }
+}
+
+/// Sprite for the death variant encoded in tile flags, if any.
+fn death_sprite(flags: u32) -> Option<i32> {
+    let variant = ((flags & DEATH) >> 17) as i32;
+    (variant > 0).then(|| 280 + variant - 1)
+}
+
+/// Sprite for the tomb variant encoded in tile flags, if any.
+fn tomb_sprite(flags: u32) -> Option<i32> {
+    let variant = ((flags & TOMB) >> 12) as i32;
+    (variant > 0).then(|| 240 + variant - 1)
+}
+
+/// Channel mask (bit0=R, bit1=G, bit2=B) and strength divider for the magic glow in tile flags.
+fn magic_effect_params(flags: u32) -> Option<(u32, u32)> {
+    let mut alpha_mask = 0u32;
+    let mut alphastr = 0u32;
+    if (flags & EMAGIC) != 0 {
+        alpha_mask |= 1;
+        alphastr = alphastr.max((flags & EMAGIC) >> 22);
+    }
+    if (flags & GMAGIC) != 0 {
+        alpha_mask |= 2;
+        alphastr = alphastr.max((flags & GMAGIC) >> 25);
+    }
+    if (flags & CMAGIC) != 0 {
+        alpha_mask |= 4;
+        alphastr = alphastr.max((flags & CMAGIC) >> 28);
+    }
+    (alpha_mask != 0).then_some((alpha_mask, alphastr))
+}
+
+/// Per-tile draw position: tile coordinates, camera offset, and character offset (sub-pixel units).
+#[derive(Copy, Clone)]
+struct TilePos {
+    x: usize,
+    y: usize,
+    cam_xoff: i32,
+    cam_yoff: i32,
+    ch_xoff: i32,
+    ch_yoff: i32,
 }
 
 #[derive(Copy, Clone)]
@@ -591,30 +697,19 @@ impl GameScene {
         Some("WALK")
     }
 
-    /// Render all world tiles in two painter-order passes (backgrounds, then
-    /// objects/characters/effects). This is the main world-drawing entry point.
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn draw_world(
-        &mut self,
+    /// Pass 1: background/terrain sprites, floor hover highlight, and the walk-target marker.
+    fn draw_background_pass(
         canvas: &mut Canvas<Window>,
         gfx: &mut GraphicsCache<'_>,
         ps: &PlayerState,
-        shadows_enabled: bool,
-        spell_effects_enabled: bool,
-        show_names: bool,
-        show_proz: bool,
-        show_danger_glyphs: bool,
-        hide: bool,
-        camera_shake: (i32, i32),
+        hover_highlight: Option<HoverHighlight>,
+        cam_xoff: i32,
+        cam_yoff: i32,
     ) -> Result<(), String> {
         let map = ps.map();
         let ci = ps.character_info();
-        let (cam_xoff_base, cam_yoff_base) = self.camera_offsets(ps);
-        let cam_xoff = cam_xoff_base + camera_shake.0 * SUBPIXEL_UNIT;
-        let cam_yoff = cam_yoff_base + camera_shake.1 * SUBPIXEL_UNIT;
-        let hover_highlight = self.resolve_hover_highlight(ps);
 
-        // Pass 1: Background / terrain sprites (legacy eng_display order: y descending).
+        // Legacy eng_display order: y descending.
         for y in (0..TILEY).rev() {
             for x in 0..TILEX {
                 let Some(tile) = map.tile_at_xy(x, y) else {
@@ -672,6 +767,51 @@ impl GameScene {
             }
         }
 
+        Ok(())
+    }
+
+    /// Applies the autohide substitution to a tile's object sprite.
+    fn resolve_object_sprite(
+        obj: i32,
+        is_item: bool,
+        x: usize,
+        y: usize,
+        dir: i32,
+        hide: bool,
+    ) -> i32 {
+        if !hide || is_item || Self::autohide(x, y) {
+            return obj;
+        }
+        match mine_wall_sprite(obj) {
+            Some(sprite) if !Self::facing(x, y, dir) => sprite,
+            _ => obj + 1,
+        }
+    }
+
+    /// Render all world tiles in two painter-order passes (backgrounds, then
+    /// objects/characters/effects). This is the main world-drawing entry point.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn draw_world(
+        &mut self,
+        canvas: &mut Canvas<Window>,
+        gfx: &mut GraphicsCache<'_>,
+        ps: &PlayerState,
+        shadows_enabled: bool,
+        spell_effects_enabled: bool,
+        show_names: bool,
+        show_proz: bool,
+        show_danger_glyphs: bool,
+        hide: bool,
+        camera_shake: (i32, i32),
+    ) -> Result<(), String> {
+        let map = ps.map();
+        let (cam_xoff_base, cam_yoff_base) = self.camera_offsets(ps);
+        let cam_xoff = cam_xoff_base + camera_shake.0 * SUBPIXEL_UNIT;
+        let cam_yoff = cam_yoff_base + camera_shake.1 * SUBPIXEL_UNIT;
+        let hover_highlight = self.resolve_hover_highlight(ps);
+
+        Self::draw_background_pass(canvas, gfx, ps, hover_highlight, cam_xoff, cam_yoff)?;
+
         // Pass 2: Objects/characters/markers/effects (legacy eng_display order: y descending).
         for y in (0..TILEY).rev() {
             for x in 0..TILEX {
@@ -684,324 +824,360 @@ impl GameScene {
                 }
 
                 let (ch_xoff, ch_yoff) = self.world_interpolator.character_offset(tile);
-
-                let mut obj = tile.obj1;
-                if obj > 0 {
-                    let hide_enabled = hide;
-                    let is_item = (tile.flags & ISITEM) != 0;
-
-                    if hide_enabled && !is_item && !Self::autohide(x, y) {
-                        let is_mine_wall = obj > 16335
-                            && obj < 16422
-                            && !matches!(
-                                obj,
-                                16357
-                                    | 16365
-                                    | 16373
-                                    | 16381
-                                    | 16389
-                                    | 16397
-                                    | 16405
-                                    | 16413
-                                    | 16421
-                            )
-                            && !Self::facing(x, y, ci.dir);
-
-                        if is_mine_wall {
-                            obj = if obj < 16358 {
-                                457
-                            } else if obj < 16366 {
-                                456
-                            } else if obj < 16374 {
-                                455
-                            } else if obj < 16382 {
-                                466
-                            } else if obj < 16390 {
-                                459
-                            } else if obj < 16398 {
-                                458
-                            } else if obj < 16406 {
-                                468
-                            } else {
-                                467
-                            };
-                        } else {
-                            obj += 1;
-                        }
-                    }
-
-                    Self::draw_world_sprite(
-                        canvas, gfx, obj, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
-                    )?;
-
-                    if let Some(HoverHighlight::Item {
-                        x: hx,
-                        y: hy,
-                        sprite_id,
-                        alpha,
-                    }) = hover_highlight
-                        && hx == x
-                        && hy == y
-                    {
-                        Self::draw_world_sprite_highlight(
-                            canvas, gfx, sprite_id, x, y, cam_xoff, cam_yoff, 0, 0, alpha,
-                        )?;
-                    }
-                }
-
-                // Shadow (before character sprite, matching engine.c line 789).
-                if shadows_enabled {
-                    Self::draw_shadow(
-                        canvas,
-                        gfx,
-                        tile.obj2,
-                        x,
-                        y,
-                        cam_xoff,
-                        cam_yoff,
-                        ch_xoff,
-                        ch_yoff + 4 * SUBPIXEL_UNIT,
-                    )?;
-                }
-
-                let ch = if tile.obj2 > 0 {
-                    tile.obj2
-                } else {
-                    i32::from(tile.ch_sprite)
+                let pos = TilePos {
+                    x,
+                    y,
+                    cam_xoff,
+                    cam_yoff,
+                    ch_xoff,
+                    ch_yoff,
                 };
-                Self::draw_world_sprite(
-                    canvas, gfx, ch, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff, tile.light,
+
+                Self::draw_tile_object(canvas, gfx, ps, tile, pos, hover_highlight, hide)?;
+                Self::draw_tile_character(
+                    canvas,
+                    gfx,
+                    ps,
+                    tile,
+                    pos,
+                    hover_highlight,
+                    shadows_enabled,
                 )?;
-
-                if let Some(HoverHighlight::Character {
-                    x: hx,
-                    y: hy,
-                    alpha,
-                }) = hover_highlight
-                    && hx == x
-                    && hy == y
-                {
-                    Self::draw_world_sprite_highlight(
-                        canvas, gfx, ch, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff, alpha,
-                    )?;
-                }
-
-                if ps.selected_char() != 0 && ps.selected_char() == tile.ch_nr {
-                    Self::draw_world_sprite_tinted_highlight(
-                        canvas,
-                        gfx,
-                        ch,
-                        x,
-                        y,
-                        cam_xoff,
-                        cam_yoff,
-                        ch_xoff,
-                        ch_yoff,
-                        176,
-                        Color::RGB(48, 255, 96),
-                    )?;
-                }
-
-                if ci.attack_cn != 0 && ci.attack_cn == i32::from(tile.ch_nr) {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 34, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff, tile.light,
-                    )?;
-                }
-
-                if ci.misc_action == DR_GIVE as i32 && ci.misc_target1 == i32::from(tile.ch_id) {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 45, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff, tile.light,
-                    )?;
-                }
-
-                // Nameplate (same pass as character sprites in engine.c).
-                if tile.ch_nr != 0 && (show_names || show_proz) {
-                    let is_center = x == TILEX / 2 && y == TILEY / 2;
-
-                    let name: Option<String> = if show_names {
-                        if is_center {
-                            let own = mag_core::string_operations::c_string_to_str(
-                                &ps.character_info().name,
-                            );
-                            if !own.is_empty() {
-                                Some(own.to_owned())
-                            } else {
-                                None
-                            }
-                        } else {
-                            ps.lookup_name(tile.ch_nr, tile.ch_id).map(|s| s.to_owned())
-                        }
-                    } else {
-                        None
-                    };
-
-                    let proz: Option<u8> = if show_proz && tile.ch_proz != 0 {
-                        Some(tile.ch_proz)
-                    } else {
-                        None
-                    };
-
-                    let text = match (show_names, show_proz, name.as_deref(), proz) {
-                        (true, true, Some(n), Some(p)) if !n.is_empty() => {
-                            format!("{} {}%", n, p)
-                        }
-                        (true, true, _, Some(p)) => format!("{}%", p),
-                        (true, _, Some(n), _) if !n.is_empty() => n.to_owned(),
-                        (false, true, _, Some(p)) => format!("{}%", p),
-                        _ => String::new(),
-                    };
-
-                    if !text.is_empty() {
-                        // dd_gputtext formula (ported from engine.c + nameplates.rs):
-                        // horizontally centered, shifted 64px up relative to sprite origin.
-                        // The character offset is folded into the camera offset so the
-                        // nameplate is rounded to whole pixels exactly once, in lockstep
-                        // with the character sprite it labels.
-                        let (np_ground_x, np_ground_y) = Self::tile_ground_diamond_origin(
-                            x,
-                            y,
-                            cam_xoff + ch_xoff,
-                            cam_yoff + ch_yoff,
-                        );
-                        let glyph = tile.danger_glyph();
-                        let glyph_h = danger_glyph_height(glyph);
-                        let glyph_id = if show_danger_glyphs {
-                            self.danger_glyph_texture(gfx, glyph)
-                        } else {
-                            None
-                        };
-                        let glyph_width = glyph_id.map(|id| {
-                            let (tex_w, tex_h) = gfx.query_texture_size(id);
-                            danger_glyph_width(tex_w, tex_h, glyph_h)
-                        });
-                        let layout = nameplate_layout(np_ground_x, &text, glyph_width);
-                        let np_ry = np_ground_y - PERCENT_HEALTH_TEXT_OFFSET_Y;
-                        if let (Some(glyph_id), Some(glyph_x), Some(glyph_w)) =
-                            (glyph_id, layout.glyph_x, glyph_width)
-                        {
-                            let glyph_y = np_ry - (glyph_h - font_cache::BITMAP_GLYPH_H as i32) / 2;
-                            canvas.copy(
-                                gfx.get_texture(glyph_id),
-                                None,
-                                Some(sdl2::rect::Rect::new(
-                                    glyph_x,
-                                    glyph_y,
-                                    glyph_w as u32,
-                                    glyph_h as u32,
-                                )),
-                            )?;
-                        }
-                        font_cache::draw_text(
-                            canvas,
-                            gfx,
-                            1,
-                            &text,
-                            layout.text_x,
-                            np_ry,
-                            font_cache::TextStyle::drop_shadow(),
-                        )?;
-                    }
-                }
-
-                if ci.misc_action == DR_DROP as i32
-                    && ci.misc_target1 == i32::from(tile.x)
-                    && ci.misc_target2 == i32::from(tile.y)
-                {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 32, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
-                    )?;
-                }
-                if ci.misc_action == DR_PICKUP as i32
-                    && ci.misc_target1 == i32::from(tile.x)
-                    && ci.misc_target2 == i32::from(tile.y)
-                {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 33, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
-                    )?;
-                }
-                if ci.misc_action == DR_USE as i32
-                    && ci.misc_target1 == i32::from(tile.x)
-                    && ci.misc_target2 == i32::from(tile.y)
-                {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 45, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
-                    )?;
-                }
-
-                let injured_mask = tile.flags & (INJURED | INJURED1 | INJURED2);
-                if injured_mask == INJURED {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 1079, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff, tile.light,
-                    )?;
-                }
-                if injured_mask == (INJURED | INJURED1) {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 1080, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff, tile.light,
-                    )?;
-                }
-                if injured_mask == (INJURED | INJURED2) {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 1081, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff, tile.light,
-                    )?;
-                }
-                if injured_mask == (INJURED | INJURED1 | INJURED2) {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 1082, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff, tile.light,
-                    )?;
-                }
-
-                if (tile.flags & DEATH) != 0 {
-                    let death_variant = ((tile.flags & DEATH) >> 17) as i32;
-                    if death_variant > 0 {
-                        let sprite = 280 + death_variant - 1;
-                        if tile.obj2 != 0 {
-                            Self::draw_world_sprite(
-                                canvas, gfx, sprite, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff,
-                                tile.light,
-                            )?;
-                        } else {
-                            Self::draw_world_sprite(
-                                canvas, gfx, sprite, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
-                            )?;
-                        }
-                    }
-                }
-
-                if (tile.flags & TOMB) != 0 {
-                    let tomb_variant = ((tile.flags & TOMB) >> 12) as i32;
-                    if tomb_variant > 0 {
-                        let sprite = 240 + tomb_variant - 1;
-                        Self::draw_world_sprite(
-                            canvas, gfx, sprite, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
-                        )?;
-                    }
-                }
-
-                // Magic spell effects (EMAGIC/GMAGIC/CMAGIC diamond glows).
-                // Matches engine.c lines 846–860.
-                if spell_effects_enabled {
-                    let mut alpha_mask = 0u32;
-                    let mut alphastr = 0u32;
-                    if (tile.flags & EMAGIC) != 0 {
-                        alpha_mask |= 1;
-                        alphastr = alphastr.max((tile.flags & EMAGIC) >> 22);
-                    }
-                    if (tile.flags & GMAGIC) != 0 {
-                        alpha_mask |= 2;
-                        alphastr = alphastr.max((tile.flags & GMAGIC) >> 25);
-                    }
-                    if (tile.flags & CMAGIC) != 0 {
-                        alpha_mask |= 4;
-                        alphastr = alphastr.max((tile.flags & CMAGIC) >> 28);
-                    }
-                    if alpha_mask != 0 {
-                        Self::draw_magic_effect(
-                            canvas, alpha_mask, alphastr, x, y, cam_xoff, cam_yoff, ch_xoff,
-                            ch_yoff,
-                        )?;
-                    }
-                }
+                self.draw_tile_nameplate(
+                    canvas,
+                    gfx,
+                    ps,
+                    tile,
+                    pos,
+                    show_names,
+                    show_proz,
+                    show_danger_glyphs,
+                )?;
+                Self::draw_tile_markers(canvas, gfx, ps, tile, pos)?;
+                Self::draw_tile_overlays(canvas, gfx, tile, pos, spell_effects_enabled)?;
             }
+        }
+
+        Ok(())
+    }
+
+    /// Draws a tile's object sprite and its item hover highlight.
+    fn draw_tile_object(
+        canvas: &mut Canvas<Window>,
+        gfx: &mut GraphicsCache<'_>,
+        ps: &PlayerState,
+        tile: &CMapTile,
+        pos: TilePos,
+        hover_highlight: Option<HoverHighlight>,
+        hide: bool,
+    ) -> Result<(), String> {
+        if tile.obj1 <= 0 {
+            return Ok(());
+        }
+        let TilePos {
+            x,
+            y,
+            cam_xoff,
+            cam_yoff,
+            ..
+        } = pos;
+        let is_item = (tile.flags & ISITEM) != 0;
+        let obj =
+            Self::resolve_object_sprite(tile.obj1, is_item, x, y, ps.character_info().dir, hide);
+
+        Self::draw_world_sprite(canvas, gfx, obj, x, y, cam_xoff, cam_yoff, 0, 0, tile.light)?;
+
+        if let Some(HoverHighlight::Item {
+            x: hx,
+            y: hy,
+            sprite_id,
+            alpha,
+        }) = hover_highlight
+            && hx == x
+            && hy == y
+        {
+            Self::draw_world_sprite_highlight(
+                canvas, gfx, sprite_id, x, y, cam_xoff, cam_yoff, 0, 0, alpha,
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Draws a tile's character: shadow, sprite, hover/selection highlights, and target markers.
+    fn draw_tile_character(
+        canvas: &mut Canvas<Window>,
+        gfx: &mut GraphicsCache<'_>,
+        ps: &PlayerState,
+        tile: &CMapTile,
+        pos: TilePos,
+        hover_highlight: Option<HoverHighlight>,
+        shadows_enabled: bool,
+    ) -> Result<(), String> {
+        let TilePos {
+            x,
+            y,
+            cam_xoff,
+            cam_yoff,
+            ch_xoff,
+            ch_yoff,
+        } = pos;
+        let ci = ps.character_info();
+
+        // Shadow (before character sprite, matching engine.c line 789).
+        if shadows_enabled {
+            Self::draw_shadow(
+                canvas,
+                gfx,
+                tile.obj2,
+                x,
+                y,
+                cam_xoff,
+                cam_yoff,
+                ch_xoff,
+                ch_yoff + 4 * SUBPIXEL_UNIT,
+            )?;
+        }
+
+        let ch = if tile.obj2 > 0 {
+            tile.obj2
+        } else {
+            i32::from(tile.ch_sprite)
+        };
+        Self::draw_world_sprite(
+            canvas, gfx, ch, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff, tile.light,
+        )?;
+
+        if let Some(HoverHighlight::Character {
+            x: hx,
+            y: hy,
+            alpha,
+        }) = hover_highlight
+            && hx == x
+            && hy == y
+        {
+            Self::draw_world_sprite_highlight(
+                canvas, gfx, ch, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff, alpha,
+            )?;
+        }
+
+        if ps.selected_char() != 0 && ps.selected_char() == tile.ch_nr {
+            Self::draw_world_sprite_tinted_highlight(
+                canvas,
+                gfx,
+                ch,
+                x,
+                y,
+                cam_xoff,
+                cam_yoff,
+                ch_xoff,
+                ch_yoff,
+                176,
+                Color::RGB(48, 255, 96),
+            )?;
+        }
+
+        if ci.attack_cn != 0 && ci.attack_cn == i32::from(tile.ch_nr) {
+            Self::draw_world_sprite(
+                canvas, gfx, 34, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff, tile.light,
+            )?;
+        }
+
+        if ci.misc_action == DR_GIVE as i32 && ci.misc_target1 == i32::from(tile.ch_id) {
+            Self::draw_world_sprite(
+                canvas, gfx, 45, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff, tile.light,
+            )?;
+        }
+
+        Ok(())
+    }
+
+    /// Draws a tile's nameplate: optional danger glyph plus name and/or health percentage.
+    #[allow(clippy::too_many_arguments)]
+    fn draw_tile_nameplate(
+        &mut self,
+        canvas: &mut Canvas<Window>,
+        gfx: &mut GraphicsCache<'_>,
+        ps: &PlayerState,
+        tile: &CMapTile,
+        pos: TilePos,
+        show_names: bool,
+        show_proz: bool,
+        show_danger_glyphs: bool,
+    ) -> Result<(), String> {
+        let TilePos {
+            x,
+            y,
+            cam_xoff,
+            cam_yoff,
+            ch_xoff,
+            ch_yoff,
+        } = pos;
+
+        // Nameplate (same pass as character sprites in engine.c).
+        if tile.ch_nr != 0 && (show_names || show_proz) {
+            let is_center = x == TILEX / 2 && y == TILEY / 2;
+
+            let name: Option<String> = if show_names {
+                if is_center {
+                    let own =
+                        mag_core::string_operations::c_string_to_str(&ps.character_info().name);
+                    if !own.is_empty() {
+                        Some(own.to_owned())
+                    } else {
+                        None
+                    }
+                } else {
+                    ps.lookup_name(tile.ch_nr, tile.ch_id).map(|s| s.to_owned())
+                }
+            } else {
+                None
+            };
+
+            let proz: Option<u8> = if show_proz && tile.ch_proz != 0 {
+                Some(tile.ch_proz)
+            } else {
+                None
+            };
+
+            let text = nameplate_text(show_names, show_proz, name.as_deref(), proz);
+
+            if !text.is_empty() {
+                // dd_gputtext formula (ported from engine.c + nameplates.rs):
+                // horizontally centered, shifted 64px up relative to sprite origin.
+                // The character offset is folded into the camera offset so the
+                // nameplate is rounded to whole pixels exactly once, in lockstep
+                // with the character sprite it labels.
+                let (np_ground_x, np_ground_y) =
+                    Self::tile_ground_diamond_origin(x, y, cam_xoff + ch_xoff, cam_yoff + ch_yoff);
+                let glyph = tile.danger_glyph();
+                let glyph_h = danger_glyph_height(glyph);
+                let glyph_id = if show_danger_glyphs {
+                    self.danger_glyph_texture(gfx, glyph)
+                } else {
+                    None
+                };
+                let glyph_width = glyph_id.map(|id| {
+                    let (tex_w, tex_h) = gfx.query_texture_size(id);
+                    danger_glyph_width(tex_w, tex_h, glyph_h)
+                });
+                let layout = nameplate_layout(np_ground_x, &text, glyph_width);
+                let np_ry = np_ground_y - PERCENT_HEALTH_TEXT_OFFSET_Y;
+                if let (Some(glyph_id), Some(glyph_x), Some(glyph_w)) =
+                    (glyph_id, layout.glyph_x, glyph_width)
+                {
+                    let glyph_y = np_ry - (glyph_h - font_cache::BITMAP_GLYPH_H as i32) / 2;
+                    canvas.copy(
+                        gfx.get_texture(glyph_id),
+                        None,
+                        Some(sdl2::rect::Rect::new(
+                            glyph_x,
+                            glyph_y,
+                            glyph_w as u32,
+                            glyph_h as u32,
+                        )),
+                    )?;
+                }
+                font_cache::draw_text(
+                    canvas,
+                    gfx,
+                    1,
+                    &text,
+                    layout.text_x,
+                    np_ry,
+                    font_cache::TextStyle::drop_shadow(),
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Draws the pending drop/pickup/use action markers on a tile.
+    fn draw_tile_markers(
+        canvas: &mut Canvas<Window>,
+        gfx: &mut GraphicsCache<'_>,
+        ps: &PlayerState,
+        tile: &CMapTile,
+        pos: TilePos,
+    ) -> Result<(), String> {
+        let TilePos {
+            x,
+            y,
+            cam_xoff,
+            cam_yoff,
+            ..
+        } = pos;
+        let ci = ps.character_info();
+
+        if ci.misc_action == DR_DROP as i32
+            && ci.misc_target1 == i32::from(tile.x)
+            && ci.misc_target2 == i32::from(tile.y)
+        {
+            Self::draw_world_sprite(canvas, gfx, 32, x, y, cam_xoff, cam_yoff, 0, 0, tile.light)?;
+        }
+        if ci.misc_action == DR_PICKUP as i32
+            && ci.misc_target1 == i32::from(tile.x)
+            && ci.misc_target2 == i32::from(tile.y)
+        {
+            Self::draw_world_sprite(canvas, gfx, 33, x, y, cam_xoff, cam_yoff, 0, 0, tile.light)?;
+        }
+        if ci.misc_action == DR_USE as i32
+            && ci.misc_target1 == i32::from(tile.x)
+            && ci.misc_target2 == i32::from(tile.y)
+        {
+            Self::draw_world_sprite(canvas, gfx, 45, x, y, cam_xoff, cam_yoff, 0, 0, tile.light)?;
+        }
+
+        Ok(())
+    }
+
+    /// Draws injury, death, tomb, and magic-glow overlays on a tile.
+    fn draw_tile_overlays(
+        canvas: &mut Canvas<Window>,
+        gfx: &mut GraphicsCache<'_>,
+        tile: &CMapTile,
+        pos: TilePos,
+        spell_effects_enabled: bool,
+    ) -> Result<(), String> {
+        let TilePos {
+            x,
+            y,
+            cam_xoff,
+            cam_yoff,
+            ch_xoff,
+            ch_yoff,
+        } = pos;
+
+        if let Some(sprite) = injured_sprite(tile.flags) {
+            Self::draw_world_sprite(
+                canvas, gfx, sprite, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff, tile.light,
+            )?;
+        }
+
+        if let Some(sprite) = death_sprite(tile.flags) {
+            let (dx, dy) = if tile.obj2 != 0 {
+                (ch_xoff, ch_yoff)
+            } else {
+                (0, 0)
+            };
+            Self::draw_world_sprite(
+                canvas, gfx, sprite, x, y, cam_xoff, cam_yoff, dx, dy, tile.light,
+            )?;
+        }
+
+        if let Some(sprite) = tomb_sprite(tile.flags) {
+            Self::draw_world_sprite(
+                canvas, gfx, sprite, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+            )?;
+        }
+
+        // Magic spell effects (EMAGIC/GMAGIC/CMAGIC diamond glows).
+        // Matches engine.c lines 846–860.
+        if spell_effects_enabled
+            && let Some((alpha_mask, alphastr)) = magic_effect_params(tile.flags)
+        {
+            Self::draw_magic_effect(
+                canvas, alpha_mask, alphastr, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff,
+            )?;
         }
 
         Ok(())
@@ -1010,10 +1186,67 @@ impl GameScene {
 
 #[cfg(test)]
 mod tests {
-    use super::{DANGER_GLYPH_GAP, danger_glyph_width, nameplate_layout};
+    use super::{
+        DANGER_GLYPH_GAP, danger_glyph_width, death_sprite, injured_sprite, magic_effect_params,
+        mine_wall_sprite, nameplate_layout, nameplate_text, tomb_sprite,
+    };
     use crate::font_cache::{self, BITMAP_GLYPH_ADVANCE};
+    use mag_core::constants::{EMAGIC, GMAGIC, INJURED, INJURED1, INJURED2};
 
     const DANGER_GLYPH_SIZE: i32 = 16;
+
+    #[test]
+    fn mine_wall_sprite_maps_ranges_and_skips_exceptions() {
+        assert_eq!(mine_wall_sprite(16335), None);
+        assert_eq!(mine_wall_sprite(16336), Some(457));
+        assert_eq!(mine_wall_sprite(16357), None);
+        assert_eq!(mine_wall_sprite(16358), Some(456));
+        assert_eq!(mine_wall_sprite(16420), Some(467));
+        assert_eq!(mine_wall_sprite(16421), None);
+        assert_eq!(mine_wall_sprite(16422), None);
+    }
+
+    #[test]
+    fn nameplate_text_combines_name_and_health() {
+        assert_eq!(
+            nameplate_text(true, true, Some("Grolm"), Some(80)),
+            "Grolm 80%"
+        );
+        assert_eq!(nameplate_text(true, true, Some(""), Some(80)), "80%");
+        assert_eq!(nameplate_text(true, true, None, Some(80)), "80%");
+        assert_eq!(nameplate_text(true, false, Some("Grolm"), None), "Grolm");
+        assert_eq!(nameplate_text(false, true, Some("Grolm"), Some(5)), "5%");
+        assert_eq!(nameplate_text(true, true, Some("Grolm"), None), "Grolm");
+        assert_eq!(nameplate_text(false, false, Some("Grolm"), Some(5)), "");
+    }
+
+    #[test]
+    fn injured_sprite_requires_exact_flag_combination() {
+        assert_eq!(injured_sprite(0), None);
+        assert_eq!(injured_sprite(INJURED1), None);
+        assert_eq!(injured_sprite(INJURED), Some(1079));
+        assert_eq!(injured_sprite(INJURED | INJURED1), Some(1080));
+        assert_eq!(injured_sprite(INJURED | INJURED2), Some(1081));
+        assert_eq!(injured_sprite(INJURED | INJURED1 | INJURED2), Some(1082));
+    }
+
+    #[test]
+    fn death_and_tomb_sprites_decode_variants() {
+        assert_eq!(death_sprite(0), None);
+        assert_eq!(death_sprite(1 << 17), Some(280));
+        assert_eq!(death_sprite(3 << 17), Some(282));
+        assert_eq!(tomb_sprite(0), None);
+        assert_eq!(tomb_sprite(1 << 12), Some(240));
+        assert_eq!(tomb_sprite(2 << 12), Some(241));
+    }
+
+    #[test]
+    fn magic_effect_params_merges_channels_and_takes_max_strength() {
+        assert_eq!(magic_effect_params(0), None);
+        assert_eq!(magic_effect_params(1 << 22), Some((1, 1)));
+        assert_eq!(magic_effect_params((1 << 22) | (3 << 25)), Some((3, 3)));
+        assert_eq!(magic_effect_params(EMAGIC | GMAGIC), Some((3, 7)));
+    }
 
     #[test]
     fn danger_glyph_width_preserves_aspect_ratio() {
