@@ -111,9 +111,11 @@ and only *writes* the player's own slot (`ServerPlayer`) and that character's
   visibility hit/miss counters — are recorded in `Deferred` and replayed on
   the tick thread after the join, so the per-client byte stream is identical
   to the serial pass (`update::tests::parallel_and_serial_updates_produce_identical_output`).
-- Pool size: `MAG_TICK_WORKERS` if set (>= 1), otherwise
-  `std::thread::available_parallelism()`. `1` disables the pool. Fewer than
-  `PARALLEL_MIN_PLAYERS` (4) online players always run serially.
+- Pool size: `MAG_TICK_WORKERS` if set (>= 1, clamped to the available
+  CPUs), otherwise `available_parallelism() - 1` capped at
+  `MAX_DEFAULT_TICK_WORKERS` (8); 1-2 CPU hosts run serially. `1` disables
+  the pool. Fewer than `PARALLEL_MIN_PLAYERS` (4) online players always run
+  serially.
 - Everything else in the tick (NPC AI, combat, effects, `compress_ticks`,
   socket I/O) is still single threaded; do not call `xsend`/`csend` or mutate
   `GameState` from the context functions.

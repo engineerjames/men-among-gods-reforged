@@ -21,7 +21,7 @@
   - `MAG_KEYDB_URL` (used by both API and server)
   - `API_JWT_SECRET` (API refuses to start without it)
   - `API_BIND_ADDR`, `API_PORT`, `MAG_API_BASE_URL`, `MAG_ASSETS_DIR`, `MAG_LOG_DIR`
-  - `MAG_TICK_WORKERS` (server; per-player update worker threads, default = available cores, `1` = serial)
+  - `MAG_TICK_WORKERS` (server; per-player update worker threads, default = available CPUs - 1 capped at 8, `1` = serial)
 
 ## Code patterns to preserve
 - Networking split is intentional: `csend` for immediate control packets vs `xsend` for batched tick payloads (`compress_ticks` flow in `server/src/server.rs` and `docs/server/DESIGN.md`).

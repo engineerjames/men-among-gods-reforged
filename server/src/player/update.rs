@@ -28,6 +28,11 @@ pub const TICK_WORKERS_ENV: &str = "MAG_TICK_WORKERS";
 /// pool wake-up and join cost more than the work they would spread.
 pub const PARALLEL_MIN_PLAYERS: usize = 4;
 
+/// Cap on the default worker count. 12 workers gave ~5.6x on the pass at
+/// ~2x the CPU of serial (perf-runs 2026-10-03), so extra threads past this
+/// mostly burn CPU; `MAG_TICK_WORKERS` can still raise it.
+pub const MAX_DEFAULT_TICK_WORKERS: usize = 8;
+
 /// Immutable snapshot of the world data the per-player update reads.
 ///
 /// All fields borrow from `GameState`; the struct is `Sync` because it only
@@ -884,21 +889,68 @@ pub fn parse_tick_worker_override(raw: Option<&str>) -> Option<usize> {
     }
 }
 
-/// Number of tick workers to use: the env override when valid, else the
-/// machine's available parallelism.
+/// Pick the tick worker count from an optional override and the CPUs the
+/// process may use.
+///
+/// Without an override, one CPU is left for the background saver, OS, and a
+/// co-located KeyDB, and the result is capped at
+/// [`MAX_DEFAULT_TICK_WORKERS`]; a 1-2 CPU host therefore runs serially.
+/// Overrides above `available` are clamped, since oversubscribing only adds
+/// context switches to a tick-critical pass.
+///
+/// # Arguments
+///
+/// * `override_workers` - Parsed `MAG_TICK_WORKERS`, if set.
+/// * `available` - CPUs available to the process (affinity/cgroup aware).
+///
+/// # Returns
+///
+/// * Worker count, always `>= 1`.
+pub fn choose_tick_worker_count(override_workers: Option<usize>, available: usize) -> usize {
+    let available = available.max(1);
+    match override_workers {
+        Some(n) if n > available => {
+            log::warn!(
+                "{}={} exceeds the {} CPUs available; using {}",
+                TICK_WORKERS_ENV,
+                n,
+                available,
+                available
+            );
+            available
+        }
+        Some(n) => n,
+        None => available
+            .saturating_sub(1)
+            .clamp(1, MAX_DEFAULT_TICK_WORKERS),
+    }
+}
+
+/// Number of tick workers to use, from `MAG_TICK_WORKERS` and the detected
+/// hardware (see [`choose_tick_worker_count`]).
 ///
 /// # Returns
 ///
 /// * Worker count, always `>= 1`.
 pub fn resolve_tick_worker_count() -> usize {
     let override_value = std::env::var(TICK_WORKERS_ENV).ok();
-    if let Some(n) = parse_tick_worker_override(override_value.as_deref()) {
-        return n;
-    }
-
-    std::thread::available_parallelism()
+    let override_workers = parse_tick_worker_override(override_value.as_deref());
+    let available = std::thread::available_parallelism()
         .map(|n| n.get())
-        .unwrap_or(1)
+        .unwrap_or(1);
+    let workers = choose_tick_worker_count(override_workers, available);
+
+    log::info!(
+        "Tick workers: {} ({} CPUs available, {})",
+        workers,
+        available,
+        if override_workers.is_some() {
+            TICK_WORKERS_ENV
+        } else {
+            "auto"
+        }
+    );
+    workers
 }
 
 /// Build the tick worker pool.
@@ -998,6 +1050,28 @@ mod tests {
     #[test]
     fn resolve_tick_worker_count_is_at_least_one() {
         assert!(resolve_tick_worker_count() >= 1);
+    }
+
+    #[test]
+    fn choose_tick_worker_count_auto_reserves_one_cpu_and_caps() {
+        assert_eq!(choose_tick_worker_count(None, 0), 1);
+        assert_eq!(choose_tick_worker_count(None, 1), 1);
+        assert_eq!(choose_tick_worker_count(None, 2), 1);
+        assert_eq!(choose_tick_worker_count(None, 4), 3);
+        assert_eq!(choose_tick_worker_count(None, 9), 8);
+        assert_eq!(choose_tick_worker_count(None, 12), MAX_DEFAULT_TICK_WORKERS);
+        assert_eq!(
+            choose_tick_worker_count(None, 128),
+            MAX_DEFAULT_TICK_WORKERS
+        );
+    }
+
+    #[test]
+    fn choose_tick_worker_count_honours_override_up_to_available() {
+        assert_eq!(choose_tick_worker_count(Some(1), 12), 1);
+        assert_eq!(choose_tick_worker_count(Some(12), 12), 12);
+        assert_eq!(choose_tick_worker_count(Some(64), 12), 12);
+        assert_eq!(choose_tick_worker_count(Some(4), 1), 1);
     }
 
     #[test]
