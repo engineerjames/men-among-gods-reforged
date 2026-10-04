@@ -169,6 +169,29 @@ impl RateLimiter {
         self.acquire().await;
         builder.send().await.context("HTTP send")
     }
+
+    /// Like [`RateLimiter::send`] but skips the in-flight queue.
+    ///
+    /// The in-flight semaphore is FIFO, so a login-ticket mint made while the
+    /// login gate is held would otherwise wait behind every pending bootstrap
+    /// request from all other bots, serializing logins at one per queue round
+    /// trip. Request-start spacing still applies.
+    ///
+    /// # Arguments
+    ///
+    /// * `builder` - Request builder to send.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Response)` for the request response.
+    /// * `Err` for network or TLS failures.
+    pub async fn send_priority(
+        &self,
+        builder: reqwest::RequestBuilder,
+    ) -> anyhow::Result<reqwest::Response> {
+        self.acquire().await;
+        builder.send().await.context("HTTP send")
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -195,12 +218,36 @@ async fn api_send(
     rate_limiter: &RateLimiter,
     builder: reqwest::RequestBuilder,
 ) -> anyhow::Result<reqwest::Response> {
+    api_send_with(rate_limiter, builder, false).await
+}
+
+/// Same as [`api_send`], optionally bypassing the in-flight queue.
+///
+/// # Arguments
+///
+/// * `rate_limiter` - Shared strict-spacing rate limiter.
+/// * `builder` - Cloneable request builder.
+/// * `priority` - When true, uses [`RateLimiter::send_priority`].
+///
+/// # Returns
+///
+/// * `Ok(Response)` — the final non-429 response.
+/// * `Err` on network or TLS failures.
+async fn api_send_with(
+    rate_limiter: &RateLimiter,
+    builder: reqwest::RequestBuilder,
+    priority: bool,
+) -> anyhow::Result<reqwest::Response> {
     let mut attempt = 0u32;
     loop {
         let current = builder
             .try_clone()
             .ok_or_else(|| anyhow!("request cannot be cloned for 429 retry"))?;
-        let resp = rate_limiter.send(current).await?;
+        let resp = if priority {
+            rate_limiter.send_priority(current).await?
+        } else {
+            rate_limiter.send(current).await?
+        };
 
         if resp.status() != StatusCode::TOO_MANY_REQUESTS {
             return Ok(resp);
@@ -430,7 +477,7 @@ pub async fn mint_ticket(
 ) -> anyhow::Result<u64> {
     let base = config.api.base_url.trim_end_matches('/').to_owned();
 
-    let resp = api_send(
+    let resp = api_send_with(
         rate_limiter,
         http.post(format!("{base}/game/login_ticket"))
             .bearer_auth(jwt)
@@ -438,6 +485,7 @@ pub async fn mint_ticket(
                 character_id,
                 client_version: VERSION,
             }),
+        true,
     )
     .await
     .context("mint ticket request")?;

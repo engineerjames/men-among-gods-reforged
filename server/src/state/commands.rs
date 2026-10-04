@@ -95,6 +95,41 @@ fn atoi_usize(s: &str) -> usize {
     acc.min(usize::MAX as u128) as usize
 }
 
+/// Window in which a destructive creator command must be repeated to take effect.
+const CREATOR_CONFIRM_SECONDS: u32 = 5;
+
+/// Records or consumes a pending confirmation for a destructive creator command.
+///
+/// # Arguments
+///
+/// * `pending` - Last unconfirmed command slot (caller, action, tick).
+/// * `cn` - Character issuing the command.
+/// * `action` - Command name.
+/// * `now` - Current server tick.
+///
+/// # Returns
+///
+/// * `true` if the same caller repeated the same action within the window; otherwise the
+///   request is recorded and `false` is returned.
+fn take_creator_confirmation(
+    pending: &mut Option<(usize, &'static str, u32)>,
+    cn: usize,
+    action: &'static str,
+    now: u32,
+) -> bool {
+    let window = core::constants::TICKS as u32 * CREATOR_CONFIRM_SECONDS;
+    if let Some((pcn, paction, ptick)) = *pending
+        && pcn == cn
+        && paction == action
+        && now.wrapping_sub(ptick) <= window
+    {
+        *pending = None;
+        return true;
+    }
+    *pending = Some((cn, action, now));
+    false
+}
+
 const ALL_COMMANDS: &[&str] = &[
     "addban",
     "afk",
@@ -195,6 +230,9 @@ const ALL_COMMANDS: &[&str] = &[
     "raise",
     "rank",
     "recall",
+    "resetallchars",
+    "resetchar",
+    "resetlights",
     "respawn",
     "safe",
     "save",
@@ -676,6 +714,94 @@ impl GameState {
         self.globals.reset_char = co as i32;
     }
 
+    /// Creator command: immediately resets one character template and its instances.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Character number of the caller (receives feedback).
+    /// * `template_id` - Character template id to reset.
+    pub(crate) fn do_reset_char_template(&mut self, cn: usize, template_id: usize) {
+        if !(1..core::constants::MAXTCHARS).contains(&template_id) {
+            self.do_character_log(cn, FontColor::Red, "Usage: /resetchar <template id>\n");
+            return;
+        }
+
+        let template = &self.character_templates[template_id];
+        let resettable = template.used != core::constants::USE_EMPTY
+            && (template.flags & CharacterFlags::Respawn.bits()) != 0;
+        if !resettable {
+            self.do_character_log(
+                cn,
+                FontColor::Red,
+                &format!("Template {} is unused or not respawnable.\n", template_id),
+            );
+            return;
+        }
+
+        crate::populate::reset_char(self, template_id);
+        self.do_character_log(
+            cn,
+            FontColor::Green,
+            &format!("Character template {} reset.\n", template_id),
+        );
+    }
+
+    /// Creator command: immediately resets every respawnable character template.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Character number of the caller (receives feedback).
+    pub(crate) fn do_reset_all_char_templates(&mut self, cn: usize) {
+        if !self.confirm_creator_command(cn, "resetallchars") {
+            return;
+        }
+        let count = crate::populate::reset_all_char_templates(self);
+        self.do_character_log(
+            cn,
+            FontColor::Green,
+            &format!("Reset {} character templates.\n", count),
+        );
+    }
+
+    /// Creator command: recomputes all map lighting from scratch.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Character number of the caller (receives feedback).
+    pub(crate) fn do_reset_lights(&mut self, cn: usize) {
+        if !self.confirm_creator_command(cn, "resetlights") {
+            return;
+        }
+        crate::populate::init_lights(self);
+        self.do_character_log(cn, FontColor::Green, "Map lighting rebuilt.\n");
+    }
+
+    /// Requires a destructive creator command to be issued twice in quick succession.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Character number issuing the command.
+    /// * `action` - Command name, used to match the repeat and in the prompt.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when this is the confirming repeat and the action should run.
+    fn confirm_creator_command(&mut self, cn: usize, action: &'static str) -> bool {
+        let now = self.globals.ticker as u32;
+        if take_creator_confirmation(&mut self.pending_creator_confirm, cn, action, now) {
+            return true;
+        }
+        self.do_character_log(
+            cn,
+            FontColor::Yellow,
+            &format!(
+                "/{} is a serious command. Type it again within {} seconds to confirm.\n",
+                action, CREATOR_CONFIRM_SECONDS
+            ),
+        );
+        false
+    }
+
     /// Port of `do_npclist(int cn, char* name)` from `svr_do.cpp`
     ///
     /// List NPCs matching a name pattern.
@@ -982,7 +1108,7 @@ impl GameState {
         let cmd = arg[0].to_lowercase();
 
         // Read flags for this character
-        let (f_gg, _f_c, f_g, f_i, f_s, f_p, f_u, f_sh, f_pol) = {
+        let (f_gg, f_c, f_g, f_i, f_s, f_p, f_u, f_sh, f_pol) = {
             let flags = self.characters[cn].flags;
             (
                 (flags & CharacterFlags::GreaterGod.bits()) != 0,
@@ -1537,6 +1663,21 @@ impl GameState {
                 God::goto(self, cn, cn, "512", "512");
                 return;
             }
+            Some("resetchar") if f_c => {
+                log::debug!("Processing resetchar command for {}", cn);
+                self.do_reset_char_template(cn, parse_usize(arg_get(1)));
+                return;
+            }
+            Some("resetlights") if f_c => {
+                log::debug!("Processing resetlights command for {}", cn);
+                self.do_reset_lights(cn);
+                return;
+            }
+            Some("resetallchars") if f_c => {
+                log::debug!("Processing resetallchars command for {}", cn);
+                self.do_reset_all_char_templates(cn);
+                return;
+            }
             Some("respawn") if f_giu => {
                 log::debug!("Processing respawn command for {}", cn);
                 self.do_respawn(cn, parse_usize(arg_get(1)));
@@ -1935,7 +2076,9 @@ impl GameState {
 
 #[cfg(test)]
 mod tests {
-    use super::{ALL_COMMANDS, format_talent_bonus_lines, match_command};
+    use super::{
+        ALL_COMMANDS, format_talent_bonus_lines, match_command, take_creator_confirmation,
+    };
     use crate::{
         game_state::GameState,
         test_helpers::{add_test_player, with_test_gs},
@@ -1970,6 +2113,51 @@ mod tests {
             }
         }
         String::from_utf8_lossy(&bytes).into_owned()
+    }
+
+    #[test]
+    fn creator_confirmation_requires_repeat_from_same_caller_within_window() {
+        let window = core::constants::TICKS as u32 * 5;
+        let mut pending = None;
+
+        assert!(!take_creator_confirmation(
+            &mut pending,
+            1,
+            "resetlights",
+            100
+        ));
+        assert!(take_creator_confirmation(
+            &mut pending,
+            1,
+            "resetlights",
+            100 + window
+        ));
+        assert!(pending.is_none());
+
+        assert!(!take_creator_confirmation(
+            &mut pending,
+            1,
+            "resetlights",
+            100
+        ));
+        assert!(!take_creator_confirmation(
+            &mut pending,
+            2,
+            "resetlights",
+            101
+        ));
+        assert!(!take_creator_confirmation(
+            &mut pending,
+            2,
+            "resetallchars",
+            102
+        ));
+        assert!(!take_creator_confirmation(
+            &mut pending,
+            2,
+            "resetallchars",
+            102 + window + 1
+        ));
     }
 
     #[test]

@@ -13,7 +13,6 @@ use crate::{
 use super::{FLOOR_TILE_HEIGHT, FLOOR_TILE_WIDTH, GameScene};
 
 const PERCENT_HEALTH_TEXT_OFFSET_Y: i32 = 47;
-const DANGER_GLYPH_SIZE: i32 = 16;
 const DANGER_GLYPH_GAP: i32 = 2;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -24,28 +23,48 @@ struct NameplateLayout {
 }
 
 /// Computes the centered positions for a nameplate's optional icon and text.
-fn nameplate_layout(center_x: i32, text: &str, has_glyph: bool) -> NameplateLayout {
+///
+/// `glyph_width` is the rendered icon width, or `None` when no icon is shown.
+fn nameplate_layout(center_x: i32, text: &str, glyph_width: Option<i32>) -> NameplateLayout {
     let text_width = font_cache::text_width(text) as i32;
-    let glyph_width = if has_glyph { DANGER_GLYPH_SIZE } else { 0 };
-    let glyph_gap = if has_glyph { DANGER_GLYPH_GAP } else { 0 };
-    let left = center_x - (glyph_width + glyph_gap + text_width) / 2;
+    let glyph_w = glyph_width.unwrap_or(0);
+    let glyph_gap = if glyph_width.is_some() {
+        DANGER_GLYPH_GAP
+    } else {
+        0
+    };
+    let left = center_x - (glyph_w + glyph_gap + text_width) / 2;
 
     NameplateLayout {
         left,
-        glyph_x: has_glyph.then_some(left),
-        text_x: left + glyph_width + glyph_gap,
+        glyph_x: glyph_width.map(|_| left),
+        text_x: left + glyph_w + glyph_gap,
     }
 }
 
-/// Returns the placeholder asset filename for a danger classification.
+/// Returns the asset filename for a danger classification.
 fn danger_glyph_asset(glyph: DangerGlyph) -> Option<&'static str> {
     match glyph {
         DangerGlyph::None => None,
-        DangerGlyph::Lamb => Some("wimpy_icon.png"),
-        DangerGlyph::Swords => Some("stun_icon.png"),
-        DangerGlyph::Skull => Some("deliver_death_icon.png"),
-        DangerGlyph::FlamingSkull => Some("lava_blast_icon.png"),
+        DangerGlyph::Skull => Some("skull.png"),
+        DangerGlyph::FlamingSkull => Some("flaming_skull.png"),
     }
+}
+
+/// Rendered height of a danger glyph; the flaming skull's flames make its art taller.
+fn danger_glyph_height(glyph: DangerGlyph) -> i32 {
+    match glyph {
+        DangerGlyph::FlamingSkull => 20,
+        _ => 14,
+    }
+}
+
+/// Scales a texture to `height`, preserving its aspect ratio.
+fn danger_glyph_width(tex_w: u32, tex_h: u32, height: i32) -> i32 {
+    if tex_h == 0 {
+        return height;
+    }
+    ((tex_w as i32 * height + tex_h as i32 / 2) / tex_h as i32).max(1)
 }
 
 #[derive(Copy, Clone)]
@@ -73,7 +92,7 @@ impl GameScene {
     /// Default gamma-based LEFFECT value matching C client: gamma=5000, LEFFECT=gamma-4880=120.
     const LEFFECT: i32 = 120;
 
-    /// Loads and caches the placeholder texture for a danger glyph.
+    /// Loads and caches the texture for a danger glyph.
     fn danger_glyph_texture(
         &mut self,
         gfx: &mut GraphicsCache<'_>,
@@ -81,10 +100,8 @@ impl GameScene {
     ) -> Option<usize> {
         let slot = match glyph {
             DangerGlyph::None => return None,
-            DangerGlyph::Lamb => 0,
-            DangerGlyph::Swords => 1,
-            DangerGlyph::Skull => 2,
-            DangerGlyph::FlamingSkull => 3,
+            DangerGlyph::Skull => 0,
+            DangerGlyph::FlamingSkull => 1,
         };
         if let Some(id) = self.danger_glyph_ids[slot] {
             return Some(id);
@@ -93,7 +110,7 @@ impl GameScene {
         let filename = danger_glyph_asset(glyph)?;
         let path = filepaths::get_asset_directory()
             .join("gfx")
-            .join("spells")
+            .join("danger_glyph")
             .join(filename);
         match gfx.load_texture_from_path(&path) {
             Ok(id) => {
@@ -846,24 +863,31 @@ impl GameScene {
                             cam_xoff + ch_xoff,
                             cam_yoff + ch_yoff,
                         );
+                        let glyph = tile.danger_glyph();
+                        let glyph_h = danger_glyph_height(glyph);
                         let glyph_id = if show_danger_glyphs {
-                            self.danger_glyph_texture(gfx, tile.danger_glyph())
+                            self.danger_glyph_texture(gfx, glyph)
                         } else {
                             None
                         };
-                        let layout = nameplate_layout(np_ground_x, &text, glyph_id.is_some());
+                        let glyph_width = glyph_id.map(|id| {
+                            let (tex_w, tex_h) = gfx.query_texture_size(id);
+                            danger_glyph_width(tex_w, tex_h, glyph_h)
+                        });
+                        let layout = nameplate_layout(np_ground_x, &text, glyph_width);
                         let np_ry = np_ground_y - PERCENT_HEALTH_TEXT_OFFSET_Y;
-                        if let (Some(glyph_id), Some(glyph_x)) = (glyph_id, layout.glyph_x) {
-                            let glyph_y =
-                                np_ry - (DANGER_GLYPH_SIZE - font_cache::BITMAP_GLYPH_H as i32) / 2;
+                        if let (Some(glyph_id), Some(glyph_x), Some(glyph_w)) =
+                            (glyph_id, layout.glyph_x, glyph_width)
+                        {
+                            let glyph_y = np_ry - (glyph_h - font_cache::BITMAP_GLYPH_H as i32) / 2;
                             canvas.copy(
                                 gfx.get_texture(glyph_id),
                                 None,
                                 Some(sdl2::rect::Rect::new(
                                     glyph_x,
                                     glyph_y,
-                                    DANGER_GLYPH_SIZE as u32,
-                                    DANGER_GLYPH_SIZE as u32,
+                                    glyph_w as u32,
+                                    glyph_h as u32,
                                 )),
                             )?;
                         }
@@ -986,12 +1010,22 @@ impl GameScene {
 
 #[cfg(test)]
 mod tests {
-    use super::{DANGER_GLYPH_GAP, DANGER_GLYPH_SIZE, nameplate_layout};
+    use super::{DANGER_GLYPH_GAP, danger_glyph_width, nameplate_layout};
     use crate::font_cache::{self, BITMAP_GLYPH_ADVANCE};
+
+    const DANGER_GLYPH_SIZE: i32 = 16;
+
+    #[test]
+    fn danger_glyph_width_preserves_aspect_ratio() {
+        assert_eq!(danger_glyph_width(40, 20, 20), 40);
+        assert_eq!(danger_glyph_width(27, 36, 14), 11);
+        assert_eq!(danger_glyph_width(42, 78, 20), 11);
+        assert_eq!(danger_glyph_width(1, 0, 14), 14);
+    }
 
     #[test]
     fn nameplate_layout_centers_text_only() {
-        let layout = nameplate_layout(100, "Grolm 100%", false);
+        let layout = nameplate_layout(100, "Grolm 100%", None);
 
         assert_eq!(layout.left, 70);
         assert_eq!(layout.glyph_x, None);
@@ -1000,7 +1034,7 @@ mod tests {
 
     #[test]
     fn nameplate_layout_places_glyph_before_text() {
-        let layout = nameplate_layout(100, "Grolm 100%", true);
+        let layout = nameplate_layout(100, "Grolm 100%", Some(DANGER_GLYPH_SIZE));
         let text_width = font_cache::text_width("Grolm 100%") as i32;
         let group_width = DANGER_GLYPH_SIZE + DANGER_GLYPH_GAP + text_width;
 
@@ -1015,7 +1049,7 @@ mod tests {
     #[test]
     fn nameplate_layout_keeps_long_health_plate_centered() {
         let text = "A very long NPC name 100%";
-        let layout = nameplate_layout(320, text, true);
+        let layout = nameplate_layout(320, text, Some(DANGER_GLYPH_SIZE));
         let group_width =
             DANGER_GLYPH_SIZE + DANGER_GLYPH_GAP + text.len() as i32 * BITMAP_GLYPH_ADVANCE as i32;
 

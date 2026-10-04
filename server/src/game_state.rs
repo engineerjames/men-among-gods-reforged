@@ -104,6 +104,8 @@ pub struct GameState {
     // -- Counters (formerly Repository fields) --
     /// Tick at which the last population reset occurred.
     pub last_population_reset_tick: u32,
+    /// Caller, action name, and tick of the last unconfirmed destructive creator command.
+    pub pending_creator_confirm: Option<(usize, &'static str, u32)>,
     /// Ice cloak timing clock.
     pub ice_cloak_clock: u32,
     /// Item tick GC offset counter.
@@ -241,6 +243,7 @@ impl GameState {
                 .map(|_| ServerPlayer::new())
                 .collect(),
             last_population_reset_tick: 0,
+            pending_creator_confirm: None,
             ice_cloak_clock: 0,
             item_tick_gc_off: 0,
             item_tick_gc_count: 0,

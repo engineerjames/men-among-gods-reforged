@@ -1381,6 +1381,28 @@ pub fn pop_tick(gs: &mut GameState) {
     }
 }
 
+/// Resets every respawnable character template immediately.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
+///
+/// # Returns
+///
+/// * Number of templates that were reset.
+pub fn reset_all_char_templates(gs: &mut GameState) -> usize {
+    let mut count = 0;
+    for n in 1..MAXTCHARS {
+        let used = gs.character_templates[n].used;
+        let has_respawn = (gs.character_templates[n].flags & CharacterFlags::Respawn.bits()) != 0;
+        if used != USE_EMPTY && has_respawn {
+            reset_char(gs, n);
+            count += 1;
+        }
+    }
+    count
+}
+
 /// Port of `pop_reset_all` from `populate.cpp`
 /// Resets all character and item templates
 ///
