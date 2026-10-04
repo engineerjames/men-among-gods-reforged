@@ -54,8 +54,8 @@ fn danger_glyph_asset(glyph: DangerGlyph) -> Option<&'static str> {
 /// Rendered height of a danger glyph; the flaming skull's flames make its art taller.
 fn danger_glyph_height(glyph: DangerGlyph) -> i32 {
     match glyph {
-        DangerGlyph::FlamingSkull => 20,
-        _ => 14,
+        DangerGlyph::FlamingSkull => 13,
+        _ => 9,
     }
 }
 
