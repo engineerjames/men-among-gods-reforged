@@ -879,8 +879,7 @@ impl GameScene {
                         if let (Some(glyph_id), Some(glyph_x), Some(glyph_w)) =
                             (glyph_id, layout.glyph_x, glyph_width)
                         {
-                            let glyph_y =
-                                np_ry - (glyph_h - font_cache::BITMAP_GLYPH_H as i32) / 2;
+                            let glyph_y = np_ry - (glyph_h - font_cache::BITMAP_GLYPH_H as i32) / 2;
                             canvas.copy(
                                 gfx.get_texture(glyph_id),
                                 None,
