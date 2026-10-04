@@ -1429,6 +1429,27 @@ impl GameState {
             );
             self.do_character_log(cn, core::types::FontColor::Blue, " \n");
         }
+
+        if (self.characters[cn].flags & CharacterFlags::Creator.bits()) != 0 {
+            self.do_character_log(cn, core::types::FontColor::Blue, "Creator Commands:\n");
+            self.do_character_log(cn, core::types::FontColor::Blue, " \n");
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#resetchar <template>   reset a character template now.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#resetallchars          reset all character templates (repeat to confirm).\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#resetlights            rebuild all map lighting (repeat to confirm).\n",
+            );
+            self.do_character_log(cn, core::types::FontColor::Blue, " \n");
+        }
     }
 
     /// Port of `do_fightback(cn)` from `svr_do.cpp`.

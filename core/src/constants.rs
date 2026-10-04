@@ -449,14 +449,10 @@ pub enum DangerGlyph {
     /// No glyph should be shown.
     #[default]
     None = 0,
-    /// The target is substantially below the viewer's rank.
-    Lamb = 1,
-    /// The target is close to the viewer's rank.
-    Swords = 2,
     /// The target is moderately above the viewer's rank.
-    Skull = 3,
+    Skull = 1,
     /// The target is substantially above the viewer's rank.
-    FlamingSkull = 4,
+    FlamingSkull = 2,
 }
 
 impl DangerGlyph {
@@ -472,10 +468,8 @@ impl DangerGlyph {
     /// * `flags2` - Raw tile flags containing the encoded danger value.
     pub const fn from_flags2(flags2: u32) -> Self {
         match (flags2 & DANGER_GLYPH_MASK) >> DANGER_GLYPH_SHIFT {
-            1 => Self::Lamb,
-            2 => Self::Swords,
-            3 => Self::Skull,
-            4 => Self::FlamingSkull,
+            1 => Self::Skull,
+            2 => Self::FlamingSkull,
             _ => Self::None,
         }
     }

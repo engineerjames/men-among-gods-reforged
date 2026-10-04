@@ -350,6 +350,12 @@ pub struct Server {
     /// when using KeyDB backend).
     save_tick_counter: u32,
 
+    /// Background thread that logs how full the fixed-size data tables are.
+    capacity_monitor: Option<crate::capacity_monitor::CapacityMonitor>,
+
+    /// Ticks since the last capacity sample was taken.
+    capacity_tick_counter: u32,
+
     /// Background worker for KeyDB requests initiated by the tick loop.
     tick_keydb_worker: Option<TickKeyDbWorker>,
 
@@ -388,6 +394,8 @@ impl Server {
             world_action_watcher: None,
             ban_action_watcher: None,
             save_tick_counter: 0,
+            capacity_monitor: None,
+            capacity_tick_counter: 0,
             tick_keydb_worker: None,
             next_keydb_request_id: 0,
             world_action_save_tx: None,
@@ -575,6 +583,10 @@ impl Server {
         // Spawn the live ban-action watcher (no-op when disabled).
         self.ban_action_watcher = server::keydb::ban_action::BanActionWatcher::spawn();
 
+        self.capacity_monitor = crate::capacity_monitor::CapacityMonitor::spawn();
+        // Sample on the first tick so startup fill levels are logged right away.
+        self.capacity_tick_counter = crate::capacity_monitor::CHECK_INTERVAL_TICKS;
+
         Ok(())
     }
 
@@ -709,6 +721,7 @@ impl Server {
 
         // Background save scheduling (KeyDB only)
         core::measure!(self.maybe_enqueue_background_save(gs));
+        self.maybe_sample_capacity(gs);
 
         core::measure!(
             "weather.area_system_tick",
@@ -1645,6 +1658,26 @@ impl Server {
         }
     }
 
+    /// Periodically count in-use slots in the fixed-size tables and hand the
+    /// result to the capacity monitor thread for logging.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Reference to the unified game state (read-only).
+    fn maybe_sample_capacity(&mut self, gs: &GameState) {
+        let Some(monitor) = &self.capacity_monitor else {
+            return;
+        };
+
+        self.capacity_tick_counter += 1;
+        if self.capacity_tick_counter < crate::capacity_monitor::CHECK_INTERVAL_TICKS {
+            return;
+        }
+        self.capacity_tick_counter = 0;
+
+        monitor.submit(crate::capacity_monitor::CapacityReport::sample(gs));
+    }
+
     // -----------------------------------------------------------------------
     //  Background saver scheduling (KeyDB backend only)
     // -----------------------------------------------------------------------
@@ -2284,6 +2317,10 @@ impl Server {
         if let Some(mut watcher) = self.ban_action_watcher.take() {
             log::info!("Stopping ban action watcher...");
             watcher.shutdown();
+        }
+        if let Some(mut monitor) = self.capacity_monitor.take() {
+            log::info!("Stopping capacity monitor...");
+            monitor.shutdown();
         }
         if let Some(mut saver) = self.background_saver.take() {
             log::info!("Flushing pending background save jobs...");
