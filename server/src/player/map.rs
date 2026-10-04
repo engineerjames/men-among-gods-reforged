@@ -68,7 +68,7 @@ fn npc_targets_viewer(
     if target.attack_cn as usize == viewer_cn {
         return true;
     }
-    let idx = viewer_cn as i32 | ((helpers::char_id(viewer) as i32) << 16);
+    let idx = viewer_cn as i32 | (helpers::char_id(viewer) << 16);
     target.data[80..92].contains(&idx)
 }
 
