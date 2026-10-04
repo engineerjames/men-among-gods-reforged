@@ -62,12 +62,26 @@ impl<'a> WorldView<'a> {
     /// * Effective daylight value for the tile.
     #[inline]
     pub fn check_dlight(&self, x: usize, y: usize) -> i32 {
-        let m = x + y * SERVER_MAPX as usize;
-        if self.map[m].flags & u64::from(MF_INDOORS) == 0 {
-            self.globals.dlight
-        } else {
-            (self.globals.dlight * i32::from(self.map[m].dlight)) / 256
-        }
+        tile_daylight(&self.map[x + y * SERVER_MAPX as usize], self.globals.dlight)
+    }
+}
+
+/// Daylight reaching `tile`, attenuated by its indoor factor.
+///
+/// # Arguments
+///
+/// * `tile` - Map tile.
+/// * `dlight` - Global daylight (`Global::dlight`).
+///
+/// # Returns
+///
+/// * Effective daylight value for the tile.
+#[inline]
+pub fn tile_daylight(tile: &Map, dlight: i32) -> i32 {
+    if tile.flags & u64::from(MF_INDOORS) == 0 {
+        dlight
+    } else {
+        (dlight * i32::from(tile.dlight)) / 256
     }
 }
 
@@ -262,13 +276,69 @@ fn vis_index(ox: i32, oy: i32, x: i32, y: i32) -> Option<usize> {
     }
 }
 
+/// Write `value` at world `(x, y)` in a vis buffer centred on `(ox, oy)` if
+/// the slot is in range and still empty.
+///
+/// # Arguments
+///
+/// * `vis` - Visibility buffer.
+/// * `ox` - Buffer origin x.
+/// * `oy` - Buffer origin y.
+/// * `x` - World x to write.
+/// * `y` - World y to write.
+/// * `value` - Value to store.
 #[inline]
-fn add_vis(vis: &mut [i8; VISI_BUFFER_LEN], ox: i32, oy: i32, x: i32, y: i32, value: i32) {
+pub fn add_vis(vis: &mut [i8; VISI_BUFFER_LEN], ox: i32, oy: i32, x: i32, y: i32, value: i32) {
     if let Some(index) = vis_index(ox, oy, x, y)
         && vis[index] == 0
     {
         vis[index] = value as i8;
     }
+}
+
+/// Whether any of the 8 neighbours of world `(x, y)` holds `value`.
+///
+/// The wave-expansion step shared by the sight and path builders.
+///
+/// # Arguments
+///
+/// * `vis` - Visibility buffer.
+/// * `ox` - Buffer origin x.
+/// * `oy` - Buffer origin y.
+/// * `x` - World x.
+/// * `y` - World y.
+/// * `value` - Neighbour value to match.
+///
+/// # Returns
+///
+/// * `false` when `(x, y)` lies on or outside the buffer's 1-tile border.
+pub fn neighbour_has(
+    vis: &[i8; VISI_BUFFER_LEN],
+    ox: i32,
+    oy: i32,
+    x: i32,
+    y: i32,
+    value: i8,
+) -> bool {
+    let x = x - ox + VISI_CENTER;
+    let y = y - oy + VISI_CENTER;
+    let stride = VISI_STRIDE as i32;
+    let edge = stride - 1;
+
+    if x <= 0 || x >= edge || y <= 0 || y >= edge {
+        return false;
+    }
+
+    let at = |dx: i32, dy: i32| vis[((x + dx) + (y + dy) * stride) as usize];
+
+    at(1, 0) == value
+        || at(-1, 0) == value
+        || at(0, 1) == value
+        || at(0, -1) == value
+        || at(1, 1) == value
+        || at(1, -1) == value
+        || at(-1, 1) == value
+        || at(-1, -1) == value
 }
 
 fn check_map_see(world: &WorldView, is_monster: bool, x: i32, y: i32) -> bool {
@@ -299,100 +369,63 @@ fn check_map_see(world: &WorldView, is_monster: bool, x: i32, y: i32) -> bool {
     true
 }
 
-#[allow(clippy::too_many_arguments)]
-fn close_vis_see(
+/// Fill `vis` with a line-of-sight map centred on `(fx, fy)`.
+///
+/// # Arguments
+///
+/// * `world` - Read-only world.
+/// * `vis` - Buffer to overwrite; its origin becomes `(fx, fy)`.
+/// * `fx` - Origin x.
+/// * `fy` - Origin y.
+/// * `is_monster` - Apply `MF_NOMONST` as a sight blocker.
+/// * `max_distance` - Radius to expand.
+pub fn build_vis(
     world: &WorldView,
-    vis: &[i8; VISI_BUFFER_LEN],
-    ox: i32,
-    oy: i32,
-    is_monster: bool,
-    x: i32,
-    y: i32,
-    value: i8,
-) -> bool {
-    if !check_map_see(world, is_monster, x, y) {
-        return false;
-    }
-
-    let x = x - ox + VISI_CENTER;
-    let y = y - oy + VISI_CENTER;
-    let stride = VISI_STRIDE as i32;
-    let edge = stride - 1;
-
-    if x <= 0 || x >= edge || y <= 0 || y >= edge {
-        return false;
-    }
-
-    let at = |dx: i32, dy: i32| vis[((x + dx) + (y + dy) * stride) as usize];
-
-    at(1, 0) == value
-        || at(-1, 0) == value
-        || at(0, 1) == value
-        || at(0, -1) == value
-        || at(1, 1) == value
-        || at(1, -1) == value
-        || at(-1, 1) == value
-        || at(-1, -1) == value
-}
-
-/// Rebuild `see` as a line-of-sight map centred on `(fx, fy)`.
-fn build_see_map(
-    world: &WorldView,
-    see: &mut SeeMap,
+    vis: &mut [i8; VISI_BUFFER_LEN],
     fx: i32,
     fy: i32,
     is_monster: bool,
     max_distance: i32,
 ) {
-    see.vis.fill(0);
-    see.x = fx;
-    see.y = fy;
+    vis.fill(0);
+    add_vis(vis, fx, fy, fx, fy, 1);
 
-    add_vis(&mut see.vis, fx, fy, fx, fy, 1);
+    let visit = |vis: &mut [i8; VISI_BUFFER_LEN], x: i32, y: i32, dist: i32| {
+        if check_map_see(world, is_monster, x, y) && neighbour_has(vis, fx, fy, x, y, dist as i8) {
+            add_vis(vis, fx, fy, x, y, dist + 1);
+        }
+    };
 
     for dist in 1..=max_distance {
-        let value = dist as i8;
-
         for x in (fx - dist)..=(fx + dist) {
-            let y = fy - dist;
-            if close_vis_see(world, &see.vis, fx, fy, is_monster, x, y, value) {
-                add_vis(&mut see.vis, fx, fy, x, y, dist + 1);
-            }
-
-            let y = fy + dist;
-            if close_vis_see(world, &see.vis, fx, fy, is_monster, x, y, value) {
-                add_vis(&mut see.vis, fx, fy, x, y, dist + 1);
-            }
+            visit(vis, x, fy - dist, dist);
+            visit(vis, x, fy + dist, dist);
         }
 
         for y in (fy - dist + 1)..=(fy + dist - 1) {
-            let x = fx - dist;
-            if close_vis_see(world, &see.vis, fx, fy, is_monster, x, y, value) {
-                add_vis(&mut see.vis, fx, fy, x, y, dist + 1);
-            }
-
-            let x = fx + dist;
-            if close_vis_see(world, &see.vis, fx, fy, is_monster, x, y, value) {
-                add_vis(&mut see.vis, fx, fy, x, y, dist + 1);
-            }
+            visit(vis, fx - dist, y, dist);
+            visit(vis, fx + dist, y, dist);
         }
     }
 }
 
-/// Best visibility metric for `(tx, ty)` from the see-map's origin.
+/// Best visibility metric for `(tx, ty)` in a vis buffer centred on
+/// `(ox, oy)`.
 ///
 /// # Arguments
 ///
-/// * `see` - Visibility cache whose `x`/`y` is the origin.
+/// * `vis` - Visibility buffer.
+/// * `ox` - Buffer origin x.
+/// * `oy` - Buffer origin y.
 /// * `tx` - Target x.
 /// * `ty` - Target y.
 ///
 /// # Returns
 ///
 /// * `0` when not visible, otherwise the smallest non-zero neighbour value.
-pub fn check_vis(see: &SeeMap, tx: i32, ty: i32) -> i32 {
-    let x = tx - see.x + VISI_CENTER;
-    let y = ty - see.y + VISI_CENTER;
+pub fn check_vis(vis: &[i8; VISI_BUFFER_LEN], ox: i32, oy: i32, tx: i32, ty: i32) -> i32 {
+    let x = tx - ox + VISI_CENTER;
+    let y = ty - oy + VISI_CENTER;
     let stride = VISI_STRIDE as i32;
     let edge = stride - 1;
 
@@ -401,7 +434,7 @@ pub fn check_vis(see: &SeeMap, tx: i32, ty: i32) -> i32 {
     }
 
     let mut best: i8 = 99;
-    let at = |dx: i32, dy: i32| see.vis[((x + dx) + (y + dy) * stride) as usize];
+    let at = |dx: i32, dy: i32| vis[((x + dx) + (y + dy) * stride) as usize];
 
     for (dx, dy) in [
         (1, 0),
@@ -456,13 +489,15 @@ pub fn can_see(
         let ch = &world.characters[cn];
         let is_monster = ch.kindred & KIN_MONSTER as i32 != 0
             && (ch.flags & (CharacterFlags::Usurp.bits() | CharacterFlags::Thrall.bits())) == 0;
-        build_see_map(world, see, fx, fy, is_monster, max_distance);
+        build_vis(world, &mut see.vis, fx, fy, is_monster, max_distance);
+        see.x = fx;
+        see.y = fy;
         deferred.see_miss += 1;
     } else {
         deferred.see_hit += 1;
     }
 
-    check_vis(see, tx, ty)
+    check_vis(&see.vis, see.x, see.y, tx, ty)
 }
 
 /// Port of `do_char_can_see(cn, co)` over a [`WorldView`].
@@ -697,8 +732,8 @@ pub fn with_player_ctx<R>(
 
     let (result, deferred) = {
         let (world, players, see_map) = split_world(gs);
-        // An out-of-range `usnr` is rejected inside `plr_change`; give it a
-        // throwaway see-map so the guard is reached instead of a panic here.
+        // Production targets are pre-validated; this lets test shims reach
+        // `plr_change`'s own `usnr` guard instead of panicking here.
         let mut scratch = SeeMap::default();
         let see = match see_map.get_mut(cn) {
             Some(see) => see,
@@ -736,19 +771,23 @@ struct PlayerUpdateJob<'a> {
     nr: usize,
     cn: usize,
     player: &'a mut ServerPlayer,
-    see: &'a mut SeeMap,
+    /// `None` until claimed; stays `None` for a duplicate `usnr`.
+    see: Option<&'a mut SeeMap>,
     deferred: Deferred,
     timings: PhaseTimings,
 }
 
 impl PlayerUpdateJob<'_> {
     fn run(&mut self, world: &WorldView) {
+        let Some(see) = self.see.as_deref_mut() else {
+            return;
+        };
         let mut ctx = PlayerUpdateCtx {
             world,
             nr: self.nr,
             cn: self.cn,
             player: &mut *self.player,
-            see: &mut *self.see,
+            see,
             deferred: std::mem::take(&mut self.deferred),
         };
         self.timings = update_player(&mut ctx);
@@ -756,11 +795,57 @@ impl PlayerUpdateJob<'_> {
     }
 }
 
-/// Player slots that receive a view update this tick.
+/// Player slots (ascending) that receive a view update this tick.
+///
+/// Slots whose `usnr` is not a valid character are skipped and reported at
+/// most once per second.
 fn collect_update_targets(gs: &GameState) -> Vec<usize> {
+    let max_cn = gs.characters.len().min(gs.see_map.len());
+    let report = gs.globals.ticker % core::constants::TICKS == 0;
+
     (1..gs.players.len())
-        .filter(|&n| gs.players[n].sock.is_some() && gs.players[n].state == ST_NORMAL)
+        .filter(|&n| {
+            let p = &gs.players[n];
+            if p.sock.is_none() || p.state != ST_NORMAL {
+                return false;
+            }
+            if p.usnr == 0 || p.usnr >= max_cn {
+                if report {
+                    log::error!(
+                        "player {} has invalid usnr {}; skipping view update",
+                        n,
+                        p.usnr
+                    );
+                }
+                return false;
+            }
+            true
+        })
         .collect()
+}
+
+/// Hand each job the `&mut SeeMap` for its character, without allocating a
+/// `MAXCHARS`-sized table.
+///
+/// Jobs whose `cn` was already claimed (duplicate `usnr`) or is out of range
+/// keep `see == None`.
+fn claim_see_maps<'a>(jobs: &mut [PlayerUpdateJob<'a>], see_map: &'a mut [SeeMap]) {
+    let mut order: Vec<usize> = (0..jobs.len()).collect();
+    order.sort_unstable_by_key(|&j| jobs[j].cn);
+
+    let mut rest = see_map;
+    // Index in the original slice of `rest[0]`.
+    let mut base = 0;
+    for j in order {
+        let cn = jobs[j].cn;
+        if cn < base || cn - base >= rest.len() {
+            continue;
+        }
+        let (head, tail) = std::mem::take(&mut rest).split_at_mut(cn - base + 1);
+        jobs[j].see = head.last_mut();
+        rest = tail;
+        base = cn + 1;
+    }
 }
 
 /// Update every `ST_NORMAL` player, on the pool when one is given and enough
@@ -807,37 +892,34 @@ fn run_parallel(gs: &mut GameState, pool: &rayon::ThreadPool, targets: &[usize])
     {
         let (world, players, see_map) = split_world(gs);
 
-        let mut wanted = vec![false; players.len()];
-        for &nr in targets {
-            wanted[nr] = true;
-        }
-
-        let mut see_slots: Vec<Option<&mut SeeMap>> = see_map.iter_mut().map(Some).collect();
-
+        // `targets` is ascending, matching `iter_mut` order.
+        let mut wanted = targets.iter().copied().peekable();
         let mut jobs: Vec<PlayerUpdateJob> = Vec::with_capacity(targets.len());
         for (nr, player) in players.iter_mut().enumerate() {
-            if !wanted[nr] {
+            if wanted.next_if_eq(&nr).is_none() {
                 continue;
             }
-            let cn = player.usnr;
-            match see_slots.get_mut(cn).and_then(Option::take) {
-                Some(see) => jobs.push(PlayerUpdateJob {
-                    nr,
-                    cn,
-                    player,
-                    see,
-                    deferred: Deferred::default(),
-                    timings: PhaseTimings::default(),
-                }),
-                None => leftovers.push(nr),
-            }
+            jobs.push(PlayerUpdateJob {
+                nr,
+                cn: player.usnr,
+                player,
+                see: None,
+                deferred: Deferred::default(),
+                timings: PhaseTimings::default(),
+            });
         }
+
+        claim_see_maps(&mut jobs, see_map);
 
         pool.install(|| {
             jobs.par_iter_mut().for_each(|job| job.run(&world));
         });
 
         for job in jobs {
+            if job.see.is_none() {
+                leftovers.push(job.nr);
+                continue;
+            }
             summary.timings += job.timings;
             summary.players_updated += 1;
             finished.push((job.nr, job.deferred));
@@ -849,8 +931,8 @@ fn run_parallel(gs: &mut GameState, pool: &rayon::ThreadPool, targets: &[usize])
     }
 
     for nr in leftovers {
-        log::warn!(
-            "player {} could not claim its see-map (usnr {}); updating serially",
+        log::debug!(
+            "player {} shares usnr {} with another player; updating serially",
             nr,
             gs.players[nr].usnr
         );
@@ -1076,23 +1158,67 @@ mod tests {
 
     #[test]
     fn check_vis_respects_border_and_picks_smallest_neighbour() {
-        let mut see = SeeMap {
-            x: 100,
-            y: 100,
-            ..SeeMap::default()
-        };
+        let mut vis = [0i8; VISI_BUFFER_LEN];
         // Target at origin: neighbours are unset -> not visible.
-        assert_eq!(check_vis(&see, 100, 100), 0);
+        assert_eq!(check_vis(&vis, 100, 100, 100, 100), 0);
 
         let stride = VISI_STRIDE as i32;
         let c = VISI_CENTER;
-        see.vis[((c + 1) + c * stride) as usize] = 5;
-        see.vis[(c + (c + 1) * stride) as usize] = 3;
-        assert_eq!(check_vis(&see, 100, 100), 3);
+        vis[((c + 1) + c * stride) as usize] = 5;
+        vis[(c + (c + 1) * stride) as usize] = 3;
+        assert_eq!(check_vis(&vis, 100, 100, 100, 100), 3);
+        assert!(neighbour_has(&vis, 100, 100, 100, 100, 5));
+        assert!(!neighbour_has(&vis, 100, 100, 100, 100, 4));
 
         // Outside the 1-tile border.
-        assert_eq!(check_vis(&see, 100 + c, 100), 0);
-        assert_eq!(check_vis(&see, 100 - c, 100), 0);
+        assert_eq!(check_vis(&vis, 100, 100, 100 + c, 100), 0);
+        assert_eq!(check_vis(&vis, 100, 100, 100 - c, 100), 0);
+        assert!(!neighbour_has(&vis, 100, 100, 100 + c, 100, 0));
+    }
+
+    #[test]
+    fn claim_see_maps_skips_duplicate_and_out_of_range_characters() {
+        with_test_gs(|gs| {
+            let (_world, players, see_map) = split_world(gs);
+            for (i, see) in see_map.iter_mut().enumerate() {
+                see.x = i as i32;
+            }
+            let out_of_range = see_map.len();
+
+            let cns = [5, 2, 5, out_of_range];
+            let mut jobs: Vec<PlayerUpdateJob> = players
+                .iter_mut()
+                .zip(cns)
+                .enumerate()
+                .map(|(nr, (player, cn))| PlayerUpdateJob {
+                    nr,
+                    cn,
+                    player,
+                    see: None,
+                    deferred: Deferred::default(),
+                    timings: PhaseTimings::default(),
+                })
+                .collect();
+
+            claim_see_maps(&mut jobs, see_map);
+
+            let claimed: Vec<Option<i32>> =
+                jobs.iter().map(|j| j.see.as_ref().map(|s| s.x)).collect();
+            assert_eq!(claimed, vec![Some(5), Some(2), None, None]);
+        });
+    }
+
+    #[test]
+    fn collect_update_targets_skips_invalid_usnr() {
+        with_test_gs(|gs| {
+            place_player(gs, 1, 1, 300, 300);
+            place_player(gs, 2, 2, 310, 300);
+            place_player(gs, 3, 3, 320, 300);
+            gs.players[2].usnr = 0;
+            gs.players[3].usnr = gs.characters.len();
+
+            assert_eq!(collect_update_targets(gs), vec![1]);
+        });
     }
 
     #[test]

@@ -337,23 +337,15 @@ pub fn plr_map_set(gs: &mut GameState, cn: usize) {
     );
 }
 
-/// Choose and dispatch the appropriate map update implementation.
-///
-/// Decides between the full (`plr_getmap_complete`) or fast (`plr_getmap_fast`)
-/// small-map generation based on server load and global flags. When entering
-/// or leaving "speed savings" mode the function clears map caches and
-/// announces the mode change.
-///
-/// # Arguments
-/// * `nr` - Player slot index requesting the map update
-///
 /// Legacy entry point: build and send the player's visible map.
 ///
 /// Production runs the context form via `update::run_player_updates`; this
 /// shim keeps the `(gs, nr)` call shape for unit tests.
 ///
 /// # Arguments
-/// * `nr` - Player slot index requesting the map update
+///
+/// * `gs` - Active game state.
+/// * `nr` - Player slot index requesting the map update.
 #[cfg(test)]
 pub fn plr_getmap(gs: &mut GameState, nr: usize) {
     plr_getmap_complete(gs, nr);
