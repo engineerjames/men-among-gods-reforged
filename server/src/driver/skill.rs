@@ -799,7 +799,7 @@ pub fn skill_light(gs: &mut GameState, cn: usize) {
     // rate limit for player
     let is_player = (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0;
     if is_player {
-        gs.characters[cn].data[71] += CNTSAY;
+        gs.characters[cn].data[71] = (gs.characters[cn].data[71] + CNTSAY).min(MAXSAY + CNTSAY);
         let over = gs.characters[cn].data[71] > MAXSAY;
         if over {
             gs.do_character_log(cn, FontColor::Red, "Oops, you're a bit too fast for me!\n");

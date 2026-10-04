@@ -125,15 +125,18 @@ radius = 8
 # Every entry is one `[[commands]]` table with a `command` string and an
 # `interval_secs` float; add as many as you like. Omit this section (or leave
 # it empty) to disable periodic commands entirely.
+# Commands count as speech: the server allows ~1 say/sec per character
+# (burst of 7) across commands + chat combined, and rejected lines still
+# count against the limit. Keep the combined rate well below 1/sec.
 [[commands]]
 command = "/rank"
-interval_secs = 1.0
+interval_secs = 10.0
 
 [[commands]]
 command = "/who"
-interval_secs = 2.0
+interval_secs = 15.0
 
 [[commands]]
 command = "/help"
-interval_secs = 1.5
+interval_secs = 20.0
 
