@@ -18,12 +18,20 @@
 //! cargo run -p server-utils --bin template-search -- --flag IF_MAGIC --flag IF_WEAPON
 //! cargo run -p server-utils --bin template-search -- --chars --name ratling
 //! cargo run -p server-utils --bin template-search -- --ids 101,102,127
+//! cargo run -p server-utils --bin template-search -- --chars --ids 364-374 --clear-worn RHAND
 //! ```
+//!
+//! Character templates can also be edited (`--chars` plus `--clear-worn`,
+//! `--set-armor-bonus`, `--set-weapon-bonus`). Edits apply to every matched
+//! template and are only reported unless `--write` is given.
 
 use std::path::PathBuf;
 
 use clap::Parser;
-use mag_core::constants::ItemFlags;
+use mag_core::constants::{
+    ItemFlags, WN_ARMS, WN_BELT, WN_BODY, WN_CLOAK, WN_FEET, WN_HEAD, WN_LEGS, WN_LHAND, WN_LRING,
+    WN_NECK, WN_RHAND, WN_RRING,
+};
 use mag_core::string_operations::c_string_to_str;
 use server::keydb::snapshot::WorldSnapshot;
 
@@ -67,13 +75,34 @@ struct Cli {
     #[arg(long)]
     placement: Option<u16>,
 
-    /// Explicit comma-separated list of template IDs to print.
-    #[arg(long, value_delimiter = ',')]
-    ids: Vec<usize>,
+    /// Comma-separated template IDs or inclusive ranges (`364-374`) to match.
+    #[arg(long, value_delimiter = ',', value_parser = parse_id_range)]
+    ids: Vec<(usize, usize)>,
 
     /// Search character templates instead of item templates.
     #[arg(long)]
     chars: bool,
+
+    /// Edit: empty this worn slot on matched character templates (repeatable).
+    /// Accepts `HEAD NECK BODY ARMS BELT LEGS FEET LHAND RHAND CLOAK LRING RRING` or an index.
+    #[arg(long = "clear-worn")]
+    clear_worn: Vec<String>,
+
+    /// Edit: set `armor_bonus` on matched character templates.
+    #[arg(long)]
+    set_armor_bonus: Option<u8>,
+
+    /// Edit: set `weapon_bonus` on matched character templates.
+    #[arg(long)]
+    set_weapon_bonus: Option<u8>,
+
+    /// Save edits to disk; without it edits are only reported (dry run).
+    #[arg(long)]
+    write: bool,
+
+    /// Where to save edits with `--write`; defaults to overwriting `--snapshot`.
+    #[arg(long)]
+    output: Option<PathBuf>,
 
     /// List item templates that some NPC wants as a quest hand-in (`data[49]`).
     #[arg(long)]
@@ -82,6 +111,72 @@ struct Cli {
     /// Print the full description for each match.
     #[arg(long)]
     verbose: bool,
+}
+
+/// Parse a single ID (`12`) or inclusive range (`12-20`) into `(lo, hi)`.
+///
+/// # Arguments
+///
+/// * `raw` - The user-supplied token.
+///
+/// # Returns
+///
+/// * `Ok((lo, hi))` on success, `Err` with a message when malformed or reversed.
+fn parse_id_range(raw: &str) -> Result<(usize, usize), String> {
+    let num = |s: &str| s.trim().parse::<usize>().map_err(|e| format!("{raw}: {e}"));
+    let (lo, hi) = match raw.split_once('-') {
+        Some((lo, hi)) => (num(lo)?, num(hi)?),
+        None => (num(raw)?, num(raw)?),
+    };
+    if lo > hi {
+        return Err(format!("{raw}: range start exceeds end"));
+    }
+    Ok((lo, hi))
+}
+
+/// Whether `id` passes the `--ids` filter (an empty filter matches everything).
+///
+/// # Arguments
+///
+/// * `ranges` - Inclusive `(lo, hi)` ranges from `--ids`.
+/// * `id` - Template ID to test.
+///
+/// # Returns
+///
+/// * `true` when no ranges were given or `id` falls in one of them.
+fn id_selected(ranges: &[(usize, usize)], id: usize) -> bool {
+    ranges.is_empty() || ranges.iter().any(|&(lo, hi)| (lo..=hi).contains(&id))
+}
+
+/// Resolve a worn-slot name (`RHAND`, `WN_RHAND`) or index to a `worn[]` index.
+///
+/// # Arguments
+///
+/// * `raw` - Slot name or decimal index.
+///
+/// # Returns
+///
+/// * `Some(index)` when recognised and below 20, `None` otherwise.
+fn parse_worn_slot(raw: &str) -> Option<usize> {
+    let upper = raw.trim().to_ascii_uppercase();
+    if let Ok(idx) = upper.parse::<usize>() {
+        return (idx < 20).then_some(idx);
+    }
+    Some(match upper.trim_start_matches("WN_") {
+        "HEAD" => WN_HEAD,
+        "NECK" => WN_NECK,
+        "BODY" => WN_BODY,
+        "ARMS" => WN_ARMS,
+        "BELT" => WN_BELT,
+        "LEGS" => WN_LEGS,
+        "FEET" => WN_FEET,
+        "LHAND" => WN_LHAND,
+        "RHAND" => WN_RHAND,
+        "CLOAK" => WN_CLOAK,
+        "LRING" => WN_LRING,
+        "RRING" => WN_RRING,
+        _ => return None,
+    })
 }
 
 /// Resolve a user-supplied flag name or bit index to an [`ItemFlags`] value.
@@ -149,7 +244,7 @@ fn has_bonus(item: &mag_core::types::Item) -> bool {
 fn main() {
     let cli = Cli::parse();
 
-    let snapshot = match WorldSnapshot::from_file(&cli.snapshot) {
+    let mut snapshot = match WorldSnapshot::from_file(&cli.snapshot) {
         Ok(snapshot) => snapshot,
         Err(err) => {
             eprintln!("failed to load {}: {err}", cli.snapshot.display());
@@ -159,6 +254,25 @@ fn main() {
 
     let needle = cli.name.as_deref().map(str::to_ascii_lowercase);
     let desc_needle = cli.desc.as_deref().map(str::to_ascii_lowercase);
+
+    let editing = !cli.clear_worn.is_empty()
+        || cli.set_armor_bonus.is_some()
+        || cli.set_weapon_bonus.is_some();
+    // Refuse to edit every template by accident.
+    if editing && (!cli.chars || (cli.ids.is_empty() && needle.is_none())) {
+        eprintln!("edits require --chars and a selector (--ids or --name)");
+        std::process::exit(2);
+    }
+    let mut clear_slots: Vec<usize> = Vec::new();
+    for raw in &cli.clear_worn {
+        match parse_worn_slot(raw) {
+            Some(slot) => clear_slots.push(slot),
+            None => {
+                eprintln!("unknown worn slot: {raw}");
+                std::process::exit(2);
+            }
+        }
+    }
 
     if cli.quest_items {
         let mut wanted: Vec<(usize, String)> = Vec::new();
@@ -198,11 +312,12 @@ fn main() {
             "{:<5} {:<30} {:<30} {:<6} flags",
             "id", "name", "reference", "sprite"
         );
-        for (id, ch) in snapshot.character_templates.iter().enumerate() {
+        let mut edited = 0usize;
+        for (id, ch) in snapshot.character_templates.iter_mut().enumerate() {
             if ch.used == 0 {
                 continue;
             }
-            if !cli.ids.is_empty() && !cli.ids.contains(&id) {
+            if !id_selected(&cli.ids, id) {
                 continue;
             }
             let name = ch.get_name();
@@ -220,6 +335,53 @@ fn main() {
             );
             if cli.verbose {
                 println!("      {description}");
+            }
+            if !editing {
+                continue;
+            }
+            let mut changes: Vec<String> = Vec::new();
+            for &slot in &clear_slots {
+                let tmpl = ch.worn[slot];
+                if tmpl != 0 {
+                    let item_name = snapshot
+                        .item_templates
+                        .get(tmpl as usize)
+                        .map_or("?", |i| i.get_name());
+                    changes.push(format!("worn[{slot}] {tmpl} ({item_name}) -> 0"));
+                    ch.worn[slot] = 0;
+                }
+            }
+            if let Some(v) = cli.set_armor_bonus
+                && ch.armor_bonus != v
+            {
+                changes.push(format!("armor_bonus {} -> {v}", ch.armor_bonus));
+                ch.armor_bonus = v;
+            }
+            if let Some(v) = cli.set_weapon_bonus
+                && ch.weapon_bonus != v
+            {
+                changes.push(format!("weapon_bonus {} -> {v}", ch.weapon_bonus));
+                ch.weapon_bonus = v;
+            }
+            if !changes.is_empty() {
+                edited += 1;
+                println!("      edit: {}", changes.join(", "));
+            }
+        }
+        if editing {
+            if !cli.write {
+                println!("{edited} template(s) would change (dry run; pass --write to save)");
+            } else if edited == 0 {
+                println!("nothing to change; snapshot not written");
+            } else {
+                let out = cli.output.as_ref().unwrap_or(&cli.snapshot);
+                match snapshot.to_file(out) {
+                    Ok(()) => println!("{edited} template(s) changed; wrote {}", out.display()),
+                    Err(err) => {
+                        eprintln!("{err}");
+                        std::process::exit(1);
+                    }
+                }
             }
         }
         return;
@@ -254,7 +416,7 @@ fn main() {
         if item.used == 0 {
             continue;
         }
-        if !cli.ids.is_empty() && !cli.ids.contains(&id) {
+        if !id_selected(&cli.ids, id) {
             continue;
         }
         let bits = ItemFlags::from_bits_truncate(item.flags);
@@ -301,5 +463,30 @@ fn main() {
         if cli.verbose {
             println!("      {description}");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn id_ranges_parse_and_select() {
+        let r = [
+            parse_id_range("5").unwrap(),
+            parse_id_range("10-12").unwrap(),
+        ];
+        assert!(id_selected(&r, 5) && id_selected(&r, 11) && !id_selected(&r, 9));
+        assert!(id_selected(&[], 99));
+        assert!(parse_id_range("12-10").is_err());
+    }
+
+    #[test]
+    fn worn_slot_names_and_indices() {
+        assert_eq!(parse_worn_slot("rhand"), Some(WN_RHAND));
+        assert_eq!(parse_worn_slot("WN_HEAD"), Some(WN_HEAD));
+        assert_eq!(parse_worn_slot("8"), Some(8));
+        assert_eq!(parse_worn_slot("20"), None);
+        assert_eq!(parse_worn_slot("bogus"), None);
     }
 }
