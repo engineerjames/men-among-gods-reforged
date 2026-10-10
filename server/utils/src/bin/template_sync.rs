@@ -276,7 +276,11 @@ fn run(cli: Cli) -> Result<(), String> {
         }
     }
 
-    let verb = if cli.dry_run { "would update" } else { "updated" };
+    let verb = if cli.dry_run {
+        "would update"
+    } else {
+        "updated"
+    };
     println!("{verb} {n_items} item and {n_chars} character templates");
 
     if !cli.dry_run && !cli.no_reload && !kinds.is_empty() {
