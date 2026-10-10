@@ -4775,6 +4775,7 @@ dependencies = [
  "rfd",
  "serde",
  "serde_json",
+ "serde_yaml",
  "server",
  "zip",
 ]

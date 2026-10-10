@@ -24,7 +24,20 @@
 //! Character templates can also be edited (`--chars` plus `--clear-worn`,
 //! `--set-armor-bonus`, `--set-weapon-bonus`). Edits apply to every matched
 //! template and are only reported unless `--write` is given.
+//!
+//! `--ops FILE.yaml` runs a list of operations against one loaded snapshot and
+//! saves once at the end (with `--write`). Each operation is a map of the flags
+//! above without the leading `--`; lists repeat a flag, `true` sets a switch:
+//!
+//! ```yaml
+//! - ids: 501
+//!   set-wv: 2
+//! - chars: true
+//!   ids: 364-374,1094-1096
+//!   set-armor-bonus: 0
+//! ```
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use clap::Parser;
@@ -143,6 +156,47 @@ struct Cli {
     /// Print the full description for each match.
     #[arg(long)]
     verbose: bool,
+
+    /// YAML file of operations to run in order on one loaded snapshot; other
+    /// search/edit flags are ignored. `--snapshot`, `--write` and `--output` apply to the batch.
+    #[arg(long)]
+    ops: Option<PathBuf>,
+}
+
+/// Turn one YAML operation (`flag: value` map) into a `template-search` argv.
+///
+/// # Arguments
+///
+/// * `op` - Flag names (without `--`) mapped to a scalar, a list (flag repeated), or a bool switch.
+///
+/// # Returns
+///
+/// * The argv (program name first), or `Err` for batch-level flags and unsupported values.
+fn op_args(op: &BTreeMap<String, serde_yaml::Value>) -> Result<Vec<String>, String> {
+    use serde_yaml::Value;
+    let mut args = vec!["template-search".to_owned()];
+    for (key, value) in op {
+        if matches!(key.as_str(), "snapshot" | "write" | "output" | "ops") {
+            return Err(format!(
+                "{key}: set this on the command line, not per operation"
+            ));
+        }
+        let flag = format!("--{key}");
+        let values = match value {
+            Value::Sequence(seq) => seq.as_slice(),
+            v => std::slice::from_ref(v),
+        };
+        for v in values {
+            match v {
+                Value::Bool(true) => args.push(flag.clone()),
+                Value::Bool(false) => {}
+                Value::String(s) => args.extend([flag.clone(), s.clone()]),
+                Value::Number(n) => args.extend([flag.clone(), n.to_string()]),
+                other => return Err(format!("{key}: unsupported value {other:?}")),
+            }
+        }
+    }
+    Ok(args)
 }
 
 /// Parse a single ID (`12`) or inclusive range (`12-20`) into `(lo, hi)`.
@@ -331,6 +385,65 @@ fn main() {
         }
     };
 
+    let Some(ops_path) = &cli.ops else {
+        if let Some(edited) = run(&cli, &mut snapshot) {
+            finish_edits(&snapshot, &cli, edited);
+        }
+        return;
+    };
+
+    let ops: Vec<BTreeMap<String, serde_yaml::Value>> = std::fs::read_to_string(ops_path)
+        .map_err(|e| e.to_string())
+        .and_then(|text| {
+            let mut doc: serde_yaml::Value =
+                serde_yaml::from_str(&text).map_err(|e| e.to_string())?;
+            doc.apply_merge().map_err(|e| e.to_string())?; // expands `<<: *anchor`
+            serde_yaml::from_value(doc).map_err(|e| e.to_string())
+        })
+        .unwrap_or_else(|err| {
+            eprintln!("failed to read {}: {err}", ops_path.display());
+            std::process::exit(1);
+        });
+    // Parse every op up front so a typo in op N aborts before ops 1..N run.
+    let op_clis: Vec<(String, Cli)> = ops
+        .iter()
+        .enumerate()
+        .map(|(n, op)| {
+            let args = op_args(op).unwrap_or_else(|err| {
+                eprintln!("op {}: {err}", n + 1);
+                std::process::exit(2);
+            });
+            let shown = args[1..].join(" ");
+            let op_cli = Cli::try_parse_from(&args).unwrap_or_else(|err| {
+                eprintln!("op {}: {shown}", n + 1);
+                err.exit()
+            });
+            (shown, op_cli)
+        })
+        .collect();
+    let mut total: Option<usize> = None;
+    for (n, (shown, op_cli)) in op_clis.iter().enumerate() {
+        println!("== op {}: {shown}", n + 1);
+        if let Some(edited) = run(op_cli, &mut snapshot) {
+            total = Some(total.unwrap_or(0) + edited);
+        }
+    }
+    if let Some(edited) = total {
+        finish_edits(&snapshot, &cli, edited);
+    }
+}
+
+/// Run one search (and its edits, if any) against an already-loaded snapshot.
+///
+/// # Arguments
+///
+/// * `cli`      - Search/edit arguments for this run.
+/// * `snapshot` - Snapshot to search and edit in place.
+///
+/// # Returns
+///
+/// * `Some(edited)` when edits were requested (count of changed templates), `None` for pure searches.
+fn run(cli: &Cli, snapshot: &mut WorldSnapshot) -> Option<usize> {
     let needle = cli.name.as_deref().map(str::to_ascii_lowercase);
     let desc_needle = cli.desc.as_deref().map(str::to_ascii_lowercase);
 
@@ -420,7 +533,7 @@ fn main() {
                 npc
             );
         }
-        return;
+        return None;
     }
 
     if cli.chars {
@@ -532,10 +645,7 @@ fn main() {
                 println!("      edit: {}", changes.join(", "));
             }
         }
-        if editing {
-            finish_edits(&snapshot, &cli, edited);
-        }
-        return;
+        return editing.then_some(edited);
     }
 
     let mut required: Vec<ItemFlags> = Vec::new();
@@ -623,9 +733,7 @@ fn main() {
             edited += 1;
         }
     }
-    if cli.set_wv.is_some() {
-        finish_edits(&snapshot, &cli, edited);
-    }
+    cli.set_wv.is_some().then_some(edited)
 }
 
 /// Report the edit count and, with `--write`, save the snapshot.
@@ -687,5 +795,19 @@ mod tests {
         );
         assert_eq!(parse_cap("bogus=1", false), None);
         assert_eq!(parse_cap("stren", false), None);
+    }
+
+    #[test]
+    fn yaml_op_becomes_cli() {
+        let ops: Vec<BTreeMap<String, serde_yaml::Value>> = serde_yaml::from_str(
+            "- {chars: true, ids: 364-374, clear-worn: [RHAND, LHAND], set-armor-bonus: 0, verbose: false}\n- {write: true}",
+        )
+        .unwrap();
+        let cli = Cli::try_parse_from(op_args(&ops[0]).unwrap()).unwrap();
+        assert!(cli.chars && !cli.verbose);
+        assert_eq!(cli.ids, vec![(364, 374)]);
+        assert_eq!(cli.clear_worn, vec!["RHAND", "LHAND"]);
+        assert_eq!(cli.set_armor_bonus, Some(0));
+        assert!(op_args(&ops[1]).is_err());
     }
 }
