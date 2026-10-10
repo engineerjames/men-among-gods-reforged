@@ -42,4 +42,8 @@ path = "src/bin/mag_admin.rs"
 name = "template-search"
 path = "src/bin/template_search.rs"
 
+[[bin]]
+name = "template-sync"
+path = "src/bin/template_sync.rs"
+
 
