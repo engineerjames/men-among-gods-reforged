@@ -105,6 +105,16 @@ struct Cli {
     #[arg(long, value_parser = clap::value_parser!(u8).range(0..24))]
     set_rank: Option<u8>,
 
+    /// Edit: lower a base attribute to at most `NAME=VALUE` (e.g. `STREN=65`; repeatable).
+    /// Names: `BRAVE WILL INT AGIL STREN`. Values already at or below the cap are untouched.
+    #[arg(long = "cap-attrib")]
+    cap_attrib: Vec<String>,
+
+    /// Edit: lower a base skill to at most `NAME=VALUE` (e.g. `weapon=90`; repeatable).
+    /// Name is a skill name/prefix or index. Values already at or below the cap are untouched.
+    #[arg(long = "cap-skill")]
+    cap_skill: Vec<String>,
+
     /// Save edits to disk; without it edits are only reported (dry run).
     #[arg(long)]
     write: bool,
@@ -210,6 +220,31 @@ fn parse_worn_slot(raw: &str) -> Option<usize> {
     })
 }
 
+/// Parse a `NAME=VALUE` cap into its resolved slot index and value.
+///
+/// # Arguments
+///
+/// * `raw`      - The user-supplied `NAME=VALUE` token.
+/// * `is_skill` - Resolve `NAME` as a skill (otherwise as an attribute).
+///
+/// # Returns
+///
+/// * `Some((index, cap))` when the name resolves and the value is a `u16`.
+fn parse_cap(raw: &str, is_skill: bool) -> Option<(usize, u16)> {
+    let (name, value) = raw.split_once('=')?;
+    let cap = value.trim().parse::<u16>().ok()?;
+    let idx = if is_skill {
+        usize::try_from(mag_core::skills::skill_lookup(name))
+            .ok()
+            .filter(|&i| i < mag_core::skills::MAX_SKILLS)?
+    } else {
+        ["BRAVE", "WILL", "INT", "AGIL", "STREN"]
+            .iter()
+            .position(|a| a.eq_ignore_ascii_case(name.trim()))?
+    };
+    Some((idx, cap))
+}
+
 /// Resolve a user-supplied flag name or bit index to an [`ItemFlags`] value.
 ///
 /// # Arguments
@@ -289,7 +324,9 @@ fn main() {
     let editing = !cli.clear_worn.is_empty()
         || cli.set_armor_bonus.is_some()
         || cli.set_weapon_bonus.is_some()
-        || cli.set_rank.is_some();
+        || cli.set_rank.is_some()
+        || !cli.cap_attrib.is_empty()
+        || !cli.cap_skill.is_empty();
     // Refuse to edit every template by accident.
     if editing && (!cli.chars || (cli.ids.is_empty() && needle.is_none())) {
         eprintln!("edits require --chars and a selector (--ids or --name)");
@@ -309,6 +346,19 @@ fn main() {
             }
         }
     }
+
+    let parse_caps = |raws: &[String], is_skill: bool| -> Vec<(usize, u16)> {
+        raws.iter()
+            .map(|raw| {
+                parse_cap(raw, is_skill).unwrap_or_else(|| {
+                    eprintln!("bad cap (expected NAME=VALUE): {raw}");
+                    std::process::exit(2);
+                })
+            })
+            .collect()
+    };
+    let attrib_caps = parse_caps(&cli.cap_attrib, false);
+    let skill_caps = parse_caps(&cli.cap_skill, true);
 
     if cli.quest_items {
         let mut wanted: Vec<(usize, String)> = Vec::new();
@@ -417,6 +467,18 @@ fn main() {
                 if ch.points_tot != v {
                     changes.push(format!("points_tot {} -> {v}", ch.points_tot));
                     ch.points_tot = v;
+                }
+            }
+            for &(idx, cap) in &attrib_caps {
+                if ch.attrib[idx][0] > cap {
+                    changes.push(format!("attrib[{idx}] {} -> {cap}", ch.attrib[idx][0]));
+                    ch.attrib[idx][0] = cap;
+                }
+            }
+            for &(idx, cap) in &skill_caps {
+                if ch.skill[idx][0] > cap {
+                    changes.push(format!("skill[{idx}] {} -> {cap}", ch.skill[idx][0]));
+                    ch.skill[idx][0] = cap;
                 }
             }
             if !changes.is_empty() {
@@ -544,5 +606,18 @@ mod tests {
         assert_eq!(parse_worn_slot("8"), Some(8));
         assert_eq!(parse_worn_slot("20"), None);
         assert_eq!(parse_worn_slot("bogus"), None);
+    }
+
+    #[test]
+    fn caps_resolve_attribs_and_skills() {
+        assert_eq!(parse_cap("stren=65", false), Some((4, 65)));
+        assert_eq!(parse_cap("AGIL=65", false), Some((3, 65)));
+        assert_eq!(parse_cap("hand=90", true), Some((0, 90)));
+        assert_eq!(
+            parse_cap("weapon=90", true),
+            Some((mag_core::skills::SK_WEAPON, 90))
+        );
+        assert_eq!(parse_cap("bogus=1", false), None);
+        assert_eq!(parse_cap("stren", false), None);
     }
 }
