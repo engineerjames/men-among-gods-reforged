@@ -92,6 +92,15 @@ struct Cli {
     #[arg(long = "clear-worn")]
     clear_worn: Vec<String>,
 
+    /// Edit: copy this worn slot (same names as `--clear-worn`) from `--restore-from` onto
+    /// matched character templates (repeatable).
+    #[arg(long = "restore-worn", requires = "restore_from")]
+    restore_worn: Vec<String>,
+
+    /// Older snapshot to read worn slots from for `--restore-worn`.
+    #[arg(long)]
+    restore_from: Option<PathBuf>,
+
     /// Edit: set `armor_bonus` on matched character templates.
     #[arg(long)]
     set_armor_bonus: Option<u8>,
@@ -114,6 +123,10 @@ struct Cli {
     /// Name is a skill name/prefix or index. Values already at or below the cap are untouched.
     #[arg(long = "cap-skill")]
     cap_skill: Vec<String>,
+
+    /// Edit: set the base weapon value (`weapon[0]`) on the item templates picked by `--ids`.
+    #[arg(long, value_parser = clap::value_parser!(i8).range(0..))]
+    set_wv: Option<i8>,
 
     /// Save edits to disk; without it edits are only reported (dry run).
     #[arg(long)]
@@ -322,6 +335,7 @@ fn main() {
     let desc_needle = cli.desc.as_deref().map(str::to_ascii_lowercase);
 
     let editing = !cli.clear_worn.is_empty()
+        || !cli.restore_worn.is_empty()
         || cli.set_armor_bonus.is_some()
         || cli.set_weapon_bonus.is_some()
         || cli.set_rank.is_some()
@@ -332,20 +346,36 @@ fn main() {
         eprintln!("edits require --chars and a selector (--ids or --name)");
         std::process::exit(2);
     }
+    if cli.set_wv.is_some() && (cli.chars || cli.ids.is_empty()) {
+        eprintln!("--set-wv edits item templates: use --ids and not --chars");
+        std::process::exit(2);
+    }
     if cli.area.is_some() && !cli.chars {
         eprintln!("--area requires --chars");
         std::process::exit(2);
     }
     let mut clear_slots: Vec<usize> = Vec::new();
-    for raw in &cli.clear_worn {
-        match parse_worn_slot(raw) {
-            Some(slot) => clear_slots.push(slot),
-            None => {
-                eprintln!("unknown worn slot: {raw}");
-                std::process::exit(2);
+    let mut restore_slots: Vec<usize> = Vec::new();
+    for (raws, slots) in [
+        (&cli.clear_worn, &mut clear_slots),
+        (&cli.restore_worn, &mut restore_slots),
+    ] {
+        for raw in raws {
+            match parse_worn_slot(raw) {
+                Some(slot) => slots.push(slot),
+                None => {
+                    eprintln!("unknown worn slot: {raw}");
+                    std::process::exit(2);
+                }
             }
         }
     }
+    let restore_src = cli.restore_from.as_ref().map(|path| {
+        WorldSnapshot::from_file(path).unwrap_or_else(|err| {
+            eprintln!("failed to load {}: {err}", path.display());
+            std::process::exit(1);
+        })
+    });
 
     let parse_caps = |raws: &[String], is_skill: bool| -> Vec<(usize, u16)> {
         raws.iter()
@@ -450,6 +480,22 @@ fn main() {
                     ch.worn[slot] = 0;
                 }
             }
+            if let Some(src) = &restore_src {
+                for &slot in &restore_slots {
+                    let old = src.character_templates[id].worn[slot];
+                    if ch.worn[slot] != old {
+                        let item_name = snapshot
+                            .item_templates
+                            .get(old as usize)
+                            .map_or("?", |i| i.get_name());
+                        changes.push(format!(
+                            "worn[{slot}] {} -> {old} ({item_name})",
+                            ch.worn[slot]
+                        ));
+                        ch.worn[slot] = old;
+                    }
+                }
+            }
             if let Some(v) = cli.set_armor_bonus
                 && ch.armor_bonus != v
             {
@@ -487,20 +533,7 @@ fn main() {
             }
         }
         if editing {
-            if !cli.write {
-                println!("{edited} template(s) would change (dry run; pass --write to save)");
-            } else if edited == 0 {
-                println!("nothing to change; snapshot not written");
-            } else {
-                let out = cli.output.as_ref().unwrap_or(&cli.snapshot);
-                match snapshot.to_file(out) {
-                    Ok(()) => println!("{edited} template(s) changed; wrote {}", out.display()),
-                    Err(err) => {
-                        eprintln!("{err}");
-                        std::process::exit(1);
-                    }
-                }
-            }
+            finish_edits(&snapshot, &cli, edited);
         }
         return;
     }
@@ -530,7 +563,8 @@ fn main() {
         "{:<5} {:<28} {:<26} {:<6} {:<5} {:<9} flags",
         "id", "name", "reference", "driver", "place", "value"
     );
-    for (id, item) in snapshot.item_templates.iter().enumerate() {
+    let mut edited = 0usize;
+    for (id, item) in snapshot.item_templates.iter_mut().enumerate() {
         if item.used == 0 {
             continue;
         }
@@ -580,6 +614,40 @@ fn main() {
         );
         if cli.verbose {
             println!("      {description}");
+        }
+        if let Some(v) = cli.set_wv
+            && item.weapon[0] != v
+        {
+            println!("      edit: weapon[0] {} -> {v}", item.weapon[0]);
+            item.weapon[0] = v;
+            edited += 1;
+        }
+    }
+    if cli.set_wv.is_some() {
+        finish_edits(&snapshot, &cli, edited);
+    }
+}
+
+/// Report the edit count and, with `--write`, save the snapshot.
+///
+/// # Arguments
+///
+/// * `snapshot` - The (already edited) snapshot.
+/// * `cli`      - Parsed arguments (`--write`, `--output`, `--snapshot`).
+/// * `edited`   - Number of templates that changed.
+fn finish_edits(snapshot: &WorldSnapshot, cli: &Cli, edited: usize) {
+    if !cli.write {
+        println!("{edited} template(s) would change (dry run; pass --write to save)");
+    } else if edited == 0 {
+        println!("nothing to change; snapshot not written");
+    } else {
+        let out = cli.output.as_ref().unwrap_or(&cli.snapshot);
+        match snapshot.to_file(out) {
+            Ok(()) => println!("{edited} template(s) changed; wrote {}", out.display()),
+            Err(err) => {
+                eprintln!("{err}");
+                std::process::exit(1);
+            }
         }
     }
 }
