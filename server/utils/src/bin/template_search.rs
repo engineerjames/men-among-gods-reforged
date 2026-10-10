@@ -83,6 +83,10 @@ struct Cli {
     #[arg(long)]
     chars: bool,
 
+    /// Only character templates whose spawn point lies in `x1,y1,x2,y2` (inclusive). Requires `--chars`.
+    #[arg(long, value_parser = parse_area)]
+    area: Option<[i32; 4]>,
+
     /// Edit: empty this worn slot on matched character templates (repeatable).
     /// Accepts `HEAD NECK BODY ARMS BELT LEGS FEET LHAND RHAND CLOAK LRING RRING` or an index.
     #[arg(long = "clear-worn")]
@@ -95,6 +99,11 @@ struct Cli {
     /// Edit: set `weapon_bonus` on matched character templates.
     #[arg(long)]
     set_weapon_bonus: Option<u8>,
+
+    /// Edit: set `points_tot` on matched character templates to the minimum for this rank index
+    /// (e.g. 11 = Captain, 12 = Major). Overwritten if the template is later reset from its stats.
+    #[arg(long, value_parser = clap::value_parser!(u8).range(0..24))]
+    set_rank: Option<u8>,
 
     /// Save edits to disk; without it edits are only reported (dry run).
     #[arg(long)]
@@ -132,6 +141,28 @@ fn parse_id_range(raw: &str) -> Result<(usize, usize), String> {
         return Err(format!("{raw}: range start exceeds end"));
     }
     Ok((lo, hi))
+}
+
+/// Parse `x1,y1,x2,y2` into a rectangle.
+///
+/// # Arguments
+///
+/// * `raw` - The user-supplied token.
+///
+/// # Returns
+///
+/// * `Ok([x1, y1, x2, y2])` on success, `Err` with a message when malformed or reversed.
+fn parse_area(raw: &str) -> Result<[i32; 4], String> {
+    let nums: Vec<i32> = raw
+        .split(',')
+        .map(|s| s.trim().parse::<i32>().map_err(|e| format!("{raw}: {e}")))
+        .collect::<Result<_, _>>()?;
+    match nums[..] {
+        [x1, y1, x2, y2] if x1 <= x2 && y1 <= y2 => Ok([x1, y1, x2, y2]),
+        _ => Err(format!(
+            "{raw}: expected x1,y1,x2,y2 with x1<=x2 and y1<=y2"
+        )),
+    }
 }
 
 /// Whether `id` passes the `--ids` filter (an empty filter matches everything).
@@ -257,10 +288,15 @@ fn main() {
 
     let editing = !cli.clear_worn.is_empty()
         || cli.set_armor_bonus.is_some()
-        || cli.set_weapon_bonus.is_some();
+        || cli.set_weapon_bonus.is_some()
+        || cli.set_rank.is_some();
     // Refuse to edit every template by accident.
     if editing && (!cli.chars || (cli.ids.is_empty() && needle.is_none())) {
         eprintln!("edits require --chars and a selector (--ids or --name)");
+        std::process::exit(2);
+    }
+    if cli.area.is_some() && !cli.chars {
+        eprintln!("--area requires --chars");
         std::process::exit(2);
     }
     let mut clear_slots: Vec<usize> = Vec::new();
@@ -320,6 +356,12 @@ fn main() {
             if !id_selected(&cli.ids, id) {
                 continue;
             }
+            if let Some([x1, y1, x2, y2]) = cli.area {
+                let (x, y) = (i32::from(ch.x), i32::from(ch.y));
+                if x < x1 || x > x2 || y < y1 || y > y2 {
+                    continue;
+                }
+            }
             let name = ch.get_name();
             let reference = ch.get_reference();
             let description = c_string_to_str(&ch.description);
@@ -335,6 +377,13 @@ fn main() {
             );
             if cli.verbose {
                 println!("      {description}");
+                println!(
+                    "      points_tot {} ({}) armor_bonus {} weapon_bonus {}",
+                    ch.points_tot,
+                    mag_core::ranks::rank_name(ch.points_tot.max(0) as u32),
+                    ch.armor_bonus,
+                    ch.weapon_bonus
+                );
             }
             if !editing {
                 continue;
@@ -362,6 +411,13 @@ fn main() {
             {
                 changes.push(format!("weapon_bonus {} -> {v}", ch.weapon_bonus));
                 ch.weapon_bonus = v;
+            }
+            if let Some(rank) = cli.set_rank {
+                let v = mag_core::ranks::RANK_THRESHOLDS[rank as usize] as i32;
+                if ch.points_tot != v {
+                    changes.push(format!("points_tot {} -> {v}", ch.points_tot));
+                    ch.points_tot = v;
+                }
             }
             if !changes.is_empty() {
                 edited += 1;
