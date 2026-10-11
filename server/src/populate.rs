@@ -1381,6 +1381,46 @@ pub fn pop_tick(gs: &mut GameState) {
     }
 }
 
+/// Despawns live pentagram-quest enemies; the pentagram driver respawns them on its own.
+///
+/// Driven from the pentagram items (driver 33, `data[1..=3]`) and confirmed via the
+/// enemy's `data[0]` back-link, because `data[0]` is overloaded on other characters.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
+///
+/// # Returns
+///
+/// * Number of enemies removed.
+fn despawn_pentagram_enemies(gs: &mut GameState) -> usize {
+    let mut count = 0;
+    for item_idx in 1..MAXITEM {
+        if gs.items[item_idx].used == USE_EMPTY || gs.items[item_idx].driver != 33 {
+            continue;
+        }
+        for slot in 1..4 {
+            let cn = gs.items[item_idx].data[slot] as usize;
+            if cn == 0 || cn >= MAXCHARS {
+                continue;
+            }
+            let ch = &gs.characters[cn];
+            let linked = ch.used == USE_ACTIVE
+                && ch.data[0] == item_idx as i32
+                && (ch.flags & (CharacterFlags::Body.bits() | CharacterFlags::Player.bits())) == 0;
+            if linked {
+                God::destroy_items(gs, cn);
+                player::map::plr_map_remove(gs, cn);
+                gs.characters[cn].used = USE_EMPTY;
+                count += 1;
+            }
+            // Clear stale links too so a recycled slot is never misread later.
+            gs.items[item_idx].data[slot] = 0;
+        }
+    }
+    count
+}
+
 /// Resets every respawnable character template immediately.
 ///
 /// # Arguments
@@ -1400,6 +1440,8 @@ pub fn reset_all_char_templates(gs: &mut GameState) -> usize {
             count += 1;
         }
     }
+    let penta = despawn_pentagram_enemies(gs);
+    log::info!("Despawned {} pentagram enemies", penta);
     count
 }
 
@@ -1503,9 +1545,37 @@ pub fn populate(gs: &mut GameState) {
 
 #[cfg(test)]
 mod tests {
-    use super::{clear_map_item, place_map_item_from_template};
+    use super::{clear_map_item, despawn_pentagram_enemies, place_map_item_from_template};
     use crate::test_helpers::with_test_gs;
-    use core::constants::{SERVER_MAPX, USE_ACTIVE, USE_EMPTY};
+    use core::constants::{CharacterFlags, SERVER_MAPX, USE_ACTIVE, USE_EMPTY};
+
+    #[test]
+    fn despawn_pentagram_enemies_only_removes_linked_enemies() {
+        with_test_gs(|gs| {
+            let pent = 700;
+            gs.items[pent].used = USE_ACTIVE;
+            gs.items[pent].driver = 33;
+
+            // Linked enemy, a stale slot reused by an unrelated NPC, and a player.
+            let (enemy, other, player) = (100, 101, 102);
+            for cn in [enemy, other, player] {
+                gs.characters[cn].used = USE_ACTIVE;
+            }
+            gs.characters[enemy].data[0] = pent as i32;
+            gs.characters[other].data[0] = 5;
+            gs.characters[player].data[0] = pent as i32;
+            gs.characters[player].flags |= CharacterFlags::Player.bits();
+            gs.items[pent].data[1] = enemy as u32;
+            gs.items[pent].data[2] = other as u32;
+            gs.items[pent].data[3] = player as u32;
+
+            assert_eq!(despawn_pentagram_enemies(gs), 1);
+            assert_eq!(gs.characters[enemy].used, USE_EMPTY);
+            assert_eq!(gs.characters[other].used, USE_ACTIVE);
+            assert_eq!(gs.characters[player].used, USE_ACTIVE);
+            assert_eq!(&gs.items[pent].data[1..4], &[0, 0, 0]);
+        });
+    }
 
     #[test]
     fn place_map_item_from_template_replaces_existing_item_instead_of_erroring() {
