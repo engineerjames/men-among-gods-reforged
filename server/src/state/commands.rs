@@ -168,6 +168,7 @@ const ALL_COMMANDS: &[&str] = &[
     "god",
     "gold",
     "golden",
+    "gopent",
     "goto",
     "greatergod",
     "greaterinv",
@@ -1278,6 +1279,11 @@ impl GameState {
             Some("potion") if f_p && self.playtest_mode => {
                 log::debug!("Processing potion command for {}", cn);
                 self.do_playtest_potion(cn);
+                return;
+            }
+            Some("gopent") if f_p && self.playtest_mode => {
+                log::debug!("Processing gopent command for {}", cn);
+                God::goto(self, cn, cn, "410", "460");
                 return;
             }
             Some("exit") if f_u => {
