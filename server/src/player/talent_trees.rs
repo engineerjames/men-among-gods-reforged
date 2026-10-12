@@ -868,7 +868,7 @@ mod tests {
             gs.characters[cn].kindred = KIN_MERCENARY as i32;
             gs.characters[cn].attrib[Attribute::Strength as usize]
                 [SkillIndex::BaseValue as usize] = 50;
-            gs.characters[cn].future1[10] |= 0b0000_0001;
+            gs.characters[cn].future1[10] |= 0b0000_0010;
 
             let bonuses = talent_stat_bonuses(
                 gs.characters[cn].kindred,
@@ -1006,7 +1006,7 @@ mod tests {
             learn_talent(gs, cn, mercenary_slot("Distract")).expect("root learn");
             let t = &gs.characters[cn].future1;
             assert_eq!(t[TALENT_POINTS_INDEX], 0);
-            assert!(is_talent_spent(t, 0b0000_0001, 1));
+            assert!(is_talent_spent(t, 0b0000_0010, 1));
         });
     }
 
@@ -1031,7 +1031,7 @@ mod tests {
             learn_talent(gs, cn, mercenary_slot("Dodge Boost I")).unwrap();
             let t = &gs.characters[cn].future1;
             assert_eq!(t[TALENT_POINTS_INDEX], 0);
-            assert!(is_talent_spent(t, 0b0000_0001, 2));
+            assert!(is_talent_spent(t, 0b0000_0010, 2));
         });
     }
 
@@ -1089,7 +1089,7 @@ mod tests {
             // STRENGTH_BOOST_1's effect is `AttributesPercent { [Strength], [+10%] }`.
             // Manually seed the layer 1-9 prereq chain so the root-most learn is layer 10.
             for layer in 1..=9 {
-                gs.characters[cn].future1[layer] |= 0b0000_0001;
+                gs.characters[cn].future1[layer] |= 0b0000_0010;
             }
             gs.characters[cn].attrib[Attribute::Strength as usize]
                 [SkillIndex::BaseValue as usize] = 50;
@@ -1618,7 +1618,7 @@ mod tests {
             gs.characters[cn].kindred = KIN_MERCENARY as i32;
             gs.characters[cn].attrib[Attribute::Strength as usize]
                 [SkillIndex::BaseValue as usize] = 50;
-            gs.characters[cn].future1[10] |= 0b0000_0001;
+            gs.characters[cn].future1[10] |= 0b0000_0010;
 
             gs.really_update_char(cn);
 
@@ -1636,7 +1636,7 @@ mod tests {
         with_test_gs(|gs| {
             let cn = 1;
             gs.characters[cn].kindred = KIN_MERCENARY as i32;
-            gs.characters[cn].future1[10] |= 0b0000_0001;
+            gs.characters[cn].future1[10] |= 0b0000_0010;
 
             gs.characters[cn].attrib[Attribute::Strength as usize]
                 [SkillIndex::BaseValue as usize] = 55;

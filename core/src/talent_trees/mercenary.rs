@@ -9,130 +9,130 @@ use crate::traits::Class;
 // Layer 1 — root (no-prerequisites)
 const DISTRACT: TalentRef = TalentRef {
     layer: 1,
-    mask: 0b0000_0001,
+    mask: 0b0000_0010,
 };
 
 const PARASITE: TalentRef = TalentRef {
     layer: 1,
-    mask: 0b0000_0010,
+    mask: 0b0000_0001,
 };
 
 // Layer 2
 /// Packed talent slot for the first mercenary dodge chance bonus.
 pub const DODGE_BOOST_1: TalentRef = TalentRef {
     layer: 2,
-    mask: 0b0000_0001,
+    mask: 0b0000_0010,
 };
 
 const SPELL_BOOST_1: TalentRef = TalentRef {
     layer: 2,
-    mask: 0b0000_0010,
+    mask: 0b0000_0001,
 };
 
 // Layer 3
 /// Packed talent slot for the second mercenary dodge chance bonus.
 pub const DODGE_BOOST_2: TalentRef = TalentRef {
     layer: 3,
-    mask: 0b0000_0001,
+    mask: 0b0000_0010,
 };
 
 const SPELL_BOOST_2: TalentRef = TalentRef {
     layer: 3,
-    mask: 0b0000_0010,
+    mask: 0b0000_0001,
 };
 
 // Layer 4
 const ATTACK_SPEED_BOOST_1: TalentRef = TalentRef {
     layer: 4,
-    mask: 0b0000_0001,
+    mask: 0b0000_0010,
 };
 
 const DAMAGE_BOOST_1: TalentRef = TalentRef {
     layer: 4,
-    mask: 0b0000_0010,
+    mask: 0b0000_0001,
 };
 
 // Layer 5
 const DISARM: TalentRef = TalentRef {
     layer: 5,
-    mask: 0b0000_0001,
+    mask: 0b0000_0010,
 };
 
 const DELIVER_DEATH: TalentRef = TalentRef {
     layer: 5,
-    mask: 0b0000_0010,
+    mask: 0b0000_0001,
 };
 
 // Layer 6
 const ATTACK_SPEED_BOOST_2: TalentRef = TalentRef {
     layer: 6,
-    mask: 0b0000_0001,
+    mask: 0b0000_0010,
 };
 
 const DAMAGE_BOOST_2: TalentRef = TalentRef {
     layer: 6,
-    mask: 0b0000_0010,
+    mask: 0b0000_0001,
 };
 
 // Layer 7
 const PROTECTIVE_SPELLS_BOOST_1: TalentRef = TalentRef {
     layer: 7,
-    mask: 0b0000_0001,
+    mask: 0b0000_0010,
 };
 
 const IMMUN_RESIST_BOOST_1: TalentRef = TalentRef {
     layer: 7,
-    mask: 0b0000_0010,
+    mask: 0b0000_0001,
 };
 
 // Layer 8
 const PROTECTIVE_SPELLS_BOOST_2: TalentRef = TalentRef {
     layer: 8,
-    mask: 0b0000_0001,
+    mask: 0b0000_0010,
 };
 
 const IMMUN_RESIST_BOOST_2: TalentRef = TalentRef {
     layer: 8,
-    mask: 0b0000_0010,
+    mask: 0b0000_0001,
 };
 
 // Layer 9
 const CRITICAL_STRIKES: TalentRef = TalentRef {
     layer: 9,
-    mask: 0b0000_0001,
+    mask: 0b0000_0010,
 };
 
 const CONTAGION: TalentRef = TalentRef {
     layer: 9,
-    mask: 0b0000_0010,
+    mask: 0b0000_0001,
 };
 
 // Layer 10
 const STRENGTH_BOOST_1: TalentRef = TalentRef {
     layer: 10,
-    mask: 0b0000_0001,
+    mask: 0b0000_0010,
 };
 
 const INTELLIGENCE_BOOST_1: TalentRef = TalentRef {
     layer: 10,
-    mask: 0b0000_0010,
+    mask: 0b0000_0001,
 };
 
 // Layer 11
 const STRENGTH_BOOST_2: TalentRef = TalentRef {
     layer: 11,
-    mask: 0b0000_0001,
+    mask: 0b0000_0010,
 };
 
 const INTELLIGENCE_BOOST_2: TalentRef = TalentRef {
     layer: 11,
-    mask: 0b0000_0010,
+    mask: 0b0000_0001,
 };
 
 // Layer 12 — capstone
 const ALL_SKILLS_BOOST_1: TalentRef = TalentRef {
     layer: 12,
-    mask: 0b0000_0001,
+    mask: 0b0000_0010,
 };
 
 /// The full mercenary talent tree.
