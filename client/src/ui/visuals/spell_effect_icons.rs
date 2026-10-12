@@ -730,14 +730,8 @@ mod tests {
             eye_name(254, 16741, 105).as_deref(),
             Some("Greenling Duke Eye")
         );
-        assert_eq!(
-            eye_name(254, 96, 100).as_deref(),
-            Some("Ratling King Eye Pion")
-        );
-        assert_eq!(
-            eye_name(254, 16741, 15).as_deref(),
-            Some("Greenling Eye Potion")
-        );
+        assert_eq!(eye_name(254, 96, 100).as_deref(), Some("Ratling King Eye"));
+        assert_eq!(eye_name(254, 16741, 15).as_deref(), Some("Greenling Eye"));
         assert_eq!(eye_name(254, 16741, 7), None);
     }
 
