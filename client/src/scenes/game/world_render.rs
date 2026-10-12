@@ -813,6 +813,7 @@ impl GameScene {
         Self::draw_background_pass(canvas, gfx, ps, hover_highlight, cam_xoff, cam_yoff)?;
 
         // Pass 2: Objects/characters/markers/effects (legacy eng_display order: y descending).
+        let mut deferred_nameplates: Vec<TilePos> = Vec::new();
         for y in (0..TILEY).rev() {
             for x in 0..TILEX {
                 let Some(tile) = map.tile_at_xy(x, y) else {
@@ -843,6 +844,30 @@ impl GameScene {
                     hover_highlight,
                     shadows_enabled,
                 )?;
+                // A character hidden behind an object keeps its label hidden too (painter
+                // order). Otherwise the label is drawn last so nearby tall sprites can't
+                // clip it while the character walks between tiles.
+                if tile.ch_nr != 0 && !Self::character_occluded(gfx, ps, tile, pos, hide) {
+                    deferred_nameplates.push(pos);
+                } else {
+                    self.draw_tile_nameplate(
+                        canvas,
+                        gfx,
+                        ps,
+                        tile,
+                        pos,
+                        show_names,
+                        show_proz,
+                        show_danger_glyphs,
+                    )?;
+                }
+                Self::draw_tile_markers(canvas, gfx, ps, tile, pos)?;
+                Self::draw_tile_overlays(canvas, gfx, tile, pos, spell_effects_enabled)?;
+            }
+        }
+
+        for pos in deferred_nameplates {
+            if let Some(tile) = map.tile_at_xy(pos.x, pos.y) {
                 self.draw_tile_nameplate(
                     canvas,
                     gfx,
@@ -853,12 +878,81 @@ impl GameScene {
                     show_proz,
                     show_danger_glyphs,
                 )?;
-                Self::draw_tile_markers(canvas, gfx, ps, tile, pos)?;
-                Self::draw_tile_overlays(canvas, gfx, tile, pos, spell_effects_enabled)?;
             }
         }
 
         Ok(())
+    }
+
+    /// Screen rect of a sprite placed on a tile, matching [`Self::draw_world_sprite`].
+    fn world_sprite_rect(
+        gfx: &mut GraphicsCache<'_>,
+        sprite_id: i32,
+        x: usize,
+        y: usize,
+        cam_xoff: i32,
+        cam_yoff: i32,
+    ) -> sdl2::rect::Rect {
+        let q = gfx.get_texture(sprite_id as usize).query();
+        let (ground_x, ground_y) = Self::tile_ground_diamond_origin(x, y, cam_xoff, cam_yoff);
+        sdl2::rect::Rect::new(
+            ground_x - (q.width as i32 / 32) * (FLOOR_TILE_WIDTH / 2),
+            ground_y + FLOOR_TILE_HEIGHT - (q.height as i32 / 32) * 32,
+            q.width,
+            q.height,
+        )
+    }
+
+    /// Returns `true` when objects drawn after this tile's character cover at least half
+    /// of its sprite (e.g. a player hiding behind a tree).
+    fn character_occluded(
+        gfx: &mut GraphicsCache<'_>,
+        ps: &PlayerState,
+        tile: &CMapTile,
+        pos: TilePos,
+        hide: bool,
+    ) -> bool {
+        let ch = if tile.obj2 > 0 {
+            tile.obj2
+        } else {
+            i32::from(tile.ch_sprite)
+        };
+        if ch <= 0 {
+            return false;
+        }
+        let map = ps.map();
+        let dir = ps.character_info().dir;
+        let ch_rect = Self::world_sprite_rect(
+            gfx,
+            ch,
+            pos.x,
+            pos.y,
+            pos.cam_xoff + pos.ch_xoff,
+            pos.cam_yoff + pos.ch_yoff,
+        );
+        let covered = ch_rect.width() * ch_rect.height() / 2;
+
+        // Tiles drawn after (pos.x, pos.y): smaller y, or same y with larger x.
+        for oy in (0..=pos.y).rev() {
+            let first_x = if oy == pos.y { pos.x + 1 } else { 0 };
+            for ox in first_x..TILEX {
+                let Some(other) = map.tile_at_xy(ox, oy) else {
+                    continue;
+                };
+                if other.obj1 <= 0 || (other.flags & (INVIS | ISITEM)) != 0 {
+                    continue;
+                }
+                let obj = Self::resolve_object_sprite(other.obj1, false, ox, oy, dir, hide);
+                let obj_rect =
+                    Self::world_sprite_rect(gfx, obj, ox, oy, pos.cam_xoff, pos.cam_yoff);
+                if let Some(overlap) = ch_rect.intersection(obj_rect)
+                    && overlap.width() * overlap.height() >= covered
+                {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     /// Draws a tile's object sprite and its item hover highlight.
