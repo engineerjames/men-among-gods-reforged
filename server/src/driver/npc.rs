@@ -3932,7 +3932,7 @@ pub fn npc_see(gs: &mut GameState, cn: usize, co: usize) -> bool {
                     gs.do_sayx(
                         cn,
                         &format!(
-                            "I see you have a sword dedicated to the gods. Make good use of it, {}.\n",
+                            "I see you have a sword dedicated to the gods. Make good use of it, {}.",
                             co_name
                         ),
                     );
@@ -3940,7 +3940,7 @@ pub fn npc_see(gs: &mut GameState, cn: usize, co: usize) -> bool {
                     gs.do_sayx(
                         cn,
                         &format!(
-                            "I see you have several swords dedicated to the gods. They will get angry if you keep more than one, {}.\n",
+                            "I see you have several swords dedicated to the gods. They will get angry if you keep more than one, {}.",
                             co_name
                         ),
                     );
