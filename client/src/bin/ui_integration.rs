@@ -357,7 +357,7 @@ fn main() -> Result<(), String> {
     demo_spell[3] = 1;
     demo_active[3] = 12;
     demo_spell_type[3] = skills::SK_WIMPY as i16;
-    spell_effect_icons.sync(&demo_spell, &demo_active, &demo_spell_type);
+    spell_effect_icons.sync(&demo_spell, &demo_active, &demo_spell_type, &[0; 20]);
 
     // Per-widget render-timing statistics (capacity: last 1 000 frames, µs).
     let mut t_label: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);

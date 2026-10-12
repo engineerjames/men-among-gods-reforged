@@ -218,7 +218,7 @@ impl ServerCommandType {
             ServerCommandType::SetCharGold => 13,
             ServerCommandType::SetCharItem => 9,
             ServerCommandType::SetCharWorn => 9,
-            ServerCommandType::SetCharSpell => 11,
+            ServerCommandType::SetCharSpell => 13,
             ServerCommandType::SetCharObj => 5,
             ServerCommandType::SetMap3 => sv_setmap3_len(26),
             ServerCommandType::SetMap4 => sv_setmap3_len(0),
@@ -446,6 +446,8 @@ pub enum ServerCommandData {
         active: i16,
         /// Template number of the skill that created this effect (matches `SK_*` constants).
         skill_nr: i16,
+        /// Spell item power; lets the client tell apart effects sharing a `skill_nr` and sprite (eye ranks).
+        power: i16,
     },
     SetCharObj {
         citem: i16,
@@ -949,6 +951,7 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
                 spell: read_i16(bytes, 5)?,
                 active: read_i16(bytes, 7)?,
                 skill_nr: read_i16(bytes, 9)?,
+                power: read_i16(bytes, 11)?,
             },
         )),
         47 => Some((
@@ -1489,6 +1492,28 @@ mod tests {
             ServerCommandType::from(77),
             ServerCommandType::SetCompletionData
         );
+    }
+
+    #[test]
+    fn set_char_spell_roundtrip_carries_power() {
+        let pkt = make_packet(46, &[3, 0, 0, 0, 0x65, 0x41, 16, 0, 0xfe, 0, 105, 0]);
+        let mut last_n = 0i32;
+        assert_eq!(
+            ServerCommandType::get_expected_length(&pkt, &mut last_n).unwrap(),
+            13
+        );
+        match ServerCommand::from_bytes(&pkt).unwrap().structured_data {
+            ServerCommandData::SetCharSpell {
+                index,
+                spell,
+                skill_nr,
+                power,
+                ..
+            } => {
+                assert_eq!((index, spell, skill_nr, power), (3, 16741, 254, 105));
+            }
+            _ => panic!("Expected SetCharSpell variant"),
+        }
     }
 
     #[test]

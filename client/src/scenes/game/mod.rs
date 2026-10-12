@@ -2808,8 +2808,12 @@ impl Scene for GameScene {
                     ci.a_mana,
                     i32::from(ci.mana[5]),
                 );
-                self.spell_effect_icons
-                    .sync(&ci.spell, &ci.active, &ci.spell_type);
+                self.spell_effect_icons.sync(
+                    &ci.spell,
+                    &ci.active,
+                    &ci.spell_type,
+                    &ci.spell_power,
+                );
                 use crate::ui::hud::skills_panel::{SkillsPanel as SP, SkillsPanelData};
                 let sorted = SP::build_sorted_skills(&ci.skill);
                 self.skills_panel.update_data(SkillsPanelData {

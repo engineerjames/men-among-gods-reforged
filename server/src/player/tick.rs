@@ -837,7 +837,7 @@ fn plr_change_stats(ctx: &mut PlayerUpdateCtx) {
             || (ctx.player.cpl.spell_type[i] != current_spell_type);
 
         if needs_update {
-            let mut buf: [u8; 11] = [0; 11];
+            let mut buf: [u8; 13] = [0; 13];
             buf[0] = ServerCommandType::SetCharSpell as u8;
             let idx_bytes = (i as u32).to_le_bytes();
             buf[1..5].copy_from_slice(&idx_bytes);
@@ -856,6 +856,9 @@ fn plr_change_stats(ctx: &mut PlayerUpdateCtx) {
                     buf[8] = ((active_frac >> 8) & 0xff) as u8;
                     buf[9] = (skill_nr & 0xff) as u8;
                     buf[10] = ((skill_nr >> 8) & 0xff) as u8;
+                    let power = it.power.min(i16::MAX as u32) as i16;
+                    buf[11] = (power & 0xff) as u8;
+                    buf[12] = ((power >> 8) & 0xff) as u8;
                 }
                 // Clear IF_UPDATE flag (applied on the tick thread)
                 ctx.defer_clear_item_update(in_idx);
@@ -868,7 +871,7 @@ fn plr_change_stats(ctx: &mut PlayerUpdateCtx) {
                 ctx.player.cpl.spell_type[i] = 0;
             }
 
-            ctx.xsend(&buf, 11);
+            ctx.xsend(&buf, 13);
         }
     }
 
