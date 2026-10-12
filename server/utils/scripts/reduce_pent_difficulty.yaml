@@ -1,0 +1,19 @@
+# template-search --ops file; run via reduce_pent_difficulty.sh.
+# Weapon values (WV) for the weapons grolms and sea golems carry; edit and re-run to retune.
+- {ids: 501, set-wv: 2}   # Bronze Axe, was 10
+- {ids: 158, set-wv: 4}   # Steel Axe, was 20
+- {ids: 502, set-wv: 8}   # Gold Axe, was 30 (id 1207 Tower Golden Axe is deliberately left alone)
+- {ids: 442, set-wv: 10}  # Lava Sword, was 42
+- {ids: 813, set-wv: 40}  # Ice Sword, was 80
+
+# Non-gargoyles (grolms 364-374, sea golems 1094-1096): keep weapon, zero bonuses
+- chars: true
+  ids: 364-374,1094-1096
+  set-armor-bonus: 0
+  set-weapon-bonus: 0
+
+# Gargoyles (375-381) and ice gargoyles (539-542): keep weapon, zero bonuses
+- chars: true
+  ids: 375-381,539-542
+  set-armor-bonus: 0
+  set-weapon-bonus: 0

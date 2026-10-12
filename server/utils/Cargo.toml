@@ -22,6 +22,7 @@ redis.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+serde_yaml = "0.9"
 clap = { version = "4.5", features = ["derive", "env"] }
 dialoguer = "0.11"
 dotenvy = "0.15"
@@ -41,5 +42,9 @@ path = "src/bin/mag_admin.rs"
 [[bin]]
 name = "template-search"
 path = "src/bin/template_search.rs"
+
+[[bin]]
+name = "template-sync"
+path = "src/bin/template_sync.rs"
 
 

@@ -29,9 +29,10 @@ OUTPUT="server/assets/world_seed.wsnap"
 TIMEOUT=180
 SPAWN_WAIT=15
 RESET_IDS=()
+RESET_ALL=false
 
 usage() {
-    echo "Usage: $0 [--output FILE] [--reset-char ID]... [--timeout SECS] [--spawn-wait SECS]" >&2
+    echo "Usage: $0 [--output FILE] [--reset-char ID]... [--timeout SECS] [--spawn-wait SECS] [--reset-all]" >&2
 }
 
 while [[ $# -gt 0 ]]; do
@@ -43,6 +44,10 @@ while [[ $# -gt 0 ]]; do
         --reset-char)
             RESET_IDS+=("${2:?Missing value for --reset-char}")
             shift 2
+            ;;
+        --reset-all)
+            RESET_ALL=true
+            shift 1
             ;;
         --timeout)
             TIMEOUT="${2:?Missing value for --timeout}"
@@ -84,6 +89,9 @@ if [[ ${#RESET_IDS[@]} -gt 0 ]]; then
         echo "==> Resetting character template ${id}"
         mag_admin world reset-char "${id}" --wait --timeout-seconds "${TIMEOUT}"
     done
+elif [[ "${RESET_ALL}" == true ]]; then
+    echo "==> Resetting all character templates"
+    mag_admin world reset-all --wait --timeout-seconds "${TIMEOUT}"
 else
     echo "==> Spawning missing character templates"
     mag_admin world populate --wait --timeout-seconds "${TIMEOUT}"
