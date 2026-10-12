@@ -3708,7 +3708,8 @@ pub fn spawn_penta_enemy(gs: &mut GameState, item_idx: usize) -> i32 {
     } else if data9 == 23 {
         24
     } else {
-        (crate::helpers::random_mod(3) + data9).saturating_sub(1)
+        // [data9 - 1, data9]; the legacy RANDOM(3) also spawned data9 + 1, one tier too strong.
+        (crate::helpers::random_mod(2) + data9).saturating_sub(1)
     };
 
     // Create appropriate character template
