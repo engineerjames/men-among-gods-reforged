@@ -550,6 +550,7 @@ impl GameState {
         }
 
         self.trigger_seyan_rune_proc(attacker_index, defender_index);
+        driver::skill::disarm_on_hit(self, attacker_index, defender_index);
 
         // Play sounds depending on whether damage occurred (match original behaviour)
         let tx = i32::from(self.characters[defender_index].x);

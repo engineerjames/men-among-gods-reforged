@@ -8,14 +8,15 @@ use core::{
     skills::{
         SK_ANGUISH_EARTH, SK_ANGUISH_ICE, SK_ANGUISH_LAVA, SK_AURA_CURSE, SK_AURA_WAR_BANNER,
         SK_AXE, SK_BLADE_DANCE, SK_BLAST, SK_BLESS, SK_CONCEN, SK_CONTAGION, SK_CURSE, SK_DAGGER,
-        SK_DELIVER_DEATH, SK_DISARM, SK_DISPEL, SK_DISTRACT, SK_ELEMENT_SWITCHING, SK_ENHANCE,
-        SK_GASH, SK_GHOST, SK_HEAL, SK_ICE_STUN, SK_IDENT, SK_IMMUN, SK_INNER_STRENGTH,
-        SK_KINDRED_SPIRIT, SK_LAVA_BLAST, SK_LIGHT, SK_LOCK, SK_MEDIT, SK_MSHIELD, SK_PARASITE,
-        SK_PROTECT, SK_RAINS_OF_RENEWAL, SK_RECALL, SK_REGEN, SK_REPAIR, SK_RESIST, SK_REST,
-        SK_REVENANT_CONDUIT, SK_REVENANT_CONDUIT2, SK_SEEING_RED, SK_SENSE, SK_SOUL_REFLECTION,
-        SK_SPECTRAL_PACT, SK_SPECTRAL_PACT2, SK_SPELLCASTER_KINDRED_SPIRIT, SK_STAFF, SK_STUN,
-        SK_SUNS_BLESSING, SK_SUNS_BLESSING2, SK_SURROUND, SK_SWORD, SK_THUNDEROUS_FURY, SK_TWOHAND,
-        SK_WARCRY, SK_WARCRY2, SK_WEAPON, SK_WIMPY, attribute_name, get_skill_name,
+        SK_DELIVER_DEATH, SK_DISARM, SK_DISPEL, SK_ELEMENT_SWITCHING, SK_ENHANCE, SK_GASH,
+        SK_GHOST, SK_GUNPOWDER_FLASH, SK_GUNPOWDER_FLASH2, SK_HEAL, SK_ICE_STUN, SK_IDENT,
+        SK_IMMUN, SK_INNER_STRENGTH, SK_KINDRED_SPIRIT, SK_LAVA_BLAST, SK_LIGHT, SK_LOCK, SK_MEDIT,
+        SK_MSHIELD, SK_PARASITE, SK_PROTECT, SK_RAINS_OF_RENEWAL, SK_RECALL, SK_REGEN, SK_REPAIR,
+        SK_RESIST, SK_REST, SK_REVENANT_CONDUIT, SK_REVENANT_CONDUIT2, SK_SEEING_RED, SK_SENSE,
+        SK_SOUL_REFLECTION, SK_SPECTRAL_PACT, SK_SPECTRAL_PACT2, SK_SPELLCASTER_KINDRED_SPIRIT,
+        SK_STAFF, SK_STUN, SK_SUNS_BLESSING, SK_SUNS_BLESSING2, SK_SURROUND, SK_SWORD,
+        SK_THUNDEROUS_FURY, SK_TWOHAND, SK_WARCRY, SK_WARCRY2, SK_WEAPON, SK_WIMPY, attribute_name,
+        get_skill_name,
     },
     string_operations::c_string_to_str,
     talent_trees::harakim,
@@ -4887,7 +4888,20 @@ pub fn skill_parasite(gs: &mut GameState, cn: usize) {
     }
 }
 
-/// Attaches the Distract spell-item to a single target.
+/// Action-speed points a Gunpowder Flash victim loses at the given spell power.
+///
+/// # Arguments
+///
+/// * `power` - The debuff item's `power`.
+///
+/// # Returns
+///
+/// * Points subtracted from the victim's action-speed calc, between 2 and 5.
+pub(crate) fn gunpowder_flash_slow_points(power: u32) -> i32 {
+    (2 + power as i32 / 40).clamp(2, 5)
+}
+
+/// Attaches the Gunpowder Flash slow to a single target.
 ///
 /// Applies immunity and race modifiers to `power` before creating the spell
 /// item, so callers can pass the caster's raw skill value.
@@ -4897,12 +4911,12 @@ pub fn skill_parasite(gs: &mut GameState, cn: usize) {
 /// * `gs` - Game state.
 /// * `cn` - Caster character index.
 /// * `co` - Target character index.
-/// * `power` - Caster's raw Distract skill value.
+/// * `power` - Caster's raw Gunpowder Flash skill value.
 ///
 /// # Returns
 ///
-/// * `true` if the target is now distracted.
-fn apply_distract(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
+/// * `true` if the target is now slowed.
+fn apply_gunpowder_flash(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
     let power = spell_immunity(gs, power, i32::from(gs.characters[co].skill[SK_IMMUN][5]));
     let power = spell_race_mod(gs, power, gs.characters[cn].kindred);
     if power < 1 {
@@ -4914,15 +4928,14 @@ fn apply_distract(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool 
 
     let in_opt = God::create_item(gs, 1);
     if in_opt.is_none() {
-        log::error!("god_create_item failed in skill_distract");
+        log::error!("god_create_item failed in skill_gunpowder_flash");
         return false;
     }
     let in_idx = in_opt.unwrap();
-    let agility_penalty = -(((power / 3) * 3).clamp(3, 90)) as i16;
 
     let item = &mut gs.items[in_idx];
     let mut name_bytes = [0u8; 40];
-    let name = b"Distract";
+    let name = b"Gunpowder Flash";
     let nlen = name.len().min(40);
     name_bytes[..nlen].copy_from_slice(&name[..nlen]);
     item.name = name_bytes;
@@ -4930,54 +4943,82 @@ fn apply_distract(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool 
     item.sprite[1] = 89;
     item.duration = (TICKS * 30) as u32;
     item.active = (TICKS * 30) as u32;
-    item.temp = SK_DISTRACT as u16;
+    item.temp = SK_GUNPOWDER_FLASH as u16;
     item.power = power as u32;
-    item.attrib[AT_AGIL as usize][1] = agility_penalty;
 
     add_spell(gs, co, in_idx) != 0
 }
 
-/// Active spell: distract the target, reducing their Agility for a short time.
-/// Enemies standing in the four tiles adjacent to the caster are distracted
-/// as well.
+/// Attaches the Gunpowder Flash speed buff to the caster.
 ///
 /// # Arguments
 ///
 /// * `gs` - Game state.
 /// * `cn` - Caster character index.
-pub fn skill_distract(gs: &mut GameState, cn: usize) {
+/// * `power` - Caster's raw Gunpowder Flash skill value.
+fn apply_gunpowder_flash_haste(gs: &mut GameState, cn: usize, power: i32) {
+    let Some(in_idx) = God::create_item(gs, 1) else {
+        log::error!("god_create_item failed in apply_gunpowder_flash_haste");
+        return;
+    };
+
+    let item = &mut gs.items[in_idx];
+    let mut name_bytes = [0u8; 40];
+    let name = b"Gunpowder Flash";
+    name_bytes[..name.len()].copy_from_slice(name);
+    item.name = name_bytes;
+    item.flags |= ItemFlags::IF_SPELL.bits();
+    item.sprite[1] = 88;
+    item.duration = (TICKS * 30) as u32;
+    item.active = (TICKS * 30) as u32;
+    item.temp = SK_GUNPOWDER_FLASH2 as u16;
+    item.power = power.max(1) as u32;
+
+    add_spell(gs, cn, in_idx);
+}
+
+/// Active spell: slow the target's attacks and quicken the caster. Enemies
+/// standing in the four tiles adjacent to the caster that are attacking the
+/// caster are slowed as well.
+///
+/// # Arguments
+///
+/// * `gs` - Game state.
+/// * `cn` - Caster character index.
+pub fn skill_gunpowder_flash(gs: &mut GameState, cn: usize) {
     let co = resolve_offensive_target(gs, cn);
-    if !hostile_cast_preflight(gs, cn, co, "You cannot distract yourself.\n") {
+    if !hostile_cast_preflight(gs, cn, co, "You cannot flash yourself.\n") {
         return;
     }
     if spellcost(gs, cn, 7) != 0 {
         return;
     }
 
-    let power = i32::from(gs.characters[cn].skill[SK_DISTRACT][5]);
+    let power = i32::from(gs.characters[cn].skill[SK_GUNPOWDER_FLASH][5]);
     if (gs.characters[co].flags & CharacterFlags::Immortal.bits()) != 0 {
         gs.do_character_log(cn, FontColor::Red, "You lost your focus.\n");
         return;
     }
-    if !apply_distract(gs, cn, co, power) {
+    if !apply_gunpowder_flash(gs, cn, co, power) {
         gs.do_character_log(
             cn,
             FontColor::Green,
-            "Magical interference neutralised your distraction.\n",
+            "Magical interference neutralised your flash.\n",
         );
         return;
     }
+    apply_gunpowder_flash_haste(gs, cn, power);
 
     let name = gs.characters[co].get_name().to_owned();
     gs.do_character_log(
         cn,
         FontColor::Green,
-        &format!("{} is now distracted.\n", name),
+        &format!("{} is blinded by the flash.\n", name),
     );
-    gs.do_character_log(co, FontColor::Green, "You feel distracted!\n");
+    gs.do_character_log(co, FontColor::Green, "A flash of powder blinds you!\n");
     gs.do_notify_character(co as u32, i32::from(NT_GOTHIT), cn as i32, 0, 0, 0);
     gs.do_notify_character(cn as u32, i32::from(NT_DIDHIT), co as i32, 0, 0, 0);
-    chlog!(cn, "Cast Distract on {}", name);
+    chlog!(cn, "Cast Gunpowder Flash on {}", name);
     EffectManager::fx_add_effect(
         gs,
         5,
@@ -4987,18 +5028,17 @@ pub fn skill_distract(gs: &mut GameState, cn: usize) {
         0,
     );
 
-    // Secondary targets: the four tiles adjacent to the caster only. Distract
-    // never grows past the legacy cross, so the AoE base is pinned to zero.
+    // Secondary targets: adjacent enemies actively attacking the caster, like Stun.
     let caster_x = i32::from(gs.characters[cn].x);
     let caster_y = i32::from(gs.characters[cn].y);
     for maybe_co in helpers::skill_aoe_targets(gs, Some(cn), caster_x, caster_y, 0) {
-        if maybe_co == cn || maybe_co == co {
+        if maybe_co == cn || maybe_co == co || gs.characters[maybe_co].attack_cn != cn as u16 {
             continue;
         }
         if !gs.may_attack_msg(cn, maybe_co, false) {
             continue;
         }
-        if !apply_distract(gs, cn, maybe_co, power) {
+        if !apply_gunpowder_flash(gs, cn, maybe_co, power) {
             continue;
         }
 
@@ -5007,9 +5047,13 @@ pub fn skill_distract(gs: &mut GameState, cn: usize) {
         gs.do_character_log(
             cn,
             FontColor::Green,
-            &format!("{} is now distracted.\n", other_name),
+            &format!("{} is blinded by the flash.\n", other_name),
         );
-        gs.do_character_log(maybe_co, FontColor::Green, "You feel distracted!\n");
+        gs.do_character_log(
+            maybe_co,
+            FontColor::Green,
+            "A flash of powder blinds you!\n",
+        );
         gs.do_notify_character(maybe_co as u32, i32::from(NT_GOTHIT), cn as i32, 0, 0, 0);
         gs.do_notify_character(cn as u32, i32::from(NT_DIDHIT), maybe_co as i32, 0, 0, 0);
         EffectManager::fx_add_effect(
@@ -5088,46 +5132,38 @@ pub fn skill_deliver_death(gs: &mut GameState, cn: usize) {
     );
 }
 
-/// Active spell: weakens the target's effective weapon skill for a short time,
-/// reducing their hit chance in melee.
+/// Percent chance per landed melee hit that Disarm triggers.
+const DISARM_PROC_PERCENT: i32 = 20;
+
+/// Attaches the Disarm weapon-skill penalty to one target and reports it.
 ///
 /// # Arguments
 ///
 /// * `gs` - Game state.
-/// * `cn` - Caster character index.
-pub fn skill_disarm(gs: &mut GameState, cn: usize) {
-    let co = resolve_offensive_target(gs, cn);
-    if !hostile_cast_preflight(gs, cn, co, "You cannot disarm yourself.\n") {
-        return;
-    }
-    if spellcost(gs, cn, 12) != 0 {
-        return;
-    }
-
-    let power = i32::from(gs.characters[cn].skill[SK_DISARM][5]);
+/// * `cn` - Attacker character index.
+/// * `co` - Target character index.
+/// * `power` - Attacker's raw Disarm skill value.
+///
+/// # Returns
+///
+/// * `true` if the target is now disarmed.
+fn apply_disarm(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
     let power = spell_immunity(gs, power, i32::from(gs.characters[co].skill[SK_IMMUN][5]));
     let power = spell_race_mod(gs, power, gs.characters[cn].kindred);
-    if power < 1 {
-        return;
-    }
-    if (gs.characters[co].flags & CharacterFlags::Immortal.bits()) != 0 {
-        gs.do_character_log(cn, FontColor::Red, "You lost your focus.\n");
-        return;
+    if power < 1 || (gs.characters[co].flags & CharacterFlags::Immortal.bits()) != 0 {
+        return false;
     }
 
-    let in_opt = God::create_item(gs, 1);
-    if in_opt.is_none() {
-        log::error!("god_create_item failed in skill_disarm");
-        return;
-    }
-    let in_idx = in_opt.unwrap();
+    let Some(in_idx) = God::create_item(gs, 1) else {
+        log::error!("god_create_item failed in apply_disarm");
+        return false;
+    };
     let weapon_penalty = -(((power / 2) * 3).clamp(3, 150)) as i16;
 
     let item = &mut gs.items[in_idx];
     let mut name_bytes = [0u8; 40];
     let name = b"Disarm";
-    let nlen = name.len().min(40);
-    name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+    name_bytes[..name.len()].copy_from_slice(name);
     item.name = name_bytes;
     item.flags |= ItemFlags::IF_SPELL.bits();
     item.sprite[1] = 89;
@@ -5138,12 +5174,7 @@ pub fn skill_disarm(gs: &mut GameState, cn: usize) {
     item.skill[SK_WEAPON][1] = weapon_penalty;
 
     if add_spell(gs, co, in_idx) == 0 {
-        gs.do_character_log(
-            cn,
-            FontColor::Green,
-            "Magical interference neutralised your disarm.\n",
-        );
-        return;
+        return false;
     }
 
     let name = gs.characters[co].get_name().to_owned();
@@ -5155,7 +5186,7 @@ pub fn skill_disarm(gs: &mut GameState, cn: usize) {
     );
     gs.do_notify_character(co as u32, i32::from(NT_GOTHIT), cn as i32, 0, 0, 0);
     gs.do_notify_character(cn as u32, i32::from(NT_DIDHIT), co as i32, 0, 0, 0);
-    chlog!(cn, "Cast Disarm on {}", name);
+    chlog!(cn, "Disarmed {}", name);
     EffectManager::fx_add_effect(
         gs,
         5,
@@ -5164,6 +5195,47 @@ pub fn skill_disarm(gs: &mut GameState, cn: usize) {
         i32::from(gs.characters[co].y),
         0,
     );
+    true
+}
+
+/// Passive Disarm: on a landed melee hit, may weaken the defender's weapon
+/// skill, and likewise any adjacent enemy that is attacking the attacker.
+///
+/// # Arguments
+///
+/// * `gs` - Game state.
+/// * `cn` - Attacker character index.
+/// * `co` - Defender hit by the primary strike.
+pub fn disarm_on_hit(gs: &mut GameState, cn: usize, co: usize) {
+    if gs.characters[cn].skill[SK_DISARM][0] == 0 {
+        return;
+    }
+    if helpers::random_mod_i32(100) >= DISARM_PROC_PERCENT {
+        return;
+    }
+
+    let power = i32::from(gs.characters[cn].skill[SK_DISARM][5]);
+    apply_disarm(gs, cn, co, power);
+
+    // Secondary targets mirror Stun: adjacent attackers, each with a resist roll.
+    let caster_x = i32::from(gs.characters[cn].x);
+    let caster_y = i32::from(gs.characters[cn].y);
+    for maybe_co in helpers::skill_aoe_targets(gs, Some(cn), caster_x, caster_y, 0) {
+        if maybe_co == cn || maybe_co == co || gs.characters[maybe_co].attack_cn != cn as u16 {
+            continue;
+        }
+        if !gs.may_attack_msg(cn, maybe_co, false) {
+            continue;
+        }
+        let resist = effective_resist(
+            gs,
+            cn,
+            i32::from(gs.characters[maybe_co].skill[SK_RESIST][5]),
+        );
+        if power + helpers::random_mod_i32(20) > resist + helpers::random_mod_i32(20) {
+            apply_disarm(gs, cn, maybe_co, power);
+        }
+    }
 }
 
 /// Active spell: a virulent parasitic infection that lasts much longer than
@@ -5308,7 +5380,7 @@ pub fn skill_blade_dance(gs: &mut GameState, cn: usize) {
 pub(crate) fn is_seeing_red_blocked_temp(temp: u16) -> bool {
     matches!(
         temp as usize,
-        SK_STUN | SK_WARCRY2 | SK_CURSE | SK_CONTAGION | SK_DISTRACT | SK_DISARM
+        SK_STUN | SK_WARCRY2 | SK_CURSE | SK_CONTAGION | SK_GUNPOWDER_FLASH | SK_DISARM
     )
 }
 
@@ -5532,7 +5604,7 @@ pub fn skill_suns_blessing(gs: &mut GameState, cn: usize) {
 
 /// Active self-buff: Seeing Red. Spends endurance; while active the caster
 /// gains a large temporary weapon-skill bonus and refuses to receive new
-/// stun/curse/distract/disarm style debuff attachments.
+/// stun/curse/gunpowder-flash/disarm style debuff attachments.
 ///
 /// # Arguments
 ///
@@ -6494,7 +6566,8 @@ pub fn skill_driver(gs: &mut GameState, cn: usize, nr: i32) {
             || x == SK_AXE as i32
             || x == SK_STAFF as i32
             || x == SK_TWOHAND as i32
-            || x == SK_SURROUND as i32 =>
+            || x == SK_SURROUND as i32
+            || x == SK_DISARM as i32 =>
         {
             gs.do_character_log(
                 cn,
@@ -6515,21 +6588,14 @@ pub fn skill_driver(gs: &mut GameState, cn: usize, nr: i32) {
                 skill_parasite(gs, cn);
             }
         }
-        x if x == SK_DISTRACT as i32 => {
+        x if x == SK_GUNPOWDER_FLASH as i32 => {
             if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
                 nomagic(gs, cn);
             } else {
-                skill_distract(gs, cn);
+                skill_gunpowder_flash(gs, cn);
             }
         }
         x if x == SK_DELIVER_DEATH as i32 => skill_deliver_death(gs, cn),
-        x if x == SK_DISARM as i32 => {
-            if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
-                nomagic(gs, cn);
-            } else {
-                skill_disarm(gs, cn);
-            }
-        }
         x if x == SK_CONTAGION as i32 => {
             if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
                 nomagic(gs, cn);
@@ -7090,6 +7156,81 @@ mod offensive_target_tests {
             gs.characters[bystander].attack_cn = 0;
 
             assert_eq!(resolve_offensive_target(gs, cn), cn);
+        });
+    }
+
+    fn has_spell_temp(gs: &GameState, cn: usize, temp: usize) -> bool {
+        gs.characters[cn]
+            .spell
+            .iter()
+            .any(|&i| i != 0 && gs.items[i as usize].temp == temp as u16)
+    }
+
+    #[test]
+    fn gunpowder_flash_slows_attackers_only_and_hastes_caster() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.item_templates[1].used = USE_ACTIVE;
+            gs.characters[cn].flags |= CharacterFlags::Infrared.bits();
+            gs.characters[cn].skill[SK_GUNPOWDER_FLASH][5] = 60;
+            gs.characters[cn].a_mana = 100_000;
+            gs.characters[cn].skill_target1 = 0;
+            gs.characters[cn].attack_cn = 0;
+            gs.characters[cn].dir = DX_RIGHT;
+
+            let (front, side, bystander) = (2, 3, 4);
+            place_attacker(gs, cn, front, 1, 0);
+            place_attacker(gs, cn, side, 0, 1);
+            place_attacker(gs, cn, bystander, -1, 0);
+            gs.characters[bystander].attack_cn = 0;
+
+            skill_gunpowder_flash(gs, cn);
+
+            assert!(has_spell_temp(gs, front, SK_GUNPOWDER_FLASH));
+            assert!(has_spell_temp(gs, side, SK_GUNPOWDER_FLASH));
+            assert!(!has_spell_temp(gs, bystander, SK_GUNPOWDER_FLASH));
+            assert!(has_spell_temp(gs, cn, SK_GUNPOWDER_FLASH2));
+        });
+    }
+
+    #[test]
+    fn disarm_proc_hits_defender_and_adjacent_attackers_only() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.item_templates[1].used = USE_ACTIVE;
+            gs.characters[cn].flags |= CharacterFlags::Infrared.bits();
+            gs.characters[cn].skill[SK_DISARM][0] = 1;
+            gs.characters[cn].skill[SK_DISARM][5] = 100;
+
+            let (defender, side, bystander) = (2, 3, 4);
+            place_attacker(gs, cn, defender, 1, 0);
+            place_attacker(gs, cn, side, 0, 1);
+            place_attacker(gs, cn, bystander, -1, 0);
+            gs.characters[bystander].attack_cn = 0;
+
+            // 20% proc and a resist roll on secondaries: retry until both land.
+            for _ in 0..500 {
+                disarm_on_hit(gs, cn, defender);
+            }
+
+            assert!(has_spell_temp(gs, defender, SK_DISARM));
+            assert!(has_spell_temp(gs, side, SK_DISARM));
+            assert!(!has_spell_temp(gs, bystander, SK_DISARM));
+        });
+    }
+
+    #[test]
+    fn disarm_never_procs_without_the_skill() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.item_templates[1].used = USE_ACTIVE;
+            place_attacker(gs, cn, 2, 1, 0);
+
+            for _ in 0..200 {
+                disarm_on_hit(gs, cn, 2);
+            }
+
+            assert!(!has_spell_temp(gs, 2, SK_DISARM));
         });
     }
 }

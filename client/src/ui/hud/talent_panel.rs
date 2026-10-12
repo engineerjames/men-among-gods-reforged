@@ -1598,13 +1598,13 @@ mod tests {
     #[test]
     fn node_status_learned() {
         let mut talents = [0u8; 25];
-        talents[1] = 0b10; // mark layer 1 mask 2 (DISTRACT) as spent
+        talents[1] = 0b10; // mark layer 1 mask 2 (GUNPOWDER_FLASH) as spent
         let tree = tree_for(Class::Mercenary).unwrap();
-        let distract = tree.nodes.first().unwrap();
-        assert_eq!(distract.slot.layer, 1);
-        assert_eq!(distract.slot.mask, 0x02);
+        let flash = tree.nodes.first().unwrap();
+        assert_eq!(flash.slot.layer, 1);
+        assert_eq!(flash.slot.mask, 0x02);
         assert_eq!(
-            TalentPanel::node_status(distract, &talents),
+            TalentPanel::node_status(flash, &talents),
             NodeStatus::Learned
         );
     }
@@ -1615,9 +1615,9 @@ mod tests {
     fn node_status_not_enough_points() {
         let talents = [0u8; 25];
         let tree = tree_for(Class::Mercenary).unwrap();
-        let distract = tree.nodes.first().unwrap();
+        let flash = tree.nodes.first().unwrap();
         assert_eq!(
-            TalentPanel::node_status(distract, &talents),
+            TalentPanel::node_status(flash, &talents),
             NodeStatus::NotEnoughPoints
         );
     }
@@ -1629,9 +1629,9 @@ mod tests {
         let mut talents = [0u8; 25];
         talents[0] = 5;
         let tree = tree_for(Class::Mercenary).unwrap();
-        let distract = tree.nodes.first().unwrap();
+        let flash = tree.nodes.first().unwrap();
         assert_eq!(
-            TalentPanel::node_status(distract, &talents),
+            TalentPanel::node_status(flash, &talents),
             NodeStatus::Available
         );
     }

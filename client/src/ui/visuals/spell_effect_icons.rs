@@ -117,6 +117,7 @@ fn spell_meta(skill_nr: i16, sprite: i16) -> Option<SpellEffectMeta> {
         | skills::SK_BLAST
         | skills::SK_RAINS_OF_RENEWAL
         | skills::SK_SUNS_BLESSING2
+        | skills::SK_GUNPOWDER_FLASH2
         | skills::SK_SEEING_RED
         | skills::SK_INNER_STRENGTH
         | skills::SK_REVENANT_CONDUIT2
@@ -135,7 +136,7 @@ fn spell_meta(skill_nr: i16, sprite: i16) -> Option<SpellEffectMeta> {
         | skills::SK_ANGUISH_ICE
         | skills::SK_PARASITE
         | skills::SK_CONTAGION
-        | skills::SK_DISTRACT
+        | skills::SK_GUNPOWDER_FLASH
         | skills::SK_ICE_STUN
         | skills::SK_AURA_CURSE => SpellEffectKind::Negative,
         // Eye potions and Potion of Golem are positive buffs.
@@ -747,7 +748,7 @@ mod tests {
         let negative_cases = [
             (skills::SK_PARASITE as i16, "Parasite"),
             (skills::SK_CONTAGION as i16, "Contagion"),
-            (skills::SK_DISTRACT as i16, "Distract"),
+            (skills::SK_GUNPOWDER_FLASH as i16, "Gunpowder Flash"),
         ];
         for (temp, name) in negative_cases {
             let meta = spell_meta(temp, 1)

@@ -7,7 +7,7 @@ use crate::traits::Class;
 // ---- TalentRefs (used both as "this node's slot" and as prereqs) ----
 
 // Layer 1 — root (no-prerequisites)
-const DISTRACT: TalentRef = TalentRef {
+const GUNPOWDER_FLASH: TalentRef = TalentRef {
     layer: 1,
     mask: 0b0000_0010,
 };
@@ -140,13 +140,13 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
     class: Class::Mercenary,
     nodes: &[
         TalentNode {
-            slot: DISTRACT,
-            name: "Distract",
-            description: "Distract the enemy, reducing their accuracy.",
+            slot: GUNPOWDER_FLASH,
+            name: "Gunpowder Flash",
+            description: "Blind attackers with a flash of powder, slowing their attacks and quickening your own attacks and movement.",
             cost: 1,
             prereqs: &[],
             effect: TalentEffect::GrantSkill {
-                skill: Skill::Distract,
+                skill: Skill::GunpowderFlash,
                 profile: TalentSkillProfile::DEFAULT_MERC,
             },
         },
@@ -166,7 +166,7 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             name: "Dodge Boost I",
             description: "Increase your dodge chance by 5%.",
             cost: 1,
-            prereqs: &[DISTRACT, PARASITE],
+            prereqs: &[GUNPOWDER_FLASH, PARASITE],
             effect: TalentEffect::DodgeChancePercent { percent: 5 },
         },
         TalentNode {
@@ -174,7 +174,7 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             name: "Spell Boost I",
             description: "Increase the potency of your offensive spells by 5%.",
             cost: 1,
-            prereqs: &[DISTRACT, PARASITE],
+            prereqs: &[GUNPOWDER_FLASH, PARASITE],
             effect: TalentEffect::AttributesPercent {
                 attrs: &[Attribute::Willpower],
                 percents: &[10],

@@ -128,10 +128,10 @@ pub fn spell_icon_meta(skill_nr: usize) -> Option<SpellIconMeta> {
             color: Color::RGB(140, 200, 80),
             icon_filename: "parasite_icon.png",
         }),
-        skills::SK_DISTRACT => Some(SpellIconMeta {
-            name: "Distract",
+        skills::SK_GUNPOWDER_FLASH => Some(SpellIconMeta {
+            name: "Gunpowder Flash",
             color: Color::RGB(220, 220, 120),
-            icon_filename: "distract_icon.png",
+            icon_filename: "gunpowder_flash_icon.png",
         }),
         skills::SK_DELIVER_DEATH => Some(SpellIconMeta {
             name: "Deliver Death",
@@ -278,10 +278,12 @@ pub fn active_spell_effect_icon_meta(skill_nr: usize, sprite: i16) -> Option<Spe
         | skills::SK_THUNDEROUS_FURY
         | skills::SK_PARASITE
         | skills::SK_CONTAGION
-        | skills::SK_DISTRACT
+        | skills::SK_GUNPOWDER_FLASH
         | skills::SK_AURA_CURSE
         | skills::SK_AURA_WAR_BANNER
         | skills::SK_SOUL_REFLECTION => spell_icon_meta(skill_nr),
+        // Gunpowder Flash caster buff — server item uses the *2 temp marker.
+        skills::SK_GUNPOWDER_FLASH2 => spell_icon_meta(skills::SK_GUNPOWDER_FLASH),
         // Sun's Blessing active buff — server item uses the *2 temp marker,
         // so reuse the castable skill's icon metadata.
         skills::SK_SUNS_BLESSING2 => spell_icon_meta(skills::SK_SUNS_BLESSING),

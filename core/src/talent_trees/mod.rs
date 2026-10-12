@@ -1412,9 +1412,9 @@ mod tests {
     #[test]
     fn talent_dodge_bonuses_returns_zero_when_no_dodge_talent_is_learned() {
         let tree = tree_for(Class::Mercenary).unwrap();
-        let distract = named_node(tree, "Distract").slot;
+        let flash = named_node(tree, "Gunpowder Flash").slot;
         let mut talents = [0u8; 25];
-        talents[distract.layer as usize] |= distract.mask;
+        talents[flash.layer as usize] |= flash.mask;
 
         assert_eq!(talent_dodge_bonuses(Class::Mercenary, &talents), 0);
     }
