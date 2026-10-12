@@ -2244,6 +2244,37 @@ mod tests {
     }
 
     #[test]
+    fn suns_blessing_recast_does_not_feed_back_into_its_own_power() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.item_templates[1].used = USE_ACTIVE;
+            gs.characters[cn].skill[skills::SK_SUNS_BLESSING][0] = 100;
+            gs.really_update_char(cn);
+
+            let mut powers = Vec::new();
+            for _ in 0..3 {
+                // Drop the cooldown marker so the recast is allowed.
+                for n in 0..20 {
+                    let i = gs.characters[cn].spell[n] as usize;
+                    if i != 0 && gs.items[i].temp == skills::SK_SUNS_BLESSING as u16 {
+                        gs.items[i].used = core::constants::USE_EMPTY;
+                        gs.characters[cn].spell[n] = 0;
+                    }
+                }
+                driver::skill_suns_blessing(gs, cn);
+                gs.really_update_char(cn);
+                let buff = (0..20)
+                    .map(|n| gs.characters[cn].spell[n] as usize)
+                    .find(|&i| i != 0 && gs.items[i].temp == skills::SK_SUNS_BLESSING2 as u16)
+                    .expect("buff attached");
+                powers.push(gs.items[buff].power);
+            }
+            assert_eq!(powers[0], powers[1]);
+            assert_eq!(powers[1], powers[2]);
+        });
+    }
+
+    #[test]
     fn rank_up_grants_talent_points_only_for_milestone_ranks() {
         with_test_gs(|gs| {
             let (cn, _nr) = add_test_player(gs);

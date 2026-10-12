@@ -832,6 +832,35 @@ pub fn skill_light(gs: &mut GameState, cn: usize) {
     add_exhaust(gs, cn, TICKS / 4);
 }
 
+/// Final skill value with the attribute bonuses of active spell items removed.
+///
+/// `skill[5]` folds in attributes buffed by Bless / Sun's Blessing, so reading it
+/// when recasting those buffs lets them feed back into their own power.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state.
+/// * `cn` - Character whose skill is read.
+/// * `skill` - Skill index.
+///
+/// # Returns
+///
+/// * Skill power as if no spell item were granting attribute bonuses.
+fn unbuffed_skill_power(gs: &GameState, cn: usize, skill: usize) -> i32 {
+    let ch = &gs.characters[cn];
+    let (mut buffed, mut base) = (0, 0);
+    for a in core::skills::get_skill_attribs(skill) {
+        let spell_bonus: i32 = ch.spell[..20]
+            .iter()
+            .filter(|&&s| s != 0)
+            .map(|&s| i32::from(gs.items[s as usize].attrib[a][1]))
+            .sum();
+        buffed += i32::from(ch.attrib[a][5]);
+        base += i32::from(ch.attrib[a][5]) - spell_bonus;
+    }
+    i32::from(ch.skill[skill][5]) - (buffed / 5 - base.max(0) / 5)
+}
+
 /// Computes the aggregate spellpower cap for a character.
 ///
 /// # Arguments
@@ -1442,7 +1471,7 @@ pub fn skill_bless(gs: &mut GameState, cn: usize) {
         if spellcost(gs, cn, 35) != 0 {
             return;
         }
-        spell_bless(gs, cn, co, i32::from(gs.characters[cn].skill[SK_BLESS][5]));
+        spell_bless(gs, cn, co, unbuffed_skill_power(gs, cn, SK_BLESS));
         add_exhaust(gs, cn, TICKS);
         return;
     }
@@ -1451,7 +1480,7 @@ pub fn skill_bless(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    spell_bless(gs, cn, co, i32::from(gs.characters[cn].skill[SK_BLESS][5]));
+    spell_bless(gs, cn, co, unbuffed_skill_power(gs, cn, SK_BLESS));
     add_exhaust(gs, cn, TICKS);
 }
 
@@ -5438,7 +5467,7 @@ pub fn skill_suns_blessing(gs: &mut GameState, cn: usize) {
     if skill_on_cooldown(gs, cn, SK_SUNS_BLESSING as u16) {
         return;
     }
-    let power = i32::from(gs.characters[cn].skill[SK_SUNS_BLESSING][5]);
+    let power = unbuffed_skill_power(gs, cn, SK_SUNS_BLESSING);
     let bonus = ((power / 10 + 2) * 3).clamp(3, 90) as i16;
     let buff_duration = TICKS * 180;
     let cooldown_len = TICKS * 55;
