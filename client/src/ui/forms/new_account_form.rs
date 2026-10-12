@@ -646,13 +646,14 @@ impl Widget for NewAccountForm {
         }
 
         if let Some(ref err) = self.error_text {
-            font_cache::draw_text(
+            font_cache::draw_wrapped_text(
                 ctx.canvas,
                 ctx.gfx,
                 FONT,
                 err,
                 self.bounds.x + PAD_X,
                 cursor_y,
+                self.bounds.width - 2 * PAD_X as u32,
                 font_cache::TextStyle::tinted(Color::RGB(255, 80, 80)),
             )?;
         }

@@ -4697,8 +4697,7 @@ pub fn teleport3(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         )
     };
 
-    if (kindred & 0x00000001) != 0 {
-        // KIN_PURPLE
+    if (kindred as u32 & core::traits::KIN_PURPLE) != 0 {
         gs.characters[cn].temple_x = 558;
         gs.characters[cn].temple_y = 542;
         gs.characters[cn].tavern_x = 558;
@@ -9040,6 +9039,24 @@ mod tests {
                 gs.characters[cn].tavern_y,
                 core::constants::HOME_MERCENARY_Y as u16
             );
+        });
+    }
+
+    #[test]
+    fn teleport3_sets_mercenary_temple_not_purple() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].kindred = core::traits::KIN_MERCENARY as i32;
+            gs.items[1] = core::types::Item::default();
+            gs.items[1].used = USE_ACTIVE;
+            gs.items[1].data[0] = 512;
+            gs.items[1].data[1] = 512;
+
+            assert!(teleport3(gs, cn, 1));
+
+            let ch = &gs.characters[cn];
+            assert_eq!((ch.temple_x, ch.temple_y), (512, 512));
+            assert_eq!((ch.tavern_x, ch.tavern_y), (512, 512));
         });
     }
 
