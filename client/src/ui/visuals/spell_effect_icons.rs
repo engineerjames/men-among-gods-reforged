@@ -140,8 +140,8 @@ fn spell_meta(skill_nr: i16, sprite: i16) -> Option<SpellEffectMeta> {
         | skills::SK_GUNPOWDER_FLASH
         | skills::SK_ICE_STUN
         | skills::SK_AURA_CURSE => SpellEffectKind::Negative,
-        // Eye potions and Potion of Golem are positive buffs.
-        254 | 449 => SpellEffectKind::Positive,
+        // Eye potions, Potion of Golem and the lab 7 pills are positive buffs.
+        254 | 449 | 648 | 649 => SpellEffectKind::Positive,
         _ => return None,
     };
     Some(SpellEffectMeta { kind, icon })
@@ -856,6 +856,15 @@ mod tests {
                     "skill_nr {skill_nr} has icon meta but no kind classification in spell_meta"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn lab7_pills_are_positive_effects() {
+        for (temp, name) in [(648, "Green Pill"), (649, "Blue Pill")] {
+            let meta = spell_meta(temp, 93).expect("pill should have an icon");
+            assert_eq!(meta.kind, SpellEffectKind::Positive);
+            assert!(meta.icon.name.starts_with(name));
         }
     }
 

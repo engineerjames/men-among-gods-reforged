@@ -348,6 +348,17 @@ pub fn active_spell_effect_icon_meta(skill_nr: usize, sprite: i16) -> Option<Spe
             color: Color::RGB(160, 200, 100),
             icon_filename: "golempot_icon.png",
         }),
+        // Lab 7 pills: spell temp is the pill template id.
+        648 => Some(SpellIconMeta {
+            name: "Green Pill (underwater speech)",
+            color: Color::RGB(120, 210, 120),
+            icon_filename: "potion_icon.png",
+        }),
+        649 => Some(SpellIconMeta {
+            name: "Blue Pill (water breathing)",
+            color: Color::RGB(100, 160, 230),
+            icon_filename: "potion_icon.png",
+        }),
         _ => None,
     }
 }
