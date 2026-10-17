@@ -35,6 +35,14 @@ pub fn plr_cmd(gs: &mut GameState, nr: usize) {
 
     let parsed_cmd = ClientCommandType::from(cmd);
 
+    if gs.players[nr].state == core::constants::ST_CONNECT
+        && parsed_cmd != ClientCommandType::ApiLogin
+    {
+        log::info!("Connection closed (unexpected pre-login command {cmd}) for player {nr}");
+        gs.players[nr].sock = None;
+        return;
+    }
+
     // Handle pre-login commands that transition connection state before normal gameplay.
     match parsed_cmd {
         ClientCommandType::ApiLogin => {

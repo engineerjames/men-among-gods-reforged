@@ -32,6 +32,14 @@ use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 const GAME_SERVER_PORT: u16 = 5555;
 const GAME_LISTEN_BACKLOG: i32 = 5;
 const LOGIN_RESOLUTION_TIMEOUT_TICKS: u32 = (core::constants::TICKS * 5) as u32;
+/// Total time a peer has to complete the TLS handshake.
+const TLS_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
+/// Most TLS handshakes in flight at once; extra connections are dropped.
+const MAX_PENDING_HANDSHAKES: usize = 64;
+/// Connections accepted per tick; bounds per-tick handshake crypto cost.
+const MAX_ACCEPTS_PER_TICK: usize = 4;
+/// Most player slots that may be held by connections not yet in `ST_NORMAL`.
+const MAX_PREAUTH_PLAYERS: usize = 64;
 
 /// zlib level for per-player tick payloads.
 ///
@@ -306,6 +314,9 @@ pub struct Server {
     /// TLS configuration (loaded from `SERVER_TLS_CERT` / `SERVER_TLS_KEY`).
     tls_config: Option<Arc<rustls::ServerConfig>>,
 
+    /// Accepted connections whose TLS handshake is still in progress.
+    pending_tls: Vec<tls::PendingTls>,
+
     /// Tick rate performance statistics buffer.
     tick_perf_stats: StatisticsBuffer<f32>,
 
@@ -389,6 +400,7 @@ impl Server {
             sock: None,
             last_tick_time: None,
             tls_config: None,
+            pending_tls: Vec::new(),
             tick_perf_stats: StatisticsBuffer::new(100),
             net_io_perf_stats: StatisticsBuffer::new(100),
             measurement_interval: 20,
@@ -781,7 +793,7 @@ impl Server {
 
                 // Process all pending commands (16 bytes each)
                 loop {
-                    if gs.players[n].in_len < 16 {
+                    if gs.players[n].in_len < 16 || gs.players[n].sock.is_none() {
                         break;
                     }
 
@@ -2496,41 +2508,57 @@ impl Server {
 
     /// Accept new connections and perform per-player network IO.
     ///
-    /// Accepts new TCP connections on the listener, assigning them a free
-    /// /// player slot via `new_player`. For existing connections, it calls
-    /// `rec_player` and `send_player` as necessary to handle receive and send
-    /// activity.
+    /// Accepts up to `MAX_ACCEPTS_PER_TICK` new TCP connections, advances
+    /// pending TLS handshakes without blocking, and hands completed ones to
+    /// `new_player`. For existing connections, it calls `rec_player` and
+    /// `send_player` to handle receive and send activity.
     ///
     /// # Arguments
     ///
     /// * `gs` - Mutable reference to the unified game state.
     fn handle_network_io(&mut self, gs: &mut GameState) {
-        // Handle new connections
-        if let Some(ref listener) = self.sock {
-            match listener.accept() {
-                Ok((stream, addr)) => {
-                    log::info!("New connection from {}", addr);
-                    tls::configure_accepted_tcp_stream(&stream);
-                    let config = self
-                        .tls_config
-                        .as_ref()
-                        .expect("TLS config must be initialized before handle_network_io");
-                    match tls::accept_tls(stream, config.clone()) {
-                        Ok(tls_stream) => {
-                            log::info!("TLS handshake completed for {}", addr);
-                            self.new_player(gs, tls_stream, addr.ip());
+        if let (Some(listener), Some(config)) = (&self.sock, &self.tls_config) {
+            for _ in 0..MAX_ACCEPTS_PER_TICK {
+                match listener.accept() {
+                    Ok((stream, addr)) => {
+                        if self.pending_tls.len() >= MAX_PENDING_HANDSHAKES {
+                            log::warn!(
+                                "Dropping connection from {addr}: too many pending TLS handshakes"
+                            );
+                            continue;
                         }
-                        Err(e) => {
-                            log::warn!("TLS handshake failed for {}: {}", addr, e);
+                        log::info!("New connection from {}", addr);
+                        tls::configure_accepted_tcp_stream(&stream);
+                        match tls::PendingTls::new(
+                            stream,
+                            addr,
+                            config.clone(),
+                            TLS_HANDSHAKE_TIMEOUT,
+                        ) {
+                            Ok(pending) => self.pending_tls.push(pending),
+                            Err(e) => log::warn!("TLS setup failed for {}: {}", addr, e),
                         }
                     }
+                    Err(ref e) if e.kind() == ErrorKind::WouldBlock => break,
+                    Err(e) => {
+                        log::error!("Error accepting connection: {}", e);
+                        break;
+                    }
                 }
-                Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
-                    // No pending connections, this is normal in non-blocking mode
+            }
+        }
+
+        let now = Instant::now();
+        for mut pending in std::mem::take(&mut self.pending_tls) {
+            match pending.poll() {
+                Ok(true) => {
+                    log::info!("TLS handshake completed for {}", pending.addr);
+                    let ip = pending.addr.ip();
+                    self.new_player(gs, pending.into_stream(), ip);
                 }
-                Err(e) => {
-                    log::error!("Error accepting connection: {}", e);
-                }
+                Ok(false) if !pending.is_expired(now) => self.pending_tls.push(pending),
+                Ok(false) => log::warn!("TLS handshake timed out for {}", pending.addr),
+                Err(e) => log::warn!("TLS handshake failed for {}: {}", pending.addr, e),
             }
         }
 
@@ -2566,6 +2594,16 @@ impl Server {
         };
 
         let ticker = gs.globals.ticker as u32;
+
+        let preauth = gs
+            .players
+            .iter()
+            .filter(|p| p.sock.is_some() && p.state != core::constants::ST_NORMAL)
+            .count();
+        if preauth >= MAX_PREAUTH_PLAYERS {
+            log::warn!("new_player: dropping {addr}, {preauth} slots already awaiting login");
+            return;
+        }
 
         let mut slot: Option<usize> = None;
         for n in 1..gs.players.len() {

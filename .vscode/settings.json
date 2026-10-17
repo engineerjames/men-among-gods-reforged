@@ -8,4 +8,6 @@
         "CMAKE_POLICY_VERSION_MINIMUM": "3.5",
         "CARGO_TARGET_DIR": "target/analyzer"
     },
+    "chat.defaultToCopilotHarness": false,
+    "chat.editor.preferCopilotHarness": false
 }

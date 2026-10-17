@@ -7,8 +7,9 @@
 use rustls::ServerConnection;
 use socket2::SockRef;
 use std::io::{self, Read, Write};
-use std::net::{Shutdown, TcpStream};
+use std::net::{Shutdown, SocketAddr, TcpStream};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 const GAME_SOCKET_BUFFER_BYTES: usize = 65_536;
 
@@ -62,15 +63,13 @@ impl TlsGameStream {
         self.is_shutdown = true;
 
         let stream = &mut self.stream;
-        let _ = stream.sock.set_nonblocking(false);
-
         stream.conn.send_close_notify();
 
+        // Best-effort: a peer that stops reading must not block the tick thread.
         while stream.conn.wants_write() {
             match stream.conn.write_tls(&mut stream.sock) {
                 Ok(0) => break,
                 Ok(_) => {}
-                Err(err) if err.kind() == io::ErrorKind::WouldBlock => continue,
                 Err(err) => {
                     log::debug!("Failed to write TLS close_notify: {err}");
                     break;
@@ -192,55 +191,146 @@ pub fn load_tls_config() -> Result<Arc<rustls::ServerConfig>, String> {
     Ok(Arc::new(config))
 }
 
-/// Perform a blocking TLS handshake on `stream` using `config`.
+/// A server-side TLS handshake driven incrementally from the tick loop.
 ///
-/// The stream is temporarily set to blocking mode for the handshake, then
-/// switched back to non-blocking afterwards. Returns a `GameStream::Tls` on
-/// success.
-///
-/// # Arguments
-///
-/// * `stream` - Value passed to `accept_tls`.
-/// * `config` - Value passed to `accept_tls`.
-///
-/// # Returns
-///
-/// * `Ok` when `accept_tls` succeeds, or `Err` with failure details.
-pub fn accept_tls(
-    stream: TcpStream,
-    config: Arc<rustls::ServerConfig>,
-) -> Result<GameStream, String> {
-    // TLS handshake requires blocking I/O
-    stream
-        .set_nonblocking(false)
-        .map_err(|e| format!("set_nonblocking(false): {e}"))?;
+/// The socket is non-blocking for its whole lifetime, so a peer that stalls
+/// mid-handshake can never block the game thread; it simply stays pending
+/// until [`PendingTls::is_expired`] and is dropped by the caller.
+pub struct PendingTls {
+    conn: ServerConnection,
+    sock: TcpStream,
+    /// Remote peer address.
+    pub addr: SocketAddr,
+    deadline: Instant,
+}
 
-    // Set a generous timeout for the handshake
-    stream
-        .set_read_timeout(Some(std::time::Duration::from_secs(10)))
-        .map_err(|e| format!("set_read_timeout: {e}"))?;
-
-    let conn = ServerConnection::new(config).map_err(|e| format!("ServerConnection::new: {e}"))?;
-    let mut tls_stream = rustls::StreamOwned::new(conn, stream);
-
-    // Drive the handshake to completion by doing a zero-byte read.
-    // rustls will perform the handshake I/O internally.
-    let _ = tls_stream.read(&mut []);
-
-    // Check that the handshake actually completed
-    if tls_stream.conn.is_handshaking() {
-        return Err("TLS handshake did not complete".to_owned());
+impl PendingTls {
+    /// Starts a non-blocking server handshake on an accepted stream.
+    ///
+    /// # Arguments
+    ///
+    /// * `sock` - Accepted TCP stream.
+    /// * `addr` - Remote peer address.
+    /// * `config` - Server TLS configuration.
+    /// * `timeout` - Total time the peer has to finish the handshake.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok` with the pending handshake, or `Err` with failure details.
+    pub fn new(
+        sock: TcpStream,
+        addr: SocketAddr,
+        config: Arc<rustls::ServerConfig>,
+        timeout: Duration,
+    ) -> Result<Self, String> {
+        sock.set_nonblocking(true)
+            .map_err(|e| format!("set_nonblocking(true): {e}"))?;
+        let conn =
+            ServerConnection::new(config).map_err(|e| format!("ServerConnection::new: {e}"))?;
+        Ok(Self {
+            conn,
+            sock,
+            addr,
+            deadline: Instant::now() + timeout,
+        })
     }
 
-    // Switch back to non-blocking for the game loop
-    tls_stream
-        .sock
-        .set_nonblocking(true)
-        .map_err(|e| format!("set_nonblocking(true): {e}"))?;
-    tls_stream
-        .sock
-        .set_read_timeout(None)
-        .map_err(|e| format!("clear read_timeout: {e}"))?;
+    /// Performs whatever handshake I/O is possible without blocking.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(true)` once the handshake has completed.
+    /// * `Ok(false)` while still waiting on the peer.
+    /// * `Err` when the peer sent invalid data or closed the connection.
+    pub fn poll(&mut self) -> io::Result<bool> {
+        match self.conn.complete_io(&mut self.sock) {
+            Ok(_) => {}
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
+            Err(e) => return Err(e),
+        }
+        Ok(!self.conn.is_handshaking())
+    }
 
-    Ok(GameStream::Tls(TlsGameStream::new(tls_stream)))
+    /// Returns whether the handshake deadline has passed.
+    ///
+    /// # Arguments
+    ///
+    /// * `now` - Current time.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `now` is at or past the deadline.
+    pub fn is_expired(&self, now: Instant) -> bool {
+        now >= self.deadline
+    }
+
+    /// Converts a completed handshake into a game stream.
+    ///
+    /// # Returns
+    ///
+    /// * A non-blocking `GameStream::Tls`.
+    pub fn into_stream(self) -> GameStream {
+        GameStream::Tls(TlsGameStream::new(rustls::StreamOwned::new(
+            self.conn, self.sock,
+        )))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::TcpListener;
+
+    #[derive(Debug)]
+    struct NoCert;
+
+    impl rustls::server::ResolvesServerCert for NoCert {
+        fn resolve(
+            &self,
+            _: rustls::server::ClientHello<'_>,
+        ) -> Option<Arc<rustls::sign::CertifiedKey>> {
+            None
+        }
+    }
+
+    fn pending_with_peer() -> (PendingTls, TcpStream) {
+        let config = rustls::ServerConfig::builder_with_provider(Arc::new(
+            rustls::crypto::aws_lc_rs::default_provider(),
+        ))
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_no_client_auth()
+        .with_cert_resolver(Arc::new(NoCert));
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let peer = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (sock, addr) = listener.accept().unwrap();
+        let pending =
+            PendingTls::new(sock, addr, Arc::new(config), Duration::from_secs(5)).unwrap();
+        (pending, peer)
+    }
+
+    #[test]
+    fn silent_peer_does_not_block_poll() {
+        let (mut pending, _peer) = pending_with_peer();
+        let start = Instant::now();
+        assert!(!pending.poll().unwrap());
+        assert!(start.elapsed() < Duration::from_millis(500));
+        assert!(!pending.is_expired(Instant::now()));
+        assert!(pending.is_expired(Instant::now() + Duration::from_secs(6)));
+    }
+
+    #[test]
+    fn non_tls_peer_fails_poll() {
+        let (mut pending, mut peer) = pending_with_peer();
+        peer.write_all(b"GET / HTTP/1.1\r\nHost: x\r\n\r\n")
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            match pending.poll() {
+                Err(_) => break,
+                Ok(false) if Instant::now() < deadline => std::thread::yield_now(),
+                other => panic!("expected handshake failure, got {other:?}"),
+            }
+        }
+    }
 }
