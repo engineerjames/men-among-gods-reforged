@@ -877,6 +877,7 @@ impl GameScene {
             spell_effect_icons: SpellEffectIcons::new(
                 positive_start_x,
                 negative_right_x,
+                VITALITY_BARS_X,
                 VITALITY_BARS_Y,
             ),
             look_panel: LookPanel::new(

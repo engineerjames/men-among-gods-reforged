@@ -340,8 +340,12 @@ fn main() -> Result<(), String> {
         show_secondary: false,
     });
 
-    let mut spell_effect_icons =
-        SpellEffectIcons::new(SPELL_ICONS_POS_X, SPELL_ICONS_NEG_RIGHT_X, SPELL_ICONS_Y);
+    let mut spell_effect_icons = SpellEffectIcons::new(
+        SPELL_ICONS_POS_X,
+        SPELL_ICONS_NEG_RIGHT_X,
+        HUD_ARC_CENTER_X,
+        SPELL_ICONS_Y,
+    );
     let mut demo_spell = [0i32; 20];
     let mut demo_active = [0i8; 20];
     let mut demo_spell_type = [0i16; 20];

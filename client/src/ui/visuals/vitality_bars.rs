@@ -32,7 +32,7 @@ use crate::ui::widget::{EventResponse, UiEvent};
 /// The total horizontal span is `2 * HP_HALF_W` pixels.
 /// Must be large enough for all three layers: `>= ARM_THICKNESS * 3 + LAYER_GAP * 2`
 /// so the innermost chevron still has meaningful width.
-const HP_HALF_W: i32 = 40;
+pub(crate) const HP_HALF_W: i32 = 40;
 
 /// Vertical height of the outermost (HP) chevron from its bottom feet to its
 /// tip.  Inner layers scale this proportionally:
