@@ -831,7 +831,7 @@ impl GameScene {
                 let Some(tile) = map.tile_at_xy(x, y) else {
                     continue;
                 };
-                if tile.ch_nr == 0 && tile.obj2 <= 0 && tile.ch_sprite <= 0 {
+                if tile.ch_nr == 0 && tile.obj2 <= 0 && tile.ch_sprite == 0 {
                     continue;
                 }
                 let pos = self.tile_pos(tile, x, y, cam_xoff, cam_yoff);
