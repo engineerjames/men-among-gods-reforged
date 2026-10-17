@@ -530,7 +530,11 @@ pub fn plr_state(gs: &mut GameState, nr: usize) {
             plr_login(gs, nr);
         }
         state if state == core::constants::ST_CONNECT => {
-            // Do nothing - initial connection state
+            // The real client sends CL_API_LOGIN right after the TLS handshake.
+            if ticker.wrapping_sub(lasttick) > core::constants::TICKS * 5 {
+                log::info!("Connection closed (no login) for player {}", nr);
+                gs.players[nr].sock = None;
+            }
         }
         state if state == core::constants::ST_EXIT => {
             // Do nothing - handled above
@@ -1278,6 +1282,7 @@ mod tests {
         tls::GameStream,
     };
     use core::{
+        client_commands::ClientCommandType,
         constants::{
             CharacterFlags, ItemFlags, MAX_SPEEDTAB_SPEED_INDEX, ST_CONNECT, ST_EXIT, ST_NORMAL,
             USE_ACTIVE,
@@ -1468,6 +1473,29 @@ mod tests {
 
             plr_state(gs, nr);
             assert_eq!(gs.players[nr].state, ST_EXIT);
+        });
+
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.players[nr].state = ST_CONNECT;
+            gs.players[nr].lasttick = 0;
+            gs.globals.ticker = TICKS * 5;
+            plr_state(gs, nr);
+            assert!(gs.players[nr].sock.is_some());
+
+            gs.globals.ticker = TICKS * 6;
+            plr_state(gs, nr);
+            assert!(gs.players[nr].sock.is_none());
+        });
+
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.players[nr].state = ST_CONNECT;
+            gs.players[nr].inbuf[0] = ClientCommandType::CmdLook as u8;
+            crate::player::plr_cmd(gs, nr);
+            assert!(gs.players[nr].sock.is_none());
         });
     }
 
