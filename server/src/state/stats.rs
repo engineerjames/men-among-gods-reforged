@@ -237,6 +237,8 @@ impl GameState {
         light += i32::from(self.characters[cn].light_bonus);
 
         // Calculate bonuses from active spells
+        let mut flash_slow = 0i32;
+        let mut flash_haste = false;
         if !char_has_nomagic {
             for n in 0..20 {
                 let spell_idx = self.characters[cn].spell[n];
@@ -269,6 +271,12 @@ impl GameState {
                     self.characters[cn].stunned = 1;
                 }
 
+                if spell.temp == skills::SK_GUNPOWDER_FLASH as u16 {
+                    flash_slow += driver::gunpowder_flash_slow_points(spell.power);
+                }
+                if spell.temp == skills::SK_GUNPOWDER_FLASH2 as u16 {
+                    flash_haste = true;
+                }
                 if spell.hp[0] < 0 {
                     self.characters[cn].flags |= CharacterFlags::NoHpReg.bits();
                 }
@@ -461,10 +469,13 @@ impl GameState {
         // same baseline so a talent bonus to one never affects the other.
         let movement_speed_calc = base_speed_calc
             + (base_speed_calc as f32 * (talent_bonuses.movement_speed_percent as f32 / 100.0))
-                .round() as i32;
+                .round() as i32
+            + i32::from(flash_haste);
         let action_speed_calc = base_speed_calc
             + (base_speed_calc as f32 * (talent_bonuses.attack_speed_percent as f32 / 100.0))
-                .round() as i32;
+                .round() as i32
+            + if flash_haste { 2 } else { 0 }
+            - flash_slow;
 
         self.characters[cn].speed = 20 - movement_speed_calc as i16;
         self.characters[cn].speed = self.characters[cn]
@@ -2244,6 +2255,37 @@ mod tests {
     }
 
     #[test]
+    fn suns_blessing_recast_does_not_feed_back_into_its_own_power() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.item_templates[1].used = USE_ACTIVE;
+            gs.characters[cn].skill[skills::SK_SUNS_BLESSING][0] = 100;
+            gs.really_update_char(cn);
+
+            let mut powers = Vec::new();
+            for _ in 0..3 {
+                // Drop the cooldown marker so the recast is allowed.
+                for n in 0..20 {
+                    let i = gs.characters[cn].spell[n] as usize;
+                    if i != 0 && gs.items[i].temp == skills::SK_SUNS_BLESSING as u16 {
+                        gs.items[i].used = core::constants::USE_EMPTY;
+                        gs.characters[cn].spell[n] = 0;
+                    }
+                }
+                driver::skill_suns_blessing(gs, cn);
+                gs.really_update_char(cn);
+                let buff = (0..20)
+                    .map(|n| gs.characters[cn].spell[n] as usize)
+                    .find(|&i| i != 0 && gs.items[i].temp == skills::SK_SUNS_BLESSING2 as u16)
+                    .expect("buff attached");
+                powers.push(gs.items[buff].power);
+            }
+            assert_eq!(powers[0], powers[1]);
+            assert_eq!(powers[1], powers[2]);
+        });
+    }
+
+    #[test]
     fn rank_up_grants_talent_points_only_for_milestone_ranks() {
         with_test_gs(|gs| {
             let (cn, _nr) = add_test_player(gs);
@@ -2391,6 +2433,46 @@ mod tests {
                 gs.characters[cn].future3[2], baseline_action_speed,
                 "movement speed talent must not change attack speed"
             );
+        });
+    }
+
+    fn attach_test_spell(gs: &mut GameState, cn: usize, slot: usize, temp: usize, power: u32) {
+        gs.items[slot].used = USE_ACTIVE;
+        gs.items[slot].flags |= core::constants::ItemFlags::IF_SPELL.bits();
+        gs.items[slot].temp = temp as u16;
+        gs.items[slot].power = power;
+        gs.characters[cn].spell[0] = slot as u32;
+    }
+
+    #[test]
+    fn gunpowder_flash_debuff_slows_action_speed_only() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.really_update_char(cn);
+            let baseline_speed = gs.characters[cn].speed;
+            let baseline_action_speed = gs.characters[cn].future3[2];
+
+            attach_test_spell(gs, cn, 5, skills::SK_GUNPOWDER_FLASH, 80);
+            gs.really_update_char(cn);
+
+            assert_eq!(gs.characters[cn].speed, baseline_speed);
+            assert!(gs.characters[cn].future3[2] > baseline_action_speed);
+        });
+    }
+
+    #[test]
+    fn gunpowder_flash_buff_quickens_action_and_movement() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.really_update_char(cn);
+            let baseline_speed = gs.characters[cn].speed;
+            let baseline_action_speed = gs.characters[cn].future3[2];
+
+            attach_test_spell(gs, cn, 5, skills::SK_GUNPOWDER_FLASH2, 80);
+            gs.really_update_char(cn);
+
+            assert!(gs.characters[cn].speed < baseline_speed);
+            assert!(gs.characters[cn].future3[2] < baseline_action_speed);
         });
     }
 }

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use sdl2::{pixels::Color, render::Canvas, video::Window};
 
 use mag_core::constants::{
@@ -160,6 +162,15 @@ fn magic_effect_params(flags: u32) -> Option<(u32, u32)> {
         alphastr = alphastr.max((flags & CMAGIC) >> 28);
     }
     (alpha_mask != 0).then_some((alpha_mask, alphastr))
+}
+
+/// Whole-tile displacement closest to a sub-pixel screen offset (inverse of the diamond projection).
+fn tile_delta_for_offset(xoff: i32, yoff: i32) -> (i32, i32) {
+    let unit = FLOOR_TILE_WIDTH * SUBPIXEL_UNIT;
+    (
+        (xoff + 2 * yoff + unit / 2).div_euclid(unit),
+        (xoff - 2 * yoff + unit / 2).div_euclid(unit),
+    )
 }
 
 /// Per-tile draw position: tile coordinates, camera offset, and character offset (sub-pixel units).
@@ -812,7 +823,27 @@ impl GameScene {
 
         Self::draw_background_pass(canvas, gfx, ps, hover_highlight, cam_xoff, cam_yoff)?;
 
+        // A walking character is painted in the slot of the tile it is visually nearest to,
+        // not the tile that owns it, so it sorts correctly against neighbouring objects.
+        let mut incoming: HashMap<(usize, usize), Vec<TilePos>> = HashMap::new();
+        for y in 0..TILEY {
+            for x in 0..TILEX {
+                let Some(tile) = map.tile_at_xy(x, y) else {
+                    continue;
+                };
+                if tile.ch_nr == 0 && tile.obj2 <= 0 && tile.ch_sprite == 0 {
+                    continue;
+                }
+                let pos = self.tile_pos(tile, x, y, cam_xoff, cam_yoff);
+                let slot = Self::draw_slot(ps, pos);
+                if slot != (x, y) {
+                    incoming.entry(slot).or_default().push(pos);
+                }
+            }
+        }
+
         // Pass 2: Objects/characters/markers/effects (legacy eng_display order: y descending).
+        let mut deferred_nameplates: Vec<TilePos> = Vec::new();
         for y in (0..TILEY).rev() {
             for x in 0..TILEX {
                 let Some(tile) = map.tile_at_xy(x, y) else {
@@ -823,26 +854,49 @@ impl GameScene {
                     continue;
                 }
 
-                let (ch_xoff, ch_yoff) = self.world_interpolator.character_offset(tile);
-                let pos = TilePos {
-                    x,
-                    y,
-                    cam_xoff,
-                    cam_yoff,
-                    ch_xoff,
-                    ch_yoff,
-                };
+                let pos = self.tile_pos(tile, x, y, cam_xoff, cam_yoff);
 
                 Self::draw_tile_object(canvas, gfx, ps, tile, pos, hover_highlight, hide)?;
-                Self::draw_tile_character(
-                    canvas,
-                    gfx,
-                    ps,
-                    tile,
-                    pos,
-                    hover_highlight,
-                    shadows_enabled,
-                )?;
+                let own = (Self::draw_slot(ps, pos) == (x, y)).then_some(pos);
+                let movers = incoming.get(&(x, y)).into_iter().flatten().copied();
+                for cpos in own.into_iter().chain(movers) {
+                    let Some(ctile) = map.tile_at_xy(cpos.x, cpos.y) else {
+                        continue;
+                    };
+                    Self::draw_tile_character(
+                        canvas,
+                        gfx,
+                        ps,
+                        ctile,
+                        cpos,
+                        hover_highlight,
+                        shadows_enabled,
+                    )?;
+                    // A character hidden behind an object keeps its label hidden too (painter
+                    // order). Otherwise the label is drawn last so nearby tall sprites can't
+                    // clip it while the character walks between tiles.
+                    if ctile.ch_nr != 0 && !Self::character_occluded(gfx, ps, ctile, cpos, hide) {
+                        deferred_nameplates.push(cpos);
+                    } else {
+                        self.draw_tile_nameplate(
+                            canvas,
+                            gfx,
+                            ps,
+                            ctile,
+                            cpos,
+                            show_names,
+                            show_proz,
+                            show_danger_glyphs,
+                        )?;
+                    }
+                }
+                Self::draw_tile_markers(canvas, gfx, ps, tile, pos)?;
+                Self::draw_tile_overlays(canvas, gfx, tile, pos, spell_effects_enabled)?;
+            }
+        }
+
+        for pos in deferred_nameplates {
+            if let Some(tile) = map.tile_at_xy(pos.x, pos.y) {
                 self.draw_tile_nameplate(
                     canvas,
                     gfx,
@@ -853,12 +907,118 @@ impl GameScene {
                     show_proz,
                     show_danger_glyphs,
                 )?;
-                Self::draw_tile_markers(canvas, gfx, ps, tile, pos)?;
-                Self::draw_tile_overlays(canvas, gfx, tile, pos, spell_effects_enabled)?;
             }
         }
 
         Ok(())
+    }
+
+    /// Builds the draw position for the tile at `(x, y)` with its interpolated character offset.
+    fn tile_pos(
+        &self,
+        tile: &CMapTile,
+        x: usize,
+        y: usize,
+        cam_xoff: i32,
+        cam_yoff: i32,
+    ) -> TilePos {
+        let (ch_xoff, ch_yoff) = self.world_interpolator.character_offset(tile);
+        TilePos {
+            x,
+            y,
+            cam_xoff,
+            cam_yoff,
+            ch_xoff,
+            ch_yoff,
+        }
+    }
+
+    /// Returns the painter-order slot for the character owned by `pos`: the tile nearest to
+    /// where it is currently drawn, falling back to its own tile if that is off-grid or invisible.
+    fn draw_slot(ps: &PlayerState, pos: TilePos) -> (usize, usize) {
+        let (dx, dy) = tile_delta_for_offset(pos.ch_xoff, pos.ch_yoff);
+        let (vx, vy) = (pos.x as i32 + dx, pos.y as i32 + dy);
+        if (0..TILEX as i32).contains(&vx)
+            && (0..TILEY as i32).contains(&vy)
+            && let Some(t) = ps.map().tile_at_xy(vx as usize, vy as usize)
+            && (t.flags & INVIS) == 0
+        {
+            (vx as usize, vy as usize)
+        } else {
+            (pos.x, pos.y)
+        }
+    }
+
+    /// Screen rect of a sprite placed on a tile, matching [`Self::draw_world_sprite`].
+    fn world_sprite_rect(
+        gfx: &mut GraphicsCache<'_>,
+        sprite_id: i32,
+        x: usize,
+        y: usize,
+        cam_xoff: i32,
+        cam_yoff: i32,
+    ) -> sdl2::rect::Rect {
+        let q = gfx.get_texture(sprite_id as usize).query();
+        let (ground_x, ground_y) = Self::tile_ground_diamond_origin(x, y, cam_xoff, cam_yoff);
+        sdl2::rect::Rect::new(
+            ground_x - (q.width as i32 / 32) * (FLOOR_TILE_WIDTH / 2),
+            ground_y + FLOOR_TILE_HEIGHT - (q.height as i32 / 32) * 32,
+            q.width,
+            q.height,
+        )
+    }
+
+    /// Returns `true` when objects drawn after this tile's character cover at least half
+    /// of its sprite (e.g. a player hiding behind a tree).
+    fn character_occluded(
+        gfx: &mut GraphicsCache<'_>,
+        ps: &PlayerState,
+        tile: &CMapTile,
+        pos: TilePos,
+        hide: bool,
+    ) -> bool {
+        let ch = if tile.obj2 > 0 {
+            tile.obj2
+        } else {
+            i32::from(tile.ch_sprite)
+        };
+        if ch <= 0 {
+            return false;
+        }
+        let map = ps.map();
+        let dir = ps.character_info().dir;
+        let ch_rect = Self::world_sprite_rect(
+            gfx,
+            ch,
+            pos.x,
+            pos.y,
+            pos.cam_xoff + pos.ch_xoff,
+            pos.cam_yoff + pos.ch_yoff,
+        );
+        let covered = ch_rect.width() * ch_rect.height() / 2;
+
+        // Tiles drawn after the character's slot: smaller y, or same y with larger x.
+        let (slot_x, slot_y) = Self::draw_slot(ps, pos);
+        for oy in (0..=slot_y).rev() {
+            let first_x = if oy == slot_y { slot_x + 1 } else { 0 };
+            for ox in first_x..TILEX {
+                let Some(other) = map.tile_at_xy(ox, oy) else {
+                    continue;
+                };
+                if other.obj1 <= 0 || (other.flags & (INVIS | ISITEM)) != 0 {
+                    continue;
+                }
+                let obj = Self::resolve_object_sprite(other.obj1, false, ox, oy, dir, hide);
+                let obj_rect =
+                    Self::world_sprite_rect(gfx, obj, ox, oy, pos.cam_xoff, pos.cam_yoff);
+                if let Some(overlap) = ch_rect.intersection(obj_rect)
+                    && overlap.width() * overlap.height() >= covered
+                {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     /// Draws a tile's object sprite and its item hover highlight.
@@ -1188,12 +1348,23 @@ impl GameScene {
 mod tests {
     use super::{
         DANGER_GLYPH_GAP, danger_glyph_width, death_sprite, injured_sprite, magic_effect_params,
-        mine_wall_sprite, nameplate_layout, nameplate_text, tomb_sprite,
+        mine_wall_sprite, nameplate_layout, nameplate_text, tile_delta_for_offset, tomb_sprite,
     };
     use crate::font_cache::{self, BITMAP_GLYPH_ADVANCE};
+    use crate::types::map::SUBPIXEL_UNIT;
     use mag_core::constants::{EMAGIC, GMAGIC, INJURED, INJURED1, INJURED2};
 
     const DANGER_GLYPH_SIZE: i32 = 16;
+
+    #[test]
+    fn tile_delta_for_offset_snaps_to_nearest_tile() {
+        let px = SUBPIXEL_UNIT;
+        assert_eq!(tile_delta_for_offset(0, 0), (0, 0));
+        assert_eq!(tile_delta_for_offset(3 * px, px), (0, 0));
+        assert_eq!(tile_delta_for_offset(16 * px, 8 * px), (1, 0));
+        assert_eq!(tile_delta_for_offset(16 * px, -8 * px), (0, 1));
+        assert_eq!(tile_delta_for_offset(-32 * px, 0), (-1, -1));
+    }
 
     #[test]
     fn mine_wall_sprite_maps_ranges_and_skips_exceptions() {

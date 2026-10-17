@@ -45,6 +45,8 @@ pub struct ClientPlayer {
     pub active: [i8; 20],
     /// Template number of the skill producing each active spell effect (matches `SK_*` constants).
     pub spell_type: [i16; 20],
+    /// Power of each active spell effect, as reported by the server.
+    pub spell_power: [i16; 20],
 
     pub weapon: i32,
     pub armor: i32,
@@ -89,6 +91,7 @@ impl Default for ClientPlayer {
             spell: [0; 20],
             active: [0; 20],
             spell_type: [0; 20],
+            spell_power: [0; 20],
             weapon: 0,
             armor: 0,
             citem: 0,

@@ -255,6 +255,18 @@ impl CharacterSelectionForm {
     /// * `msg` - Error text, or `None` to clear.
     pub fn set_error(&mut self, msg: Option<String>) {
         self.error_text = msg;
+        let extra = self.error_extra_height();
+        self.bounds.height = PANEL_H + extra;
+        self.bounds.y = (TARGET_HEIGHT_INT as i32 - self.bounds.height as i32) / 2;
+    }
+
+    /// Height of the wrapped error beyond the single line the layout already reserves.
+    fn error_extra_height(&self) -> u32 {
+        self.error_text
+            .as_deref()
+            .map(|e| font_cache::measure_wrapped_bitmap(e, BTN_W).1)
+            .unwrap_or(0)
+            .saturating_sub(font_cache::BITMAP_GLYPH_H)
     }
 
     /// Drains pending [`CharacterSelectionFormAction`]s.
@@ -497,16 +509,17 @@ impl Widget for CharacterSelectionForm {
 
         // Error.
         if let Some(ref err) = self.error_text {
-            font_cache::draw_text(
+            let lines = font_cache::draw_wrapped_text(
                 ctx.canvas,
                 ctx.gfx,
                 FONT,
                 err,
                 self.bounds.x + PAD_X,
                 cursor_y,
+                BTN_W,
                 font_cache::TextStyle::tinted(Color::RGB(255, 80, 80)),
             )?;
-            cursor_y += font_cache::BITMAP_GLYPH_H as i32 + 4;
+            cursor_y += (lines.max(1) * font_cache::BITMAP_GLYPH_H) as i32 + 4;
         }
 
         // Status. Always reserve the line so layout doesn't jump when the

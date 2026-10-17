@@ -21,6 +21,7 @@ use crate::ui::visuals::spell_icons::{
     SpellIconMeta, active_spell_effect_icon_meta, spell_icon_path,
 };
 use crate::ui::widget::{EventResponse, UiEvent};
+use mag_core::autoloot::EyeRank;
 use mag_core::skills;
 
 // ---------------------------------------------------------------------------
@@ -117,6 +118,7 @@ fn spell_meta(skill_nr: i16, sprite: i16) -> Option<SpellEffectMeta> {
         | skills::SK_BLAST
         | skills::SK_RAINS_OF_RENEWAL
         | skills::SK_SUNS_BLESSING2
+        | skills::SK_GUNPOWDER_FLASH2
         | skills::SK_SEEING_RED
         | skills::SK_INNER_STRENGTH
         | skills::SK_REVENANT_CONDUIT2
@@ -135,14 +137,43 @@ fn spell_meta(skill_nr: i16, sprite: i16) -> Option<SpellEffectMeta> {
         | skills::SK_ANGUISH_ICE
         | skills::SK_PARASITE
         | skills::SK_CONTAGION
-        | skills::SK_DISTRACT
+        | skills::SK_GUNPOWDER_FLASH
         | skills::SK_ICE_STUN
         | skills::SK_AURA_CURSE => SpellEffectKind::Negative,
-        // Eye potions and Potion of Golem are positive buffs.
-        254 | 449 => SpellEffectKind::Positive,
+        // Eye potions, Potion of Golem and the lab 7 pills are positive buffs.
+        254 | 449 | 648 | 649 => SpellEffectKind::Positive,
         _ => return None,
     };
     Some(SpellEffectMeta { kind, icon })
+}
+
+/// Spell power of each eye rank (lowest to highest), matching the eye item templates.
+const RATLING_EYE_POWER: [i16; 9] = [10, 20, 30, 40, 50, 60, 70, 80, 100];
+/// Greenling counterpart of [`RATLING_EYE_POWER`].
+const GREENLING_EYE_POWER: [i16; 9] = [15, 30, 45, 60, 75, 90, 105, 120, 150];
+
+/// Returns the hover name for an eye effect, e.g. `"Greenling Duke Eye"`.
+///
+/// # Arguments
+///
+/// * `skill_nr` - Effect skill number from the `SetCharSpell` packet.
+/// * `sprite` - Effect sprite; identifies the creature.
+/// * `power` - Effect power; identifies the rank.
+///
+/// # Returns
+///
+/// * `Some(name)` when the effect is an eye with a known rank.
+fn eye_name(skill_nr: i16, sprite: i16, power: i16) -> Option<String> {
+    let (creature, table) = match (skill_nr, sprite) {
+        (254, 16741) => ("Greenling", &GREENLING_EYE_POWER),
+        (254, 96) => ("Ratling", &RATLING_EYE_POWER),
+        _ => return None,
+    };
+    let rank = table.iter().position(|&p| p == power)?;
+    Some(format!(
+        "{} Eye",
+        EyeRank::from_u8(rank as u8).label(creature)
+    ))
 }
 
 /// Formats a duration in seconds as a human-readable string for hover text.
@@ -185,6 +216,8 @@ struct SpellSlotEntry {
     fill: f32,
     /// Pre-computed display metadata for this effect.
     meta: SpellEffectMeta,
+    /// Hover name; differs from the icon name for ranked eye effects.
+    label: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -356,7 +389,14 @@ impl SpellEffectIcons {
     /// * `spell` - The character's 20-element spell item-index array.
     /// * `active` - The character's 20-element active-fraction array (`0..=16`).
     /// * `spell_type` - The corresponding `SK_*` skill-number for each slot.
-    pub fn sync(&mut self, spell: &[i32; 20], active: &[i8; 20], spell_type: &[i16; 20]) {
+    /// * `spell_power` - The corresponding spell power for each slot; names ranked eye effects.
+    pub fn sync(
+        &mut self,
+        spell: &[i32; 20],
+        active: &[i8; 20],
+        spell_type: &[i16; 20],
+        spell_power: &[i16; 20],
+    ) {
         self.positives.clear();
         self.negatives.clear();
 
@@ -378,6 +418,8 @@ impl SpellEffectIcons {
                 slot_index: i,
                 fill,
                 meta,
+                label: eye_name(nr, sprite, spell_power[i])
+                    .unwrap_or_else(|| meta.icon.name.to_owned()),
             };
             match meta.kind {
                 SpellEffectKind::Positive => {
@@ -520,7 +562,6 @@ impl SpellEffectIcons {
             SpellEffectKind::Positive => self.positives.get(hov.index)?,
             SpellEffectKind::Negative => self.negatives.get(hov.index)?,
         };
-        let meta = entry.meta;
         if let Some(remaining_secs) = self
             .duration_trackers
             .get(&entry.slot_index)
@@ -528,11 +569,11 @@ impl SpellEffectIcons {
         {
             return Some(format!(
                 "{} (~{})",
-                meta.icon.name,
+                entry.label,
                 format_duration(remaining_secs)
             ));
         }
-        Some(meta.icon.name.to_owned())
+        Some(entry.label.clone())
     }
 
     /// Renders all active spell-effect icons onto the canvas.
@@ -684,6 +725,17 @@ mod tests {
     }
 
     #[test]
+    fn eye_potion_names_use_rank_from_power() {
+        assert_eq!(
+            eye_name(254, 16741, 105).as_deref(),
+            Some("Greenling Duke Eye")
+        );
+        assert_eq!(eye_name(254, 96, 100).as_deref(), Some("Ratling King Eye"));
+        assert_eq!(eye_name(254, 16741, 15).as_deref(), Some("Greenling Eye"));
+        assert_eq!(eye_name(254, 16741, 7), None);
+    }
+
+    #[test]
     fn sync_separates_positive_and_negative() {
         let mut icons = SpellEffectIcons::new(100, 700, 500);
         let mut spell = [0i32; 20];
@@ -696,7 +748,7 @@ mod tests {
         active[1] = 4;
         spell_type[1] = skills::SK_CURSE as i16;
 
-        icons.sync(&spell, &active, &spell_type);
+        icons.sync(&spell, &active, &spell_type, &[0; 20]);
 
         assert_eq!(icons.positives.len(), 1);
         assert_eq!(icons.negatives.len(), 1);
@@ -708,7 +760,7 @@ mod tests {
     fn fill_fraction() {
         let mut icons = SpellEffectIcons::new(100, 700, 500);
         let (spell, active, spell_type) = make_spell_state(0, 1, 8, skills::SK_PROTECT as i16);
-        icons.sync(&spell, &active, &spell_type);
+        icons.sync(&spell, &active, &spell_type, &[0; 20]);
         assert!((icons.positives[0].fill - 0.5).abs() < 0.01);
     }
 
@@ -747,7 +799,7 @@ mod tests {
         let negative_cases = [
             (skills::SK_PARASITE as i16, "Parasite"),
             (skills::SK_CONTAGION as i16, "Contagion"),
-            (skills::SK_DISTRACT as i16, "Distract"),
+            (skills::SK_GUNPOWDER_FLASH as i16, "Gunpowder Flash"),
         ];
         for (temp, name) in negative_cases {
             let meta = spell_meta(temp, 1)
@@ -808,10 +860,19 @@ mod tests {
     }
 
     #[test]
+    fn lab7_pills_are_positive_effects() {
+        for (temp, name) in [(648, "Green Pill"), (649, "Blue Pill")] {
+            let meta = spell_meta(temp, 93).expect("pill should have an icon");
+            assert_eq!(meta.kind, SpellEffectKind::Positive);
+            assert!(meta.icon.name.starts_with(name));
+        }
+    }
+
+    #[test]
     fn hover_text_format() {
         let mut icons = SpellEffectIcons::new(100, 700, 500);
         let (spell, active, spell_type) = make_spell_state(0, 1, 12, skills::SK_BLESS as i16);
-        icons.sync(&spell, &active, &spell_type);
+        icons.sync(&spell, &active, &spell_type, &[0; 20]);
         icons.hovered = Some(HoveredIcon {
             kind: SpellEffectKind::Positive,
             index: 0,
@@ -838,7 +899,7 @@ mod tests {
         let mut icons = SpellEffectIcons::new(100, 700, 500);
         let (mut spell, mut active, spell_type) =
             make_spell_state(0, 1, 16, skills::SK_PROTECT as i16);
-        icons.sync(&spell, &active, &spell_type);
+        icons.sync(&spell, &active, &spell_type, &[0; 20]);
         icons.hovered = Some(HoveredIcon {
             kind: SpellEffectKind::Positive,
             index: 0,
@@ -848,7 +909,7 @@ mod tests {
             Instant::now() - std::time::Duration::from_secs(30);
         active[0] = 15;
         spell[0] = 1;
-        icons.sync(&spell, &active, &spell_type);
+        icons.sync(&spell, &active, &spell_type, &[0; 20]);
 
         assert_eq!(icons.hover_text().unwrap(), "Protection (~7m 30s)");
     }
@@ -857,14 +918,14 @@ mod tests {
     fn unchanged_fill_does_not_reset_decay_sample() {
         let mut icons = SpellEffectIcons::new(100, 700, 500);
         let (spell, mut active, spell_type) = make_spell_state(0, 1, 16, skills::SK_CURSE as i16);
-        icons.sync(&spell, &active, &spell_type);
+        icons.sync(&spell, &active, &spell_type, &[0; 20]);
         icons.duration_trackers.get_mut(&0).unwrap().last_change_at =
             Instant::now() - std::time::Duration::from_secs(30);
         active[0] = 15;
-        icons.sync(&spell, &active, &spell_type);
+        icons.sync(&spell, &active, &spell_type, &[0; 20]);
 
         let before = icons.duration_trackers.get(&0).unwrap().clone();
-        icons.sync(&spell, &active, &spell_type);
+        icons.sync(&spell, &active, &spell_type, &[0; 20]);
         let after = icons.duration_trackers.get(&0).unwrap();
 
         assert_eq!(after.last_fill, before.last_fill);
@@ -878,7 +939,7 @@ mod tests {
         let spell = [1i32; 20];
         let active = [8i8; 20];
         let spell_type = [skills::SK_PROTECT as i16; 20];
-        icons.sync(&spell, &active, &spell_type);
+        icons.sync(&spell, &active, &spell_type, &[0; 20]);
         assert_eq!(icons.positives.len(), MAX_ICONS);
         assert_eq!(icons.negatives.len(), 0);
     }
@@ -899,7 +960,7 @@ mod tests {
         active[2] = 16;
         spell_type[2] = skills::SK_BLESS as i16;
 
-        icons.sync(&spell, &active, &spell_type);
+        icons.sync(&spell, &active, &spell_type, &[0; 20]);
         assert_eq!(icons.positives.len(), 1);
     }
 
@@ -939,7 +1000,7 @@ mod tests {
     fn hover_hit_tests_full_icon_bounds() {
         let mut icons = SpellEffectIcons::new(100, 700, 500);
         let (spell, active, spell_type) = make_spell_state(0, 1, 16, skills::SK_WIMPY as i16);
-        icons.sync(&spell, &active, &spell_type);
+        icons.sync(&spell, &active, &spell_type, &[0; 20]);
         let rect = icons.icon_rect(SpellEffectKind::Negative, 0);
 
         assert!(icons.contains_point(rect.x(), rect.y()));

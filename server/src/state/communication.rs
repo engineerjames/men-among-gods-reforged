@@ -929,7 +929,7 @@ impl GameState {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                &format!("You get {} experience points.\n", p),
+                &format!("You get {} experience points.\n", total_exp_gained),
             );
             self.do_notify_character(
                 cn as u32,

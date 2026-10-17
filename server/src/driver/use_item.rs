@@ -3708,6 +3708,7 @@ pub fn spawn_penta_enemy(gs: &mut GameState, item_idx: usize) -> i32 {
     } else if data9 == 23 {
         24
     } else {
+        // [data9 - 1, data9 + 1]: e.g. data9 7 -> Master, First and Sergeant Major Grolm.
         (crate::helpers::random_mod(3) + data9).saturating_sub(1)
     };
 
@@ -4697,8 +4698,7 @@ pub fn teleport3(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         )
     };
 
-    if (kindred & 0x00000001) != 0 {
-        // KIN_PURPLE
+    if (kindred as u32 & core::traits::KIN_PURPLE) != 0 {
         gs.characters[cn].temple_x = 558;
         gs.characters[cn].temple_y = 542;
         gs.characters[cn].tavern_x = 558;
@@ -6133,6 +6133,34 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
         return;
     }
 
+    // Soulstone on the cursor, clicking a potion/flask/flower: run the soulstone
+    // logic with roles swapped so both click orders behave the same.
+    if cn != 0 {
+        let citem_idx = gs.characters[cn].citem as usize;
+        if citem_idx != 0
+            && (citem_idx & 0x8000_0000) == 0
+            && gs.items[citem_idx].driver == 68
+            && gs.items[item_idx].driver != 68
+            && carried
+            && matches!(
+                gs.items[item_idx].temp as usize,
+                IT_FLASK | IT_HEALING_POTION | IT_MANA_POTION | IT_RED_FLOWER | IT_PURPLE_FLOWER
+            )
+        {
+            // Swap slots: soulstone into the clicked slot, clicked item onto the cursor.
+            if let Some(slot) = (0..40).find(|&n| gs.characters[cn].item[n] as usize == item_idx) {
+                gs.characters[cn].item[slot] = citem_idx as u32;
+                gs.characters[cn].citem = item_idx as u32;
+                if use_soulstone(gs, cn, citem_idx) {
+                    gs.do_update_char(cn);
+                    return;
+                }
+                gs.characters[cn].item[slot] = item_idx as u32;
+                gs.characters[cn].citem = citem_idx as u32;
+            }
+        }
+    }
+
     // If the character holds a flask (driver 4 + IF_USESPECIAL) in citem and is
     // using a potion ingredient, redirect to use_mix_potion with roles swapped so
     // that "flask on flower" and "flower on flask" both produce a potion.
@@ -6143,6 +6171,7 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
             && (gs.items[citem_idx].flags & core::constants::ItemFlags::IF_USESPECIAL.bits()) != 0
             && gs.items[citem_idx].driver == 4
             && gs.items[item_idx].driver != 4
+            && gs.items[item_idx].driver != 68
         {
             log::info!(
                 "Redirecting to use_mix_potion with item_idx={} and citem_idx={}",
@@ -9040,6 +9069,24 @@ mod tests {
                 gs.characters[cn].tavern_y,
                 core::constants::HOME_MERCENARY_Y as u16
             );
+        });
+    }
+
+    #[test]
+    fn teleport3_sets_mercenary_temple_not_purple() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].kindred = core::traits::KIN_MERCENARY as i32;
+            gs.items[1] = core::types::Item::default();
+            gs.items[1].used = USE_ACTIVE;
+            gs.items[1].data[0] = 512;
+            gs.items[1].data[1] = 512;
+
+            assert!(teleport3(gs, cn, 1));
+
+            let ch = &gs.characters[cn];
+            assert_eq!((ch.temple_x, ch.temple_y), (512, 512));
+            assert_eq!((ch.tavern_x, ch.tavern_y), (512, 512));
         });
     }
 

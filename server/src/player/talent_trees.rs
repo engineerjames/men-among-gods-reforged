@@ -868,7 +868,7 @@ mod tests {
             gs.characters[cn].kindred = KIN_MERCENARY as i32;
             gs.characters[cn].attrib[Attribute::Strength as usize]
                 [SkillIndex::BaseValue as usize] = 50;
-            gs.characters[cn].future1[10] |= 0b0000_0001;
+            gs.characters[cn].future1[10] |= 0b0000_0010;
 
             let bonuses = talent_stat_bonuses(
                 gs.characters[cn].kindred,
@@ -1003,10 +1003,10 @@ mod tests {
         with_test_gs(|gs| {
             let cn = 1;
             give_class_and_points(gs, cn, KIN_MERCENARY, 1);
-            learn_talent(gs, cn, mercenary_slot("Distract")).expect("root learn");
+            learn_talent(gs, cn, mercenary_slot("Gunpowder Flash")).expect("root learn");
             let t = &gs.characters[cn].future1;
             assert_eq!(t[TALENT_POINTS_INDEX], 0);
-            assert!(is_talent_spent(t, 0b0000_0001, 1));
+            assert!(is_talent_spent(t, 0b0000_0010, 1));
         });
     }
 
@@ -1027,11 +1027,11 @@ mod tests {
         with_test_gs(|gs| {
             let cn = 1;
             give_class_and_points(gs, cn, KIN_MERCENARY, 2);
-            learn_talent(gs, cn, mercenary_slot("Distract")).unwrap();
+            learn_talent(gs, cn, mercenary_slot("Gunpowder Flash")).unwrap();
             learn_talent(gs, cn, mercenary_slot("Dodge Boost I")).unwrap();
             let t = &gs.characters[cn].future1;
             assert_eq!(t[TALENT_POINTS_INDEX], 0);
-            assert!(is_talent_spent(t, 0b0000_0001, 2));
+            assert!(is_talent_spent(t, 0b0000_0010, 2));
         });
     }
 
@@ -1040,7 +1040,7 @@ mod tests {
         with_test_gs(|gs| {
             let cn = 1;
             give_class_and_points(gs, cn, KIN_MERCENARY, 2);
-            learn_talent(gs, cn, mercenary_slot("Distract")).unwrap();
+            learn_talent(gs, cn, mercenary_slot("Gunpowder Flash")).unwrap();
             let err = learn_talent(gs, cn, mercenary_slot("Parasite")).unwrap_err();
             assert!(err.contains("already learned in this layer"), "got: {err}");
             let t = &gs.characters[cn].future1;
@@ -1053,7 +1053,7 @@ mod tests {
         with_test_gs(|gs| {
             let cn = 1;
             give_class_and_points(gs, cn, KIN_MERCENARY, 0);
-            let err = learn_talent(gs, cn, mercenary_slot("Distract")).unwrap_err();
+            let err = learn_talent(gs, cn, mercenary_slot("Gunpowder Flash")).unwrap_err();
             assert!(err.to_lowercase().contains("not enough"), "got: {err}");
         });
     }
@@ -1063,8 +1063,8 @@ mod tests {
         with_test_gs(|gs| {
             let cn = 1;
             give_class_and_points(gs, cn, KIN_MERCENARY, 2);
-            learn_talent(gs, cn, mercenary_slot("Distract")).unwrap();
-            let err = learn_talent(gs, cn, mercenary_slot("Distract")).unwrap_err();
+            learn_talent(gs, cn, mercenary_slot("Gunpowder Flash")).unwrap();
+            let err = learn_talent(gs, cn, mercenary_slot("Gunpowder Flash")).unwrap_err();
             assert!(err.to_lowercase().contains("already learned"), "got: {err}");
             let t = &gs.characters[cn].future1;
             assert_eq!(t[TALENT_POINTS_INDEX], 1);
@@ -1089,7 +1089,7 @@ mod tests {
             // STRENGTH_BOOST_1's effect is `AttributesPercent { [Strength], [+10%] }`.
             // Manually seed the layer 1-9 prereq chain so the root-most learn is layer 10.
             for layer in 1..=9 {
-                gs.characters[cn].future1[layer] |= 0b0000_0001;
+                gs.characters[cn].future1[layer] |= 0b0000_0010;
             }
             gs.characters[cn].attrib[Attribute::Strength as usize]
                 [SkillIndex::BaseValue as usize] = 50;
@@ -1618,7 +1618,7 @@ mod tests {
             gs.characters[cn].kindred = KIN_MERCENARY as i32;
             gs.characters[cn].attrib[Attribute::Strength as usize]
                 [SkillIndex::BaseValue as usize] = 50;
-            gs.characters[cn].future1[10] |= 0b0000_0001;
+            gs.characters[cn].future1[10] |= 0b0000_0010;
 
             gs.really_update_char(cn);
 
@@ -1636,7 +1636,7 @@ mod tests {
         with_test_gs(|gs| {
             let cn = 1;
             gs.characters[cn].kindred = KIN_MERCENARY as i32;
-            gs.characters[cn].future1[10] |= 0b0000_0001;
+            gs.characters[cn].future1[10] |= 0b0000_0010;
 
             gs.characters[cn].attrib[Attribute::Strength as usize]
                 [SkillIndex::BaseValue as usize] = 55;
@@ -1665,7 +1665,7 @@ mod tests {
             give_class_and_points(gs, cn, KIN_MERCENARY, 1);
             gs.characters[cn].flags &= !CharacterFlags::Update.bits();
 
-            learn_talent(gs, cn, mercenary_slot("Distract")).unwrap();
+            learn_talent(gs, cn, mercenary_slot("Gunpowder Flash")).unwrap();
 
             assert_ne!(gs.characters[cn].flags & CharacterFlags::Update.bits(), 0);
         });
@@ -1676,7 +1676,7 @@ mod tests {
         with_test_gs(|gs| {
             let cn = 1;
             give_class_and_points(gs, cn, KIN_MERCENARY, 2);
-            learn_talent(gs, cn, mercenary_slot("Distract")).unwrap();
+            learn_talent(gs, cn, mercenary_slot("Gunpowder Flash")).unwrap();
             learn_talent(gs, cn, mercenary_slot("Dodge Boost I")).unwrap();
             let t = &mut gs.characters[cn].future1;
             assert_eq!(t[TALENT_POINTS_INDEX], 0);
@@ -1692,7 +1692,7 @@ mod tests {
         with_test_gs(|gs| {
             let cn = 1;
             give_class_and_points(gs, cn, KIN_MERCENARY, 2);
-            learn_talent(gs, cn, mercenary_slot("Distract")).unwrap();
+            learn_talent(gs, cn, mercenary_slot("Gunpowder Flash")).unwrap();
             learn_talent(gs, cn, mercenary_slot("Dodge Boost I")).unwrap();
             assert_eq!(gs.characters[cn].future1[TALENT_POINTS_INDEX], 0);
 
@@ -1930,7 +1930,7 @@ mod tests {
             let cn = 1;
             give_class_and_points(gs, cn, KIN_MERCENARY, 2);
             let points_before = gs.characters[cn].points;
-            learn_talent(gs, cn, mercenary_slot("Distract")).unwrap();
+            learn_talent(gs, cn, mercenary_slot("Gunpowder Flash")).unwrap();
             learn_talent(gs, cn, mercenary_slot("Dodge Boost I")).unwrap();
 
             reset_talents(gs, cn);

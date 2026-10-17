@@ -168,6 +168,7 @@ const ALL_COMMANDS: &[&str] = &[
     "god",
     "gold",
     "golden",
+    "gopent",
     "goto",
     "greatergod",
     "greaterinv",
@@ -1280,6 +1281,11 @@ impl GameState {
                 self.do_playtest_potion(cn);
                 return;
             }
+            Some("gopent") if f_p && self.playtest_mode => {
+                log::debug!("Processing gopent command for {}", cn);
+                God::goto(self, cn, cn, "410", "460");
+                return;
+            }
             Some("exit") if f_u => {
                 log::debug!("Processing exit command for {}", cn);
                 God::exit_usurp(self, cn);
@@ -2275,7 +2281,7 @@ mod tests {
             gs.characters[cn].kindred = traits::KIN_MERCENARY as i32;
             gs.characters[cn].attrib[Attribute::Strength as usize]
                 [SkillIndex::BaseValue as usize] = 50;
-            gs.characters[cn].future1[10] |= 0b0000_0001;
+            gs.characters[cn].future1[10] |= 0b0000_0010;
             gs.characters[cn].future1[mercenary::DODGE_BOOST_1.layer as usize] |=
                 mercenary::DODGE_BOOST_1.mask;
 

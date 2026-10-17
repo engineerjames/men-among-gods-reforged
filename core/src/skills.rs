@@ -46,11 +46,13 @@ pub const SK_WARCRY2: usize = SK_WARCRY + 100;
 // ---- Mercenary talent-granted skills (reserved slots 37..=42) ----
 /// Parasite: short-duration DoT that returns a portion of damage to the caster.
 pub const SK_PARASITE: usize = 37;
-/// Distract: slows enemy action ticks via a heavy Agility debuff.
-pub const SK_DISTRACT: usize = 38;
+/// Gunpowder Flash: slows enemy attack cadence and briefly quickens the caster.
+pub const SK_GUNPOWDER_FLASH: usize = 38;
+/// Gunpowder Flash caster-buff temp identifier (mirrors the [`SK_WARCRY2`] pattern).
+pub const SK_GUNPOWDER_FLASH2: usize = SK_GUNPOWDER_FLASH + 100;
 /// Deliver Death: instant-kill execute on low-HP targets, long cooldown that resets on a successful kill.
 pub const SK_DELIVER_DEATH: usize = 39;
-/// Disarm: temporarily lowers the target's weapon skill.
+/// Disarm: passive on-hit proc that lowers the target's (and adjacent attackers') weapon skill.
 pub const SK_DISARM: usize = 40;
 /// Contagion: upgraded Curse with longer duration and a DoT that spreads on the target's death.
 pub const SK_CONTAGION: usize = 41;
@@ -193,9 +195,8 @@ pub const fn is_hostile_skill(skill: usize) -> bool {
             | SK_CURSE
             | SK_STUN
             | SK_PARASITE
-            | SK_DISTRACT
+            | SK_GUNPOWDER_FLASH
             | SK_DELIVER_DEATH
-            | SK_DISARM
             | SK_CONTAGION
             | SK_GASH
             | SK_LAVA_BLAST
@@ -300,7 +301,7 @@ pub enum Skill {
     Concentrate = SK_CONCEN,
     Warcry = SK_WARCRY,
     Parasite = SK_PARASITE,
-    Distract = SK_DISTRACT,
+    GunpowderFlash = SK_GUNPOWDER_FLASH,
     DeliverDeath = SK_DELIVER_DEATH,
     Disarm = SK_DISARM,
     Contagion = SK_CONTAGION,
@@ -734,8 +735,8 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     SkillTab::new(
         38,
         SkillCategory::Magic,
-        "Distract",
-        "Spell: Briefly slow target's actions (Cost: 15 Mana).",
+        "Gunpowder Flash",
+        "Spell: Slow attackers' attacks, quicken yourself (Cost: 15 Mana).",
         2,
         1,
         4,
@@ -751,9 +752,9 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     ),
     SkillTab::new(
         40,
-        SkillCategory::Magic,
+        SkillCategory::General,
         "Disarm",
-        "Spell: Lower target's weapon skill (Cost: 20 Mana).",
+        "Passive: Melee hits may disarm the target and adjacent attackers.",
         2,
         1,
         4,
@@ -1103,7 +1104,7 @@ const SKILL_NAMES: [&str; MAX_SKILLS] = [
     "Warcry",
     "Weapon Skill",
     "Parasite",
-    "Distract",
+    "Gunpowder Flash",
     "Deliver Death",
     "Disarm",
     "Contagion",
