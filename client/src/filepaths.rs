@@ -25,10 +25,10 @@ fn exe_directory() -> PathBuf {
 /// # Returns
 /// * `PathBuf` pointing to `assets/`.
 pub fn get_asset_directory() -> PathBuf {
-    if std::env::var("CARGO_MANIFEST_DIR").is_ok() {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets")
-    } else {
-        exe_directory().join("assets")
+    // Read at runtime (set by `cargo run`) so the build path isn't baked into release binaries.
+    match std::env::var_os("CARGO_MANIFEST_DIR") {
+        Some(dir) => PathBuf::from(dir).join("assets"),
+        None => exe_directory().join("assets"),
     }
 }
 
