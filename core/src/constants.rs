@@ -673,6 +673,7 @@ pub const IT_GOLD_HELMET: usize = 69;
 pub const IT_GOLD_ARMOR: usize = 71;
 pub const IT_CRYSTAL_HELMET: usize = 75;
 pub const IT_CRYSTAL_ARMOR: usize = 76;
+pub const IT_TORCH: usize = 91;
 pub const IT_TITANIUM_HELMET: usize = 94;
 pub const IT_TITANIUM_ARMOR: usize = 95;
 pub const IT_EMERALD_HELMET: usize = 981;
