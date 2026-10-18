@@ -73,12 +73,18 @@ pub const SK_SUNS_BLESSING2: usize = SK_SUNS_BLESSING + 100;
 /// Seeing Red: self buff that doubles outgoing damage and blocks new
 /// stun/slow/curse/disarm debuffs for the duration.
 pub const SK_SEEING_RED: usize = 46;
+/// Seeing Red companion temp identifier for the attached buff item, kept
+/// separate from the cooldown marker (mirrors the [`SK_SUNS_BLESSING2`] pattern).
+pub const SK_SEEING_RED2: usize = SK_SEEING_RED + 100;
 /// Thunderous Fury: upgraded Warcry that stuns and deals a weakened blast to
 /// every nearby enemy.
 pub const SK_THUNDEROUS_FURY: usize = 47;
 /// Inner Strength: upgraded Warcry that stuns nearby enemies and buffs the
 /// caster's weapon skill for the duration.
 pub const SK_INNER_STRENGTH: usize = 48;
+/// Inner Strength companion temp identifier for the attached buff item, kept
+/// separate from the cooldown marker (mirrors the [`SK_SUNS_BLESSING2`] pattern).
+pub const SK_INNER_STRENGTH2: usize = SK_INNER_STRENGTH + 100;
 
 // ---- Harakim talent-granted skills and markers (reserved slots 50..=59) ----
 /// Revenant Conduit: self-buff that raises the caster's effective Ghost

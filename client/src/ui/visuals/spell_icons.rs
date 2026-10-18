@@ -270,8 +270,6 @@ pub fn active_spell_effect_icon_meta(skill_nr: usize, sprite: i16) -> Option<Spe
         | skills::SK_ICE_STUN
         | skills::SK_WIMPY
         | skills::SK_RAINS_OF_RENEWAL
-        | skills::SK_SEEING_RED
-        | skills::SK_INNER_STRENGTH
         | skills::SK_GASH
         | skills::SK_DELIVER_DEATH
         | skills::SK_BLADE_DANCE
@@ -287,6 +285,10 @@ pub fn active_spell_effect_icon_meta(skill_nr: usize, sprite: i16) -> Option<Spe
         // Sun's Blessing active buff — server item uses the *2 temp marker,
         // so reuse the castable skill's icon metadata.
         skills::SK_SUNS_BLESSING2 => spell_icon_meta(skills::SK_SUNS_BLESSING),
+        // Seeing Red / Inner Strength active buffs also use *2 temp markers so
+        // their cooldown items don't overwrite them.
+        skills::SK_SEEING_RED2 => spell_icon_meta(skills::SK_SEEING_RED),
+        skills::SK_INNER_STRENGTH2 => spell_icon_meta(skills::SK_INNER_STRENGTH),
         skills::SK_BLAST => Some(SpellIconMeta {
             name: "Spell Exhaustion",
             color: Color::RGB(200, 140, 40),

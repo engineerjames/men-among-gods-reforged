@@ -9,8 +9,8 @@ use core::constants::{
     IT_GREEN_FLOWER, IT_GREEN_POTION, IT_HEALING_POTION, IT_JUNGLE_FLOWER_BLUE,
     IT_JUNGLE_FLOWER_PINK, IT_JUNGLE_FLOWER_YELLOW, IT_MANA_POTION, IT_ORANGE_POTION,
     IT_POTION_OF_LIFE, IT_PURPLE_FLOWER, IT_RED_AND_GREEN_POTION, IT_RED_FLOWER,
-    IT_RED_YELLOW_AND_GREEN_POTION, IT_YELLOW_AND_GREEN_POTION, IT_YELLOW_FLOWER, IT_YELLOW_POTION,
-    IT_YELLOW_TULIP, IT_YELLOW_TULIP_POTION, ItemFlags, MAXTITEM, USE_EMPTY,
+    IT_RED_YELLOW_AND_GREEN_POTION, IT_TORCH, IT_YELLOW_AND_GREEN_POTION, IT_YELLOW_FLOWER,
+    IT_YELLOW_POTION, IT_YELLOW_TULIP, IT_YELLOW_TULIP_POTION, ItemFlags, MAXTITEM, USE_EMPTY,
 };
 use core::skills::{self};
 use core::string_operations::c_string_to_str;
@@ -749,7 +749,7 @@ pub fn use_soulstone(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
             };
             true
         }
-        91 => {
+        IT_TORCH => {
             // Torch -> repair
             let torch = soul_repair(gs, cn, item_idx, in2);
             gs.items[torch].max_age[1] *= 4;
@@ -963,7 +963,7 @@ fn soul_trans_equipment(gs: &mut GameState, cn: usize, soulstone_idx: usize, ite
                 item.skill[skills::SK_WARCRY][2] = std::cmp::min(120, current + (stren * 5)) as i16;
                 item.skill[skills::SK_WARCRY][0] =
                     item.skill[skills::SK_WARCRY][0].saturating_add(stren as i16);
-            }
+            } // TODO: Add new skills here?
             25 => {
                 item.armor[0] = item.armor[0].saturating_add((stren / 2) as i8);
             }
