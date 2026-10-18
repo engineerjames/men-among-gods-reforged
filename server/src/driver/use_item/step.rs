@@ -4,7 +4,7 @@ use crate::god::God;
 use crate::helpers::{self};
 use crate::populate::pop_create_char;
 use crate::{driver, player, populate};
-use core::constants::{CharacterFlags, ItemFlags, NT_HITME, SERVER_MAPX, USE_EMPTY};
+use core::constants::{CharacterFlags, ItemFlags, NT_HITME, SERVER_MAPX, SERVER_MAPY, USE_EMPTY};
 use core::traits;
 
 /// Handles the legacy `trap1` item-use hook.
@@ -671,7 +671,7 @@ fn step_teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         )
     };
 
-    if x >= SERVER_MAPX as usize || y >= (SERVER_MAPX * 2) as usize {
+    if x >= SERVER_MAPX as usize || y >= SERVER_MAPY as usize {
         log::error!("step_teleport(gs, ): bad coordinates in item {}", item_idx);
         return -1;
     }
@@ -684,7 +684,7 @@ fn step_teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
 
     for offset in loc_off.iter() {
         let m2 = (m as isize + offset) as usize;
-        if m2 >= (SERVER_MAPX * SERVER_MAPX * 2) as usize {
+        if m2 >= (SERVER_MAPX * SERVER_MAPY) as usize {
             continue;
         }
 
@@ -911,5 +911,176 @@ pub fn step_driver_remove(gs: &mut GameState, cn: usize, item_idx: usize) {
                 item_idx
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::game_state::GameState;
+    use crate::test_helpers::{add_test_player, with_test_gs};
+    use core::constants::{MF_MOVEBLOCK, SERVER_MAPX, USE_ACTIVE, USE_EMPTY};
+    use core::traits;
+
+    /// Creates an active step item using the requested legacy driver id.
+    fn add_step_item(gs: &mut GameState, item_idx: usize, driver: u8) {
+        gs.items[item_idx] = core::types::Item::default();
+        gs.items[item_idx].used = USE_ACTIVE;
+        gs.items[item_idx].driver = driver;
+        gs.items[item_idx].x = 20;
+        gs.items[item_idx].y = 20;
+    }
+
+    #[test]
+    fn step_driver_unknown_driver_returns_zero() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 100;
+            add_step_item(gs, item_idx, 250);
+
+            assert_eq!(step_driver(gs, cn, item_idx), 0);
+        });
+    }
+
+    #[test]
+    fn step_firefloor_adds_matching_spell_and_remove_clears_it() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 100;
+            add_step_item(gs, item_idx, 69);
+            gs.item_templates[1].used = USE_ACTIVE;
+            gs.items[item_idx].temp = 444;
+            gs.items[item_idx].sprite[1] = 77;
+
+            assert_eq!(step_driver(gs, cn, item_idx), 0);
+
+            let spell_idx = gs.characters[cn]
+                .spell
+                .iter()
+                .copied()
+                .find(|spell| *spell != 0)
+                .expect("firefloor should attach a spell") as usize;
+            assert_eq!(gs.items[spell_idx].used, USE_ACTIVE);
+            assert_eq!(gs.items[spell_idx].carried, cn as u16);
+            assert_eq!(gs.items[spell_idx].temp, 444);
+            assert_eq!(gs.items[spell_idx].sprite[1], 77);
+            assert_eq!(gs.items[spell_idx].hp[0], -5000);
+
+            step_driver_remove(gs, cn, item_idx);
+
+            assert_eq!(gs.items[spell_idx].used, USE_EMPTY);
+            assert!(!gs.characters[cn].spell.iter().any(|spell| *spell != 0));
+        });
+    }
+
+    #[test]
+    fn step_trap_activates_for_players_and_remove_deactivates() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 100;
+            let m = 20 + 20 * SERVER_MAPX as usize;
+            add_step_item(gs, item_idx, 37);
+            gs.items[item_idx].duration = 12;
+            gs.items[item_idx].light = [1, 3];
+            gs.items[item_idx].data[0] = 99;
+
+            assert_eq!(step_driver(gs, cn, item_idx), 0);
+
+            assert_eq!(gs.items[item_idx].active, 12);
+            assert_eq!(gs.map[m].light, 2);
+
+            step_driver_remove(gs, cn, item_idx);
+
+            assert_eq!(gs.items[item_idx].active, 0);
+            assert_eq!(gs.map[m].light, 0);
+        });
+    }
+
+    #[test]
+    fn step_trap_does_not_activate_for_non_players() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 100;
+            add_step_item(gs, item_idx, 37);
+            gs.items[item_idx].duration = 12;
+            gs.characters[cn].flags &= !CharacterFlags::Player.bits();
+
+            assert_eq!(step_driver(gs, cn, item_idx), 0);
+
+            assert_eq!(gs.items[item_idx].active, 0);
+        });
+    }
+
+    #[test]
+    fn step_teleport_returns_minus_one_when_all_landing_tiles_are_blocked() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 100;
+            let target_x = 50;
+            let target_y = 50;
+            let target_m = target_x + target_y * SERVER_MAPX as usize;
+            add_step_item(gs, item_idx, 62);
+            gs.items[item_idx].data[0] = target_x as u32;
+            gs.items[item_idx].data[1] = target_y as u32;
+
+            for offset in [0, -(SERVER_MAPX as isize), SERVER_MAPX as isize, 1, -1] {
+                gs.map[(target_m as isize + offset) as usize].flags = u64::from(MF_MOVEBLOCK);
+            }
+
+            assert_eq!(step_driver(gs, cn, item_idx), -1);
+            assert_eq!((gs.characters[cn].x, gs.characters[cn].y), (10, 10));
+        });
+    }
+
+    #[test]
+    fn step_teleport_rejects_target_below_map_without_panicking() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 100;
+            add_step_item(gs, item_idx, 62);
+            gs.items[item_idx].data[0] = 50;
+            gs.items[item_idx].data[1] = SERVER_MAPY as u32;
+
+            assert_eq!(step_driver(gs, cn, item_idx), -1);
+            assert_eq!((gs.characters[cn].x, gs.characters[cn].y), (10, 10));
+        });
+    }
+
+    #[test]
+    fn step_portal1_rejects_lab_entry_while_carrying_items() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 100;
+            let carried_idx = 101;
+            add_step_item(gs, item_idx, 36);
+            gs.characters[cn].kindred = traits::KIN_MERCENARY as i32;
+            gs.items[carried_idx] = core::types::Item::default();
+            gs.items[carried_idx].used = USE_ACTIVE;
+            gs.items[carried_idx].carried = cn as u16;
+            gs.characters[cn].item[0] = carried_idx as u32;
+
+            assert_eq!(step_driver(gs, cn, item_idx), -1);
+            assert_eq!(gs.items[carried_idx].used, USE_ACTIVE);
+            assert_eq!(gs.characters[cn].item[0], carried_idx as u32);
+        });
+    }
+
+    #[test]
+    fn step_portal1_allows_empty_handed_kindred_and_clears_spells() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 100;
+            let spell_idx = 101;
+            add_step_item(gs, item_idx, 36);
+            gs.characters[cn].kindred = traits::KIN_MERCENARY as i32;
+            gs.items[spell_idx] = core::types::Item::default();
+            gs.items[spell_idx].used = USE_ACTIVE;
+            gs.characters[cn].spell[0] = spell_idx as u32;
+
+            assert_eq!(step_driver(gs, cn, item_idx), 1);
+
+            assert_eq!(gs.items[spell_idx].used, USE_EMPTY);
+            assert_eq!(gs.characters[cn].spell[0], 0);
+        });
     }
 }

@@ -32,8 +32,8 @@ pub fn skua_protect(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         return false;
     }
 
-    // Check if character has Skua's kindred (KIN_SKUA = 0x00000002)
-    let has_skua_kindred = (gs.characters[cn].kindred & 0x00000002) != 0;
+    // Skua's followers are everyone not sworn to the Purple One.
+    let has_skua_kindred = (gs.characters[cn].kindred as u32 & core::traits::KIN_PURPLE) == 0;
 
     if !has_skua_kindred {
         gs.do_character_log(
@@ -116,8 +116,7 @@ pub fn purple_protect(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         return false;
     }
 
-    // Check if character has Purple One's kindred (KIN_PURPLE = 0x00000001)
-    let has_purple_kindred = (gs.characters[cn].kindred & 0x00000001) != 0;
+    let has_purple_kindred = (gs.characters[cn].kindred as u32 & core::traits::KIN_PURPLE) != 0;
 
     if !has_purple_kindred {
         gs.do_character_log(
@@ -242,4 +241,140 @@ pub fn use_kill_undead(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     item_damage_worn(gs, cn, core::constants::WN_RHAND, 500);
 
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_helpers::{add_test_player, with_test_gs};
+    use core::constants::{ItemFlags, USE_ACTIVE, USE_EMPTY, WN_RHAND};
+    use core::traits::KIN_PURPLE;
+
+    /// Places a used item in the player's right-hand weapon slot.
+    fn set_worn_weapon(gs: &mut GameState, cn: usize, item_idx: usize) {
+        gs.items[item_idx].used = USE_ACTIVE;
+        gs.items[item_idx].carried = cn as u16;
+        gs.characters[cn].worn[WN_RHAND] = item_idx as u32;
+    }
+
+    /// Marks a template usable by `God::create_item` in protection tests.
+    fn enable_template(gs: &mut GameState, template_id: usize) {
+        gs.item_templates[template_id].used = USE_ACTIVE;
+    }
+
+    #[test]
+    fn skua_protect_refuses_unwielded_weapon() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            gs.items[item_idx].used = USE_ACTIVE;
+            gs.items[item_idx].carried = cn as u16;
+
+            assert!(!skua_protect(gs, cn, item_idx));
+            assert_eq!(gs.items[item_idx].used, USE_ACTIVE);
+            assert_eq!(gs.characters[cn].worn[WN_RHAND], 0);
+        });
+    }
+
+    #[test]
+    fn skua_protect_removes_weapon_for_wrong_kindred() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            set_worn_weapon(gs, cn, item_idx);
+            gs.characters[cn].kindred = KIN_PURPLE as i32;
+
+            assert!(skua_protect(gs, cn, item_idx));
+            assert_eq!(gs.characters[cn].worn[WN_RHAND], 0);
+            assert_eq!(gs.items[item_idx].used, USE_EMPTY);
+        });
+    }
+
+    #[test]
+    fn skua_protect_replaces_weapon_for_non_purple_follower() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            let replacement_template = 77;
+            set_worn_weapon(gs, cn, item_idx);
+            gs.characters[cn].kindred = 0;
+            gs.items[item_idx].data[2] = replacement_template as u32;
+            enable_template(gs, 1);
+            enable_template(gs, replacement_template);
+
+            assert!(skua_protect(gs, cn, item_idx));
+            let replacement = gs.characters[cn].worn[WN_RHAND] as usize;
+            assert_ne!(replacement, 0);
+            assert_eq!(gs.items[replacement].temp as usize, replacement_template);
+            assert_eq!(gs.items[replacement].carried as usize, cn);
+            assert_ne!(gs.items[replacement].flags & ItemFlags::IF_UPDATE.bits(), 0);
+        });
+    }
+
+    #[test]
+    fn purple_protect_refuses_unwielded_weapon() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            gs.items[item_idx].used = USE_ACTIVE;
+            gs.items[item_idx].carried = cn as u16;
+
+            assert!(!purple_protect(gs, cn, item_idx));
+            assert_eq!(gs.items[item_idx].used, USE_ACTIVE);
+            assert_eq!(gs.characters[cn].worn[WN_RHAND], 0);
+        });
+    }
+
+    #[test]
+    fn purple_protect_removes_weapon_for_wrong_kindred() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            set_worn_weapon(gs, cn, item_idx);
+            gs.characters[cn].kindred = 0;
+
+            assert!(purple_protect(gs, cn, item_idx));
+            assert_eq!(gs.characters[cn].worn[WN_RHAND], 0);
+            assert_eq!(gs.items[item_idx].used, USE_EMPTY);
+        });
+    }
+
+    #[test]
+    fn purple_protect_replaces_weapon_for_purple_follower() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            let replacement_template = 88;
+            set_worn_weapon(gs, cn, item_idx);
+            gs.characters[cn].kindred = KIN_PURPLE as i32;
+            gs.items[item_idx].data[2] = replacement_template as u32;
+            enable_template(gs, 1);
+            enable_template(gs, replacement_template);
+
+            assert!(purple_protect(gs, cn, item_idx));
+            let replacement = gs.characters[cn].worn[WN_RHAND] as usize;
+            assert_ne!(replacement, 0);
+            assert_eq!(gs.items[replacement].temp as usize, replacement_template);
+            assert_eq!(gs.items[replacement].carried as usize, cn);
+            assert_ne!(gs.items[replacement].flags & ItemFlags::IF_UPDATE.bits(), 0);
+        });
+    }
+
+    #[test]
+    fn use_kill_undead_refuses_zero_character() {
+        with_test_gs(|gs| {
+            assert!(!use_kill_undead(gs, 0, 1));
+        });
+    }
+
+    #[test]
+    fn use_kill_undead_refuses_unwielded_weapon() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            gs.items[item_idx].used = USE_ACTIVE;
+
+            assert!(!use_kill_undead(gs, cn, item_idx));
+        });
+    }
 }

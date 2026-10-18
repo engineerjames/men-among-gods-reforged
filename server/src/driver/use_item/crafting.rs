@@ -751,10 +751,8 @@ pub fn use_soulstone(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         }
         91 => {
             // Torch -> repair
-            soul_repair(gs, cn, item_idx, in2);
-            {
-                gs.items[item_idx].max_age[1] *= 4;
-            };
+            let torch = soul_repair(gs, cn, item_idx, in2);
+            gs.items[torch].max_age[1] *= 4;
             true
         }
         IT_FLASK => {
@@ -1012,7 +1010,215 @@ fn soul_trans_equipment(gs: &mut GameState, cn: usize, soulstone_idx: usize, ite
 mod tests {
     use super::*;
     use crate::test_helpers::{add_test_player, with_test_gs};
-    use core::constants::{USE_ACTIVE, USE_EMPTY};
+    use core::{
+        constants::{AT_STREN, ItemFlags, USE_ACTIVE, USE_EMPTY},
+        string_operations::write_ascii_into_fixed,
+    };
+
+    /// Seed the item template slot needed by `God::create_item`.
+    fn seed_template(gs: &mut GameState, template_id: usize) {
+        gs.item_templates[template_id] = core::types::Item::default();
+        gs.item_templates[template_id].used = USE_ACTIVE;
+        write_ascii_into_fixed(
+            &mut gs.item_templates[template_id].name,
+            &format!("template {template_id}"),
+        );
+        write_ascii_into_fixed(
+            &mut gs.item_templates[template_id].reference,
+            &format!("template {template_id}"),
+        );
+    }
+
+    /// Place an item in a character inventory slot with the given template id.
+    fn carried_item(
+        gs: &mut GameState,
+        cn: usize,
+        item_idx: usize,
+        template_id: usize,
+        slot: usize,
+    ) {
+        gs.items[item_idx] = core::types::Item::default();
+        gs.items[item_idx].used = USE_ACTIVE;
+        gs.items[item_idx].temp = template_id as u16;
+        gs.items[item_idx].carried = cn as u16;
+        gs.characters[cn].item[slot] = item_idx as u32;
+    }
+
+    #[test]
+    fn mix_potion_flask_and_red_flower_creates_healing_potion_and_consumes_inputs() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let (flask, flower) = (1, 2);
+            seed_template(gs, IT_HEALING_POTION);
+            carried_item(gs, cn, flask, IT_FLASK, 0);
+            carried_item(gs, cn, flower, IT_RED_FLOWER, 1);
+            gs.characters[cn].citem = flower as u32;
+
+            assert!(use_mix_potion(gs, cn, flask));
+
+            assert_eq!(gs.items[flask].used, USE_EMPTY);
+            assert_eq!(gs.items[flower].used, USE_EMPTY);
+            assert_eq!(gs.characters[cn].citem, 0);
+            let result = gs.characters[cn].item[0] as usize;
+            assert_ne!(result, 0);
+            assert_eq!(gs.items[result].temp, IT_HEALING_POTION as u16);
+            assert!((gs.items[result].flags & ItemFlags::IF_UPDATE.bits()) != 0);
+        });
+    }
+
+    #[test]
+    fn mix_potion_invalid_combo_leaves_items_unchanged() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let (flask, ingredient) = (1, 2);
+            carried_item(gs, cn, flask, IT_FLASK, 0);
+            carried_item(gs, cn, ingredient, 206, 1);
+            gs.characters[cn].citem = ingredient as u32;
+
+            assert!(!use_mix_potion(gs, cn, flask));
+
+            assert_eq!(gs.items[flask].used, USE_ACTIVE);
+            assert_eq!(gs.items[ingredient].used, USE_ACTIVE);
+            assert_eq!(gs.characters[cn].citem, ingredient as u32);
+        });
+    }
+
+    #[test]
+    fn chain_rejects_ground_chain_before_consuming_link() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let (chain, link) = (1, 2);
+            carried_item(gs, cn, link, 206, 0);
+            gs.items[chain] = core::types::Item::default();
+            gs.items[chain].used = USE_ACTIVE;
+            gs.items[chain].temp = 100;
+            gs.items[chain].data[0] = 101;
+            gs.characters[cn].citem = link as u32;
+
+            assert!(!use_chain(gs, cn, chain));
+
+            assert_eq!(gs.items[chain].used, USE_ACTIVE);
+            assert_eq!(gs.items[link].used, USE_ACTIVE);
+            assert_eq!(gs.characters[cn].citem, link as u32);
+        });
+    }
+
+    #[test]
+    fn chain_with_link_advances_to_next_template() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let (chain, link) = (1, 2);
+            seed_template(gs, 101);
+            carried_item(gs, cn, chain, 100, 0);
+            gs.items[chain].data[0] = 101;
+            carried_item(gs, cn, link, 206, 1);
+            gs.characters[cn].citem = link as u32;
+
+            assert!(use_chain(gs, cn, chain));
+
+            assert_eq!(gs.items[chain].used, USE_EMPTY);
+            assert_eq!(gs.items[link].used, USE_EMPTY);
+            let result = gs.characters[cn].item[0] as usize;
+            assert_eq!(gs.items[result].temp, 101);
+            assert!((gs.items[result].flags & ItemFlags::IF_UPDATE.bits()) != 0);
+        });
+    }
+
+    #[test]
+    fn stone_sword_requires_strength_before_creating_reward() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let stone = 1;
+            seed_template(gs, 27);
+            gs.items[stone] = core::types::Item::default();
+            gs.items[stone].used = USE_ACTIVE;
+            gs.items[stone].data[0] = 27;
+            gs.characters[cn].attrib[AT_STREN as usize][5] = 99;
+
+            assert!(!stone_sword(gs, cn, stone));
+            assert!(gs.characters[cn].item.iter().all(|item| *item == 0));
+
+            gs.characters[cn].attrib[AT_STREN as usize][5] = 100;
+            assert!(stone_sword(gs, cn, stone));
+            let result = gs.characters[cn].item[0] as usize;
+            assert_eq!(gs.items[result].temp, 27);
+        });
+    }
+
+    #[test]
+    fn rat_eye_wrong_component_leaves_slots_unchanged() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let (eye, component) = (1, 2);
+            carried_item(gs, cn, eye, 900, 0);
+            gs.items[eye].data[0] = IT_RED_FLOWER as u32;
+            carried_item(gs, cn, component, IT_BLUE_FLOWER, 1);
+            gs.characters[cn].citem = component as u32;
+
+            assert!(!rat_eye(gs, cn, eye));
+
+            assert_eq!(gs.items[eye].data[0], IT_RED_FLOWER as u32);
+            assert_eq!(gs.items[component].used, USE_ACTIVE);
+            assert_eq!(gs.characters[cn].citem, component as u32);
+        });
+    }
+
+    #[test]
+    fn build_ring_and_amulet_consume_components_and_create_results() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let (ring, gem) = (1, 2);
+            seed_template(gs, 362);
+            carried_item(gs, cn, ring, 337, 0);
+            carried_item(gs, cn, gem, 339, 1);
+            gs.characters[cn].citem = gem as u32;
+
+            assert!(build_ring(gs, cn, ring));
+
+            assert_eq!(gs.items[ring].used, USE_EMPTY);
+            assert_eq!(gs.items[gem].used, USE_EMPTY);
+            let result_ring = gs.characters[cn].item[0] as usize;
+            assert_eq!(gs.items[result_ring].temp, 362);
+
+            let (amulet_a, amulet_b) = (4, 5);
+            seed_template(gs, 476);
+            carried_item(gs, cn, amulet_a, 471, 1);
+            carried_item(gs, cn, amulet_b, 472, 2);
+            gs.characters[cn].citem = amulet_b as u32;
+
+            assert!(build_amulet(gs, cn, amulet_a));
+
+            assert_eq!(gs.items[amulet_a].used, USE_EMPTY);
+            assert_eq!(gs.items[amulet_b].used, USE_EMPTY);
+            let result_amulet = gs.characters[cn].item[1] as usize;
+            assert_eq!(gs.items[result_amulet].temp, 476);
+        });
+    }
+
+    #[test]
+    fn soulstone_repairs_torch_from_template_and_consumes_stone() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let (soulstone, torch) = (1, 2);
+            seed_template(gs, 91);
+            gs.item_templates[91].max_age[1] = 7;
+            carried_item(gs, cn, soulstone, 1146, 0);
+            gs.items[soulstone].driver = 68;
+            carried_item(gs, cn, torch, 91, 1);
+            gs.items[torch].current_age[1] = 5;
+            gs.characters[cn].citem = torch as u32;
+
+            assert!(use_soulstone(gs, cn, soulstone));
+
+            assert_eq!(gs.items[soulstone].used, USE_EMPTY);
+            assert_eq!(gs.items[torch].used, USE_ACTIVE);
+            assert_eq!(gs.items[torch].carried, cn as u16);
+            assert_eq!(gs.items[torch].current_age[1], 0);
+            assert_eq!(gs.items[torch].max_age[1], 28);
+            assert_eq!(gs.items[torch].temp, 0);
+            assert!((gs.items[torch].flags & ItemFlags::IF_UPDATE.bits()) != 0);
+        });
+    }
 
     #[test]
     fn combining_soulstones_rewrites_description_and_consumes_cursor_stone() {

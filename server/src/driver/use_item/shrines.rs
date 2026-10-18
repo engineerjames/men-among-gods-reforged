@@ -555,10 +555,8 @@ pub fn use_lab8_shrine(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         return false;
     }
 
-    // Check if offering is money or wrong item
-    let (offer_temp, expected_temp) = (gs.items[offer].temp, gs.items[item_idx].data[0]);
-
-    if (offer & 0x80000000) != 0 || u32::from(offer_temp) != expected_temp {
+    // Money citems carry the 0x80000000 bit and are not item indices.
+    if (offer & 0x80000000) != 0 || u32::from(gs.items[offer].temp) != gs.items[item_idx].data[0] {
         gs.do_character_log(
             cn,
             core::types::FontColor::Yellow,
@@ -1100,4 +1098,218 @@ pub fn explorer_point(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     }
 
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_helpers::{add_test_player, with_test_gs};
+    use core::skills::SK_WEAPON;
+    use core::string_operations::write_ascii_into_fixed;
+
+    /// Installs the minimum character template data needed for `minor_racechange`.
+    fn install_character_template(
+        gs: &mut GameState,
+        template_id: usize,
+        kindred: i32,
+        skill_bonus: u16,
+    ) {
+        gs.character_templates[template_id] = core::types::Character::default();
+        gs.character_templates[template_id].used = USE_ACTIVE;
+        gs.character_templates[template_id].kindred = kindred;
+        gs.character_templates[template_id].sprite = template_id as u16;
+        gs.character_templates[template_id].skill[SK_WEAPON][1] = skill_bonus;
+    }
+
+    /// Puts an active test item in the global item array and returns its index.
+    fn install_item(gs: &mut GameState, item_idx: usize, temp: u16) -> usize {
+        gs.items[item_idx] = core::types::Item::default();
+        gs.items[item_idx].used = USE_ACTIVE;
+        gs.items[item_idx].temp = temp;
+        write_ascii_into_fixed(&mut gs.items[item_idx].reference, "test item");
+        item_idx
+    }
+
+    #[test]
+    fn change_promotions_apply_template_kindred_and_skills() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let cases: &[(fn(&mut GameState, usize), usize, i32, u16)] = &[
+                (
+                    change_to_archtemplar,
+                    544,
+                    (traits::KIN_ARCHTEMPLAR | traits::KIN_MALE) as i32,
+                    11,
+                ),
+                (
+                    change_to_archharakim,
+                    545,
+                    (traits::KIN_ARCHHARAKIM | traits::KIN_MALE) as i32,
+                    12,
+                ),
+                (
+                    change_to_warrior,
+                    547,
+                    (traits::KIN_WARRIOR | traits::KIN_MALE) as i32,
+                    13,
+                ),
+                (
+                    change_to_sorcerer,
+                    546,
+                    (traits::KIN_SORCERER | traits::KIN_MALE) as i32,
+                    14,
+                ),
+            ];
+
+            for &(change, template_id, expected_kindred, expected_skill) in cases {
+                install_character_template(gs, template_id, expected_kindred, expected_skill);
+                gs.characters[cn].kindred = traits::KIN_MALE as i32;
+                for attr in [AT_AGIL, AT_STREN, AT_WILL, AT_INT] {
+                    gs.characters[cn].attrib[attr as usize][0] = 90;
+                }
+
+                change(gs, cn);
+
+                assert_eq!(gs.characters[cn].temp, template_id as u16);
+                assert_eq!(gs.characters[cn].kindred, expected_kindred);
+                assert_eq!(gs.characters[cn].skill[SK_WEAPON][1], expected_skill);
+            }
+        });
+    }
+
+    #[test]
+    fn change_to_warrior_guard_keeps_character_unchanged_when_attributes_are_low() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            install_character_template(
+                gs,
+                547,
+                (traits::KIN_WARRIOR | traits::KIN_MALE) as i32,
+                99,
+            );
+            gs.characters[cn].kindred = (traits::KIN_MERCENARY | traits::KIN_MALE) as i32;
+            gs.characters[cn].attrib[AT_AGIL as usize][0] = 59;
+            gs.characters[cn].attrib[AT_STREN as usize][0] = 90;
+
+            change_to_warrior(gs, cn);
+
+            assert_eq!(gs.characters[cn].temp, 0);
+            assert_eq!(
+                gs.characters[cn].kindred,
+                (traits::KIN_MERCENARY | traits::KIN_MALE) as i32
+            );
+            assert_eq!(gs.characters[cn].skill[SK_WEAPON][1], 0);
+        });
+    }
+
+    #[test]
+    fn shrine_of_change_dispatches_mercenary_healing_potion_to_warrior() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let potion = install_item(gs, 1, 127);
+            install_character_template(gs, 547, (traits::KIN_WARRIOR | traits::KIN_MALE) as i32, 7);
+            gs.characters[cn].kindred = (traits::KIN_MERCENARY | traits::KIN_MALE) as i32;
+            gs.characters[cn].attrib[AT_AGIL as usize][0] = 60;
+            gs.characters[cn].attrib[AT_STREN as usize][0] = 60;
+            gs.characters[cn].citem = potion as u32;
+
+            assert!(!shrine_of_change(gs, cn, 0));
+
+            assert_eq!(gs.characters[cn].temp, 547);
+            assert_eq!(
+                gs.characters[cn].kindred,
+                (traits::KIN_WARRIOR | traits::KIN_MALE) as i32
+            );
+        });
+    }
+
+    #[test]
+    fn explorer_point_rewards_only_first_visit() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let point = install_item(gs, 1, 0);
+            gs.items[point].data[0] = 0b10;
+            gs.items[point].data[1] = 0b100;
+            gs.items[point].data[4] = 100;
+            gs.characters[cn].points_tot = 1_000;
+
+            assert!(explorer_point(gs, cn, point));
+            let first_points = gs.characters[cn].points;
+            let first_total = gs.characters[cn].points_tot;
+
+            assert_ne!(first_points, 0);
+            assert_eq!(gs.characters[cn].data[46], 0b10);
+            assert_eq!(gs.characters[cn].data[47], 0b100);
+            assert_eq!(gs.characters[cn].luck, 10);
+
+            assert!(explorer_point(gs, cn, point));
+
+            assert_eq!(gs.characters[cn].points, first_points);
+            assert_eq!(gs.characters[cn].points_tot, first_total);
+            assert_eq!(gs.characters[cn].luck, 10);
+        });
+    }
+
+    #[test]
+    fn lab8_moneyshrine_rejects_non_money_and_accepts_sufficient_money() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let shrine = install_item(gs, 1, 0);
+            let token = install_item(gs, 2, 123);
+            gs.items[shrine].data[0] = 500;
+            gs.items[shrine].data[1] = 10;
+            gs.items[shrine].data[2] = 10;
+            gs.characters[cn].citem = token as u32;
+
+            assert!(!use_lab8_moneyshrine(gs, cn, shrine));
+            assert_eq!(gs.characters[cn].citem, token as u32);
+
+            gs.characters[cn].citem = 0x8000_0000 | 500;
+            gs.characters[cn].mana[5] = 3;
+            gs.characters[cn].a_mana = 0;
+
+            assert!(use_lab8_moneyshrine(gs, cn, shrine));
+
+            assert_eq!(gs.characters[cn].citem, 0);
+            assert_eq!(gs.characters[cn].a_mana, 3_000);
+        });
+    }
+
+    #[test]
+    fn use_shrine_fire_point_consumes_real_point_and_ignores_fake_point_reward() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let real_point = install_item(gs, 1, 0);
+            write_ascii_into_fixed(&mut gs.items[real_point].description, "ONE FIRE POINT");
+            gs.characters[cn].citem = real_point as u32;
+
+            assert!(!use_shrine(gs, cn, 0));
+
+            assert_eq!(gs.characters[cn].data[70], 1);
+            assert_eq!(gs.items[real_point].used, USE_EMPTY);
+            assert_eq!(gs.characters[cn].citem, 0);
+
+            let fake_point = install_item(gs, 2, 0);
+            write_ascii_into_fixed(&mut gs.items[fake_point].description, "ONE FAKE POINT");
+            gs.characters[cn].citem = fake_point as u32;
+
+            assert!(!use_shrine(gs, cn, 0));
+
+            assert_eq!(gs.characters[cn].data[70], 1);
+            assert_eq!(gs.items[fake_point].used, USE_EMPTY);
+            assert_eq!(gs.characters[cn].citem, 0);
+        });
+    }
+
+    #[test]
+    fn lab8_shrine_money_offer_should_be_rejected_without_indexing_items() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let shrine = install_item(gs, 1, 0);
+            gs.characters[cn].citem = 0x8000_0000 | 500;
+
+            assert!(!use_lab8_shrine(gs, cn, shrine));
+            assert_eq!(gs.characters[cn].citem, 0x8000_0000 | 500);
+        });
+    }
 }

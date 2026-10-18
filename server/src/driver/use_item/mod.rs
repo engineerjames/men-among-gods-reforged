@@ -546,4 +546,56 @@ mod tests {
             assert_eq!(gs.items[item_idx].used, USE_EMPTY);
         });
     }
+
+    #[test]
+    fn carried_item_activates_for_duration_and_marks_update() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            gs.items[item_idx].used = USE_ACTIVE;
+            gs.items[item_idx].flags = ItemFlags::IF_USE.bits() | ItemFlags::IF_USEACTIVATE.bits();
+            gs.items[item_idx].duration = 42;
+            gs.items[item_idx].carried = cn as u16;
+            gs.characters[cn].item[0] = item_idx as u32;
+
+            use_driver(gs, cn, item_idx, true);
+
+            assert_eq!(gs.items[item_idx].active, 42);
+            assert_ne!(gs.items[item_idx].flags & ItemFlags::IF_UPDATE.bits(), 0);
+        });
+    }
+
+    #[test]
+    fn carried_item_deactivates_and_marks_update() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            gs.items[item_idx].used = USE_ACTIVE;
+            gs.items[item_idx].flags =
+                ItemFlags::IF_USE.bits() | ItemFlags::IF_USEDEACTIVATE.bits();
+            gs.items[item_idx].active = 7;
+            gs.items[item_idx].carried = cn as u16;
+            gs.characters[cn].item[0] = item_idx as u32;
+
+            use_driver(gs, cn, item_idx, true);
+
+            assert_eq!(gs.items[item_idx].active, 0);
+            assert_ne!(gs.items[item_idx].flags & ItemFlags::IF_UPDATE.bits(), 0);
+        });
+    }
+
+    #[test]
+    fn use_destroy_item_survives_when_rank_is_too_low() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            add_consumable(gs, cn, item_idx, IT_RED_FLOWER, false);
+            gs.items[item_idx].min_rank = 1;
+
+            use_driver(gs, cn, item_idx, true);
+
+            assert_eq!(gs.characters[cn].item[0], item_idx as u32);
+            assert_eq!(gs.items[item_idx].used, USE_ACTIVE);
+        });
+    }
 }

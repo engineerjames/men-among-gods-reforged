@@ -631,3 +631,150 @@ pub fn item_tick(gs: &mut GameState) {
 
     item_tick_gc(gs);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::game_state::GameState;
+    use crate::test_helpers::{add_test_player, with_test_gs};
+    use core::constants::{ItemFlags, MF_NOEXPIRE, SERVER_MAPX, SERVER_MAPY};
+
+    /// Places an active item on the map and returns the map tile index.
+    fn place_ground_item(gs: &mut GameState, item_idx: usize, x: u16, y: u16) -> usize {
+        let m = x as usize + y as usize * SERVER_MAPX as usize;
+        gs.items[item_idx] = core::types::Item::default();
+        gs.items[item_idx].used = USE_ACTIVE;
+        gs.items[item_idx].x = x;
+        gs.items[item_idx].y = y;
+        gs.map[m].it = item_idx as u32;
+        m
+    }
+
+    #[test]
+    fn may_deactivate_validates_create_item_mine_slots() {
+        with_test_gs(|gs| {
+            let item_idx = 1;
+            gs.items[item_idx] = core::types::Item::default();
+
+            gs.items[item_idx].driver = 0;
+            assert!(may_deactivate(gs, item_idx));
+
+            gs.items[item_idx].driver = 1;
+            gs.items[item_idx].data[1] = (SERVER_MAPX * SERVER_MAPY) as u32;
+            assert!(!may_deactivate(gs, item_idx));
+
+            gs.items[item_idx].data[1] = 0;
+            assert!(may_deactivate(gs, item_idx));
+
+            let mine_idx = 2;
+            let mine_tile = 20 + 20 * SERVER_MAPX as usize;
+            gs.items[item_idx].data[1] = mine_tile as u32;
+            gs.map[mine_tile].it = mine_idx as u32;
+            gs.items[mine_idx].driver = 26;
+            assert!(may_deactivate(gs, item_idx));
+
+            gs.items[mine_idx].driver = 25;
+            assert!(!may_deactivate(gs, item_idx));
+        });
+    }
+
+    #[test]
+    fn expire_driver_dispatches_blood_pentagram_and_ignores_unknown_driver() {
+        with_test_gs(|gs| {
+            let item_idx = 1;
+            gs.items[item_idx] = core::types::Item::default();
+            gs.items[item_idx].driver = 49;
+            gs.items[item_idx].data[0] = 7;
+            gs.items[item_idx].data[1] = 100;
+            gs.items[item_idx].sprite[0] = 107;
+
+            expire_driver(gs, item_idx);
+
+            assert_eq!(gs.items[item_idx].data[0], 0);
+            assert_eq!(gs.items[item_idx].sprite[0], 100);
+
+            gs.items[item_idx].driver = 250;
+            gs.items[item_idx].data[0] = 3;
+            gs.items[item_idx].sprite[0] = 55;
+
+            expire_driver(gs, item_idx);
+
+            assert_eq!(gs.items[item_idx].data[0], 3);
+            assert_eq!(gs.items[item_idx].sprite[0], 55);
+        });
+    }
+
+    #[test]
+    fn item_tick_expire_removes_aged_takeable_ground_item() {
+        with_test_gs(|gs| {
+            let item_idx = 1;
+            let y = 8;
+            let m = place_ground_item(gs, item_idx, 7, y);
+            gs.item_tick_expire_counter = u32::from(y);
+            gs.items[item_idx].flags = ItemFlags::IF_TAKE.bits();
+            gs.items[item_idx].max_age[0] = 1;
+            gs.items[item_idx].damage_state = 4;
+
+            item_tick_expire(gs);
+
+            assert_eq!(gs.map[m].it, 0);
+            assert_eq!(gs.items[item_idx].used, USE_EMPTY);
+            assert_eq!(gs.globals.expire_cnt, 1);
+            assert_eq!(gs.item_tick_expire_counter, u32::from(y) + 1);
+        });
+    }
+
+    #[test]
+    fn item_tick_expire_skips_noexpire_items_and_tiles() {
+        with_test_gs(|gs| {
+            let item_idx = 1;
+            let y = 9;
+            let m = place_ground_item(gs, item_idx, 7, y);
+            gs.item_tick_expire_counter = u32::from(y);
+            gs.items[item_idx].flags = ItemFlags::IF_TAKE.bits() | ItemFlags::IF_NOEXPIRE.bits();
+            gs.items[item_idx].max_age[0] = 1;
+            gs.items[item_idx].damage_state = 4;
+            gs.map[m].flags = u64::from(MF_NOEXPIRE);
+
+            item_tick_expire(gs);
+
+            assert_eq!(gs.map[m].it, item_idx as u32);
+            assert_eq!(gs.items[item_idx].used, USE_ACTIVE);
+            assert_eq!(gs.items[item_idx].current_age[0], 0);
+            assert_eq!(gs.globals.expire_cnt, 0);
+        });
+    }
+
+    #[test]
+    fn item_tick_gc_removes_orphans_but_preserves_referenced_items() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let valid_ground = 10;
+            let orphan_ground = 11;
+            let valid_carried = 12;
+            let orphan_carried = 13;
+
+            place_ground_item(gs, valid_ground, 2, 2);
+            place_ground_item(gs, orphan_ground, 3, 3);
+            gs.map[3 + 3 * SERVER_MAPX as usize].it = 0;
+
+            gs.items[valid_carried] = core::types::Item::default();
+            gs.items[valid_carried].used = USE_ACTIVE;
+            gs.items[valid_carried].carried = cn as u16;
+            gs.characters[cn].item[0] = valid_carried as u32;
+
+            gs.items[orphan_carried] = core::types::Item::default();
+            gs.items[orphan_carried].used = USE_ACTIVE;
+            gs.items[orphan_carried].carried = cn as u16;
+
+            item_tick_gc(gs);
+
+            assert_eq!(gs.items[valid_ground].used, USE_ACTIVE);
+            assert_eq!(gs.items[valid_carried].used, USE_ACTIVE);
+            assert_eq!(gs.items[orphan_ground].used, USE_EMPTY);
+            assert_eq!(gs.items[orphan_carried].used, USE_EMPTY);
+            assert_eq!(gs.globals.gc_cnt, 2);
+            assert_eq!(gs.item_tick_gc_off, 256);
+        });
+    }
+}

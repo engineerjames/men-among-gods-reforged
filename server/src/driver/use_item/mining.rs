@@ -903,3 +903,153 @@ pub fn use_mine_fast(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
 
     true
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::game_state::GameState;
+    use crate::test_helpers::{add_test_player, with_test_gs};
+    use core::constants::{AT_STREN, ItemFlags, USE_ACTIVE, USE_EMPTY, WN_RHAND};
+
+    /// Places a minimal active item at a stable map coordinate.
+    fn make_wall_item(gs: &mut GameState, item_idx: usize) {
+        gs.items[item_idx] = core::types::Item::default();
+        gs.items[item_idx].used = USE_ACTIVE;
+        gs.items[item_idx].x = 10;
+        gs.items[item_idx].y = 10;
+    }
+
+    /// Installs the template copied by `mine_wall` when a wall breaks.
+    fn make_replacement_template(gs: &mut GameState, template_id: usize) {
+        gs.item_templates[template_id] = core::types::Item::default();
+        gs.item_templates[template_id].used = USE_ACTIVE;
+        gs.item_templates[template_id].driver = 26;
+        gs.item_templates[template_id].data[2] = 123;
+    }
+
+    #[test]
+    fn use_crystal_sub_returns_zero_when_group_has_no_spawn_need() {
+        with_test_gs(|gs| {
+            let crystal = 1;
+            make_wall_item(gs, crystal);
+            gs.items[crystal].data[1] = 0;
+
+            assert_eq!(use_crystal_sub(gs, 0, crystal), 0);
+        });
+    }
+
+    #[test]
+    fn use_mine_respawn_refuses_when_linked_wall_is_missing() {
+        with_test_gs(|gs| {
+            let spawner = 1;
+            make_wall_item(gs, spawner);
+            gs.items[spawner].data[0] = 12;
+            gs.items[spawner].data[1] = 2;
+            gs.items[spawner].data[2] = 1;
+            gs.items[spawner].data[3] = 10 + 10 * SERVER_MAPX as u32;
+
+            assert!(!use_mine_respawn(gs, 0, spawner));
+        });
+    }
+
+    #[test]
+    fn mine_wall_replaces_wall_with_template_and_preserves_runtime_fields() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let wall = 1;
+            let template_id = 45;
+            make_wall_item(gs, wall);
+            make_replacement_template(gs, template_id);
+            gs.items[wall].carried = cn as u16;
+            gs.items[wall].data[0] = template_id as u32;
+
+            assert_eq!(mine_wall(gs, cn, wall), 123);
+
+            assert_eq!(gs.items[wall].temp as usize, template_id);
+            assert_eq!(gs.items[wall].x, 10);
+            assert_eq!(gs.items[wall].y, 10);
+            assert_eq!(gs.items[wall].carried as usize, cn);
+            assert_eq!(gs.items[wall].driver, 26);
+            assert_ne!(gs.items[wall].flags & ItemFlags::IF_UPDATE.bits(), 0);
+        });
+    }
+
+    #[test]
+    fn mine_wall_returns_zero_when_character_tile_has_no_wall_item() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+
+            assert_eq!(mine_wall(gs, cn, 0), 0);
+        });
+    }
+
+    #[test]
+    fn use_mine_stops_when_exhausted_without_damaging_wall() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let wall = 1;
+            make_wall_item(gs, wall);
+            gs.items[wall].data[1] = 50;
+            gs.characters[cn].a_end = 1_499;
+            gs.characters[cn].misc_action = 7;
+
+            assert!(!use_mine(gs, cn, wall));
+
+            assert_eq!(gs.characters[cn].a_end, 1_499);
+            assert_eq!(gs.characters[cn].misc_action, 0);
+            assert_eq!(gs.items[wall].data[1], 50);
+        });
+    }
+
+    #[test]
+    fn use_mine_bare_hands_spends_resources_and_damages_wall() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let wall = 1;
+            make_wall_item(gs, wall);
+            gs.items[wall].data[1] = 100;
+            gs.characters[cn].attrib[AT_STREN as usize][5] = 50;
+            gs.characters[cn].a_end = 2_000;
+            gs.characters[cn].a_hp = 20_000;
+
+            assert!(!use_mine(gs, cn, wall));
+
+            assert_eq!(gs.characters[cn].a_end, 1_000);
+            assert_eq!(gs.characters[cn].a_hp, 19_500);
+            assert_eq!(gs.items[wall].data[1], 95);
+        });
+    }
+
+    #[test]
+    fn use_mine_fast_removes_uncarried_wall_from_map() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let wall = 1;
+            make_wall_item(gs, wall);
+            gs.items[wall].temp = 45;
+            let map_idx =
+                gs.items[wall].x as usize + gs.items[wall].y as usize * SERVER_MAPX as usize;
+            gs.map[map_idx].it = wall as u32;
+
+            assert!(use_mine_fast(gs, cn, wall));
+
+            assert_eq!(gs.map[map_idx].it, 0);
+            assert_eq!(gs.items[wall].used, USE_EMPTY);
+        });
+    }
+
+    #[test]
+    fn use_mine_fast_refuses_carried_wall() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let wall = 1;
+            make_wall_item(gs, wall);
+            gs.items[wall].carried = cn as u16;
+            gs.characters[cn].worn[WN_RHAND] = wall as u32;
+
+            assert!(!use_mine_fast(gs, cn, wall));
+
+            assert_eq!(gs.items[wall].used, USE_ACTIVE);
+        });
+    }
+}

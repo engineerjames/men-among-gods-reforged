@@ -782,7 +782,148 @@ pub fn use_seyan_portal(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
 mod tests {
     use super::*;
     use crate::test_helpers::{add_test_player, with_test_gs};
-    use core::constants::USE_ACTIVE;
+    use core::{
+        constants::{ItemFlags, TICKS, USE_ACTIVE, USE_EMPTY},
+        string_operations::write_ascii_into_fixed,
+    };
+
+    /// Mark a runtime item as active with a readable reference for log paths.
+    fn active_item(gs: &mut GameState, item_idx: usize, temp: u16, reference: &str) {
+        gs.items[item_idx] = core::types::Item::default();
+        gs.items[item_idx].used = USE_ACTIVE;
+        gs.items[item_idx].temp = temp;
+        write_ascii_into_fixed(&mut gs.items[item_idx].name, reference);
+        write_ascii_into_fixed(&mut gs.items[item_idx].reference, reference);
+    }
+
+    #[test]
+    fn is_nolab_item_recognizes_blocked_scroll_templates_only() {
+        with_test_gs(|gs| {
+            active_item(gs, 1, 331, "tavern scroll");
+            active_item(gs, 2, 332, "ordinary item");
+
+            assert!(is_nolab_item(gs, 1));
+            assert!(!is_nolab_item(gs, 2));
+            assert!(!is_nolab_item(gs, 0));
+        });
+    }
+
+    #[test]
+    fn teleport_requiring_activation_returns_before_consuming_nolab_cursor() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            active_item(gs, 1, 0, "inactive portal");
+            gs.items[1].flags = ItemFlags::IF_USEACTIVATE.bits();
+            gs.items[1].data[0] = 512;
+            gs.items[1].data[1] = 512;
+            active_item(gs, 2, 331, "tavern scroll");
+            gs.characters[cn].citem = 2;
+            let start = (gs.characters[cn].x, gs.characters[cn].y);
+
+            assert!(teleport(gs, cn, 1));
+
+            assert_eq!((gs.characters[cn].x, gs.characters[cn].y), start);
+            assert_eq!(gs.characters[cn].citem, 2);
+            assert_eq!(gs.items[2].used, USE_ACTIVE);
+        });
+    }
+
+    #[test]
+    fn teleport_removes_nolab_items_and_recall_spell_before_moving() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            active_item(gs, 1, 0, "portal");
+            gs.items[1].data[0] = 512;
+            gs.items[1].data[1] = 512;
+            active_item(gs, 2, 331, "cursor scroll");
+            active_item(gs, 3, 500, "inventory scroll");
+            active_item(gs, 4, skills::SK_RECALL as u16, "recall");
+            gs.characters[cn].citem = 2;
+            gs.characters[cn].item[0] = 3;
+            gs.characters[cn].spell[0] = 4;
+
+            assert!(teleport(gs, cn, 1));
+
+            assert_eq!((gs.characters[cn].x, gs.characters[cn].y), (512, 512));
+            assert_eq!(gs.characters[cn].citem, 0);
+            assert_eq!(gs.characters[cn].item[0], 0);
+            assert_eq!(gs.characters[cn].spell[0], 0);
+            assert_eq!(gs.items[2].used, USE_EMPTY);
+            assert_eq!(gs.items[3].used, USE_EMPTY);
+            assert_eq!(gs.items[4].used, USE_EMPTY);
+        });
+    }
+
+    #[test]
+    fn teleport2_stale_lag_scroll_does_not_add_recall_spell() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            active_item(gs, 1, 0, "lag scroll");
+            gs.items[1].data[0] = 512;
+            gs.items[1].data[1] = 512;
+            gs.items[1].data[2] = 1;
+            gs.globals.ticker = TICKS * 60 * 5;
+
+            assert!(teleport2(gs, cn, 1));
+
+            assert!(gs.characters[cn].spell.iter().all(|spell| *spell == 0));
+        });
+    }
+
+    #[test]
+    fn use_ladder_moves_by_item_relative_offsets() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            active_item(gs, 1, 0, "ladder");
+            gs.items[1].x = 20;
+            gs.items[1].y = 30;
+            gs.items[1].data[0] = 3;
+            gs.items[1].data[1] = 4;
+
+            assert!(use_ladder(gs, cn, 1));
+
+            assert_eq!((gs.characters[cn].x, gs.characters[cn].y), (23, 34));
+        });
+    }
+
+    #[test]
+    fn finish_laby_teleport_updates_progress_and_removes_laby_destroy_items() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            active_item(gs, 1, 0, "cursor relic");
+            active_item(gs, 2, 0, "bag relic");
+            active_item(gs, 3, 0, "worn relic");
+            active_item(gs, 4, 0, "spell");
+            for item_idx in 1..=3 {
+                gs.items[item_idx].flags = ItemFlags::IF_LABYDESTROY.bits();
+            }
+            gs.characters[cn].citem = 1;
+            gs.characters[cn].item[0] = 2;
+            gs.characters[cn].worn[0] = 3;
+            gs.characters[cn].spell[0] = 4;
+
+            assert!(finish_laby_teleport(gs, cn, 2, 17));
+
+            assert_eq!(gs.characters[cn].data[20], 2);
+            assert_eq!(gs.characters[cn].points_tot, 17);
+            assert_eq!((gs.characters[cn].x, gs.characters[cn].y), (512, 512));
+            assert_eq!(
+                (gs.characters[cn].temple_x, gs.characters[cn].temple_y),
+                (512, 512)
+            );
+            assert_eq!(
+                (gs.characters[cn].tavern_x, gs.characters[cn].tavern_y),
+                (512, 512)
+            );
+            assert_eq!(gs.characters[cn].citem, 0);
+            assert_eq!(gs.characters[cn].item[0], 0);
+            assert_eq!(gs.characters[cn].worn[0], 0);
+            assert_eq!(gs.characters[cn].spell[0], 0);
+            for item_idx in 1..=4 {
+                assert_eq!(gs.items[item_idx].used, USE_EMPTY);
+            }
+        });
+    }
 
     #[test]
     fn magic_portal_moves_starting_area_home_to_the_mercenary_temple() {

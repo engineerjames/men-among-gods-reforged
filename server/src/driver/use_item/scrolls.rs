@@ -445,3 +445,154 @@ pub fn spell_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
 
     false
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::points;
+    use crate::test_helpers::{add_test_player, with_test_gs};
+    use core::constants::{MAXSKILL, USE_ACTIVE, USE_EMPTY};
+    use core::skills::{SK_REPAIR, SK_SWORD, SK_WEAPON};
+
+    /// Creates a used scroll item in the first inventory slot.
+    fn add_inventory_scroll(gs: &mut GameState, cn: usize, item_idx: usize) {
+        gs.items[item_idx].used = USE_ACTIVE;
+        gs.items[item_idx].carried = cn as u16;
+        gs.characters[cn].item[0] = item_idx as u32;
+    }
+
+    #[test]
+    fn use_scroll_learns_unknown_canonical_weapon_skill() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            add_inventory_scroll(gs, cn, item_idx);
+            gs.items[item_idx].data[0] = SK_SWORD as u32;
+            gs.characters[cn].skill[SK_WEAPON][2] = 10;
+
+            assert!(use_scroll(gs, cn, item_idx));
+            assert_eq!(gs.characters[cn].skill[SK_WEAPON][0], 1);
+            assert_eq!(gs.characters[cn].item[0], 0);
+            assert_eq!(gs.items[item_idx].used, USE_EMPTY);
+        });
+    }
+
+    #[test]
+    fn use_scroll_raises_known_skill_and_awards_points() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            add_inventory_scroll(gs, cn, item_idx);
+            gs.items[item_idx].data[0] = SK_REPAIR as u32;
+            gs.characters[cn].skill[SK_REPAIR][0] = 2;
+            gs.characters[cn].skill[SK_REPAIR][2] = 5;
+            gs.characters[cn].skill[SK_REPAIR][3] = 4;
+
+            assert!(use_scroll(gs, cn, item_idx));
+            assert_eq!(gs.characters[cn].skill[SK_REPAIR][0], 3);
+            assert_eq!(gs.characters[cn].points_tot, points::skill_needed(2, 4));
+            assert_eq!(gs.items[item_idx].used, USE_EMPTY);
+        });
+    }
+
+    #[test]
+    fn teach_only_scroll_refuses_already_known_skill() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            add_inventory_scroll(gs, cn, item_idx);
+            gs.items[item_idx].data[0] = SK_REPAIR as u32;
+            gs.items[item_idx].data[1] = 1;
+            gs.characters[cn].skill[SK_REPAIR][0] = 1;
+            gs.characters[cn].skill[SK_REPAIR][2] = 5;
+
+            assert!(!use_scroll(gs, cn, item_idx));
+            assert_eq!(gs.characters[cn].skill[SK_REPAIR][0], 1);
+            assert_eq!(gs.characters[cn].item[0], item_idx as u32);
+            assert_eq!(gs.items[item_idx].used, USE_ACTIVE);
+        });
+    }
+
+    #[test]
+    fn invalid_skill_scroll_is_not_consumed() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            add_inventory_scroll(gs, cn, item_idx);
+            gs.items[item_idx].data[0] = MAXSKILL as u32;
+
+            assert!(!use_scroll(gs, cn, item_idx));
+            assert_eq!(gs.characters[cn].item[0], item_idx as u32);
+            assert_eq!(gs.items[item_idx].used, USE_ACTIVE);
+        });
+    }
+
+    #[test]
+    fn attribute_scroll_raises_attribute_and_consumes_item() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            add_inventory_scroll(gs, cn, item_idx);
+            gs.items[item_idx].data[0] = 0;
+            gs.characters[cn].attrib[0][0] = 5;
+            gs.characters[cn].attrib[0][2] = 7;
+            gs.characters[cn].attrib[0][3] = 4;
+
+            assert!(use_scroll2(gs, cn, item_idx));
+            assert_eq!(gs.characters[cn].attrib[0][0], 6);
+            assert_eq!(gs.characters[cn].points_tot, 25);
+            assert_eq!(gs.characters[cn].item[0], 0);
+            assert_eq!(gs.items[item_idx].used, USE_EMPTY);
+        });
+    }
+
+    #[test]
+    fn attribute_scroll_refuses_when_attribute_is_at_max() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            add_inventory_scroll(gs, cn, item_idx);
+            gs.items[item_idx].data[0] = 0;
+            gs.characters[cn].attrib[0][0] = 7;
+            gs.characters[cn].attrib[0][2] = 7;
+
+            assert!(!use_scroll2(gs, cn, item_idx));
+            assert_eq!(gs.characters[cn].item[0], item_idx as u32);
+            assert_eq!(gs.items[item_idx].used, USE_ACTIVE);
+        });
+    }
+
+    #[test]
+    fn hitpoint_scroll_adds_amount_and_cost_for_each_point() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            add_inventory_scroll(gs, cn, item_idx);
+            gs.items[item_idx].data[0] = 3;
+            gs.characters[cn].hp[0] = 5;
+            gs.characters[cn].hp[2] = 10;
+            gs.characters[cn].hp[3] = 2;
+
+            assert!(use_scroll3(gs, cn, item_idx));
+            assert_eq!(gs.characters[cn].hp[0], 8);
+            assert_eq!(gs.characters[cn].points_tot, 36);
+            assert_eq!(gs.items[item_idx].used, USE_EMPTY);
+        });
+    }
+
+    #[test]
+    fn spell_scroll_without_charges_does_nothing() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            add_inventory_scroll(gs, cn, item_idx);
+            gs.items[item_idx].data[2] = 0;
+            gs.items[item_idx].value = 100;
+
+            assert!(!spell_scroll(gs, cn, item_idx));
+            assert_eq!(gs.items[item_idx].data[2], 0);
+            assert_eq!(gs.items[item_idx].value, 100);
+            assert_eq!(gs.items[item_idx].used, USE_ACTIVE);
+        });
+    }
+}

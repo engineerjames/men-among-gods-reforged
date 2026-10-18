@@ -426,3 +426,174 @@ pub fn use_lab8_key(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
 
     true
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_helpers::{add_test_player, with_test_gs};
+    use core::constants::{ItemFlags, SERVER_MAPX, USE_ACTIVE, USE_EMPTY};
+
+    /// Returns the flat map index for test coordinates.
+    fn map_idx(x: u16, y: u16) -> usize {
+        x as usize + y as usize * SERVER_MAPX as usize
+    }
+
+    /// Creates a used door item at a safe map coordinate.
+    fn add_door(gs: &mut GameState, item_idx: usize, active: u32) {
+        gs.items[item_idx].used = USE_ACTIVE;
+        gs.items[item_idx].x = 20;
+        gs.items[item_idx].y = 20;
+        gs.items[item_idx].temp = 9;
+        gs.items[item_idx].active = active;
+        gs.items[item_idx].flags = ItemFlags::IF_MOVEBLOCK.bits() | ItemFlags::IF_SIGHTBLOCK.bits();
+        gs.item_templates[9].flags = ItemFlags::IF_SIGHTBLOCK.bits();
+    }
+
+    #[test]
+    fn use_door_refuses_when_tile_is_occupied() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            add_door(gs, item_idx, 0);
+            gs.map[map_idx(20, 20)].ch = cn as u32;
+
+            assert!(!use_door(gs, cn, item_idx));
+            assert_ne!(gs.items[item_idx].flags & ItemFlags::IF_MOVEBLOCK.bits(), 0);
+        });
+    }
+
+    #[test]
+    fn use_door_opens_inactive_door_by_clearing_block_flags() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            add_door(gs, item_idx, 0);
+            gs.items[item_idx].data[1] = 1;
+
+            assert!(use_door(gs, cn, item_idx));
+            assert_eq!(gs.items[item_idx].flags & ItemFlags::IF_MOVEBLOCK.bits(), 0);
+            assert_eq!(
+                gs.items[item_idx].flags & ItemFlags::IF_SIGHTBLOCK.bits(),
+                0
+            );
+            assert_eq!(gs.items[item_idx].data[1], 0);
+        });
+    }
+
+    #[test]
+    fn use_door_closes_active_door_and_restores_template_sight_block() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            add_door(gs, item_idx, 1);
+            gs.items[item_idx].flags = 0;
+
+            assert!(use_door(gs, cn, item_idx));
+            assert_ne!(gs.items[item_idx].flags & ItemFlags::IF_MOVEBLOCK.bits(), 0);
+            assert_ne!(
+                gs.items[item_idx].flags & ItemFlags::IF_SIGHTBLOCK.bits(),
+                0
+            );
+        });
+    }
+
+    #[test]
+    fn locked_door_without_key_stays_closed() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            add_door(gs, item_idx, 1);
+            gs.items[item_idx].data[0] = 77;
+            gs.items[item_idx].data[1] = 1;
+            gs.items[item_idx].flags = ItemFlags::IF_MOVEBLOCK.bits();
+
+            assert!(!use_door(gs, cn, item_idx));
+            assert_eq!(gs.items[item_idx].data[1], 1);
+            assert_ne!(gs.items[item_idx].flags & ItemFlags::IF_MOVEBLOCK.bits(), 0);
+        });
+    }
+
+    #[test]
+    fn key_that_vanishes_unlocks_door_and_is_consumed_from_inventory() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let door_idx = 1;
+            let key_idx = 2;
+            add_door(gs, door_idx, 0);
+            gs.items[door_idx].data[0] = 77;
+            gs.items[door_idx].data[1] = 1;
+            gs.items[door_idx].data[3] = 1;
+            gs.items[key_idx].used = USE_ACTIVE;
+            gs.items[key_idx].temp = 77;
+            gs.items[key_idx].carried = cn as u16;
+            gs.characters[cn].item[0] = key_idx as u32;
+
+            assert!(use_door(gs, cn, door_idx));
+            assert_eq!(gs.characters[cn].item[0], 0);
+            assert_eq!(gs.items[key_idx].used, USE_EMPTY);
+            assert_eq!(gs.items[door_idx].data[1], 0);
+        });
+    }
+
+    #[test]
+    fn use_lever_activates_linked_inactive_item() {
+        with_test_gs(|gs| {
+            let lever_idx = 1;
+            let linked_idx = 2;
+            let target_map_idx = map_idx(30, 30);
+            gs.items[lever_idx].used = USE_ACTIVE;
+            gs.items[lever_idx].data[0] = target_map_idx as u32;
+            gs.map[target_map_idx].it = linked_idx as u32;
+            gs.items[linked_idx].used = USE_ACTIVE;
+            gs.items[linked_idx].x = 30;
+            gs.items[linked_idx].y = 30;
+            gs.items[linked_idx].duration = 15;
+
+            assert!(use_lever(gs, 0, lever_idx));
+            assert_eq!(gs.items[linked_idx].active, 15);
+        });
+    }
+
+    #[test]
+    fn use_rotate_wraps_state_and_updates_sprite() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            gs.items[item_idx].used = USE_ACTIVE;
+            gs.items[item_idx].data[0] = 100;
+            gs.items[item_idx].data[1] = 3;
+
+            assert!(use_rotate(gs, cn, item_idx));
+            assert_eq!(gs.items[item_idx].data[1], 0);
+            assert_eq!(gs.items[item_idx].sprite[0], 100);
+            assert_ne!(gs.items[item_idx].flags & ItemFlags::IF_UPDATE.bits(), 0);
+        });
+    }
+
+    #[test]
+    fn use_lab8_key_combines_matching_parts_into_result_key() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let base_idx = 1;
+            let part_idx = 2;
+            let result_template = 77;
+            gs.item_templates[result_template].used = USE_ACTIVE;
+            gs.items[base_idx].used = USE_ACTIVE;
+            gs.items[base_idx].carried = cn as u16;
+            gs.items[base_idx].data[0] = 44;
+            gs.items[base_idx].data[1] = result_template as u32;
+            gs.characters[cn].item[0] = base_idx as u32;
+            gs.items[part_idx].used = USE_ACTIVE;
+            gs.items[part_idx].temp = 44;
+            gs.items[part_idx].carried = cn as u16;
+            gs.characters[cn].citem = part_idx as u32;
+
+            assert!(use_lab8_key(gs, cn, base_idx));
+            let new_key = gs.characters[cn].item[0] as usize;
+            assert_ne!(new_key, 0);
+            assert_eq!(gs.characters[cn].citem, 0);
+            assert_eq!(gs.items[part_idx].used, USE_EMPTY);
+            assert_eq!(gs.items[new_key].temp as usize, result_template);
+        });
+    }
+}

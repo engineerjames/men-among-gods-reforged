@@ -583,7 +583,7 @@ mod tests {
     use super::*;
     use crate::game_state::GameState;
     use crate::test_helpers::{add_test_player, with_test_gs};
-    use core::constants::{USE_ACTIVE, WN_RHAND};
+    use core::constants::{ItemFlags, USE_ACTIVE, WN_LHAND, WN_RHAND};
 
     /// Puts a damageable item in a worn slot and returns its index.
     fn wear_damageable_item(gs: &mut GameState, cn: usize, slot: usize) -> usize {
@@ -653,6 +653,141 @@ mod tests {
 
             assert_eq!(gs.items[item_idx].current_damage, 10);
             assert_eq!(gs.characters[cn].citem, item_idx as u32);
+        });
+    }
+
+    #[test]
+    fn item_age_advances_damage_state_and_resets_counters() {
+        with_test_gs(|gs| {
+            let item_idx = 1;
+            gs.items[item_idx] = core::types::Item::default();
+            gs.items[item_idx].used = USE_ACTIVE;
+            gs.items[item_idx].max_age[0] = 10;
+            gs.items[item_idx].current_age[0] = 11;
+            gs.items[item_idx].current_damage = 25;
+            gs.items[item_idx].max_damage = 100;
+            gs.items[item_idx].value = 80;
+            gs.items[item_idx].sprite[0] = 4;
+
+            assert!(item_age(gs, item_idx));
+
+            assert_eq!(gs.items[item_idx].damage_state, 1);
+            assert_eq!(gs.items[item_idx].current_age, [0, 0]);
+            assert_eq!(gs.items[item_idx].current_damage, 0);
+            assert_eq!(gs.items[item_idx].value, 40);
+            assert_eq!(gs.items[item_idx].sprite[0], 5);
+            assert_ne!(gs.items[item_idx].flags & ItemFlags::IF_UPDATE.bits(), 0);
+        });
+    }
+
+    #[test]
+    fn item_age_reduces_armor_and_weapon_after_second_damage_state() {
+        with_test_gs(|gs| {
+            let item_idx = 1;
+            gs.items[item_idx] = core::types::Item::default();
+            gs.items[item_idx].used = USE_ACTIVE;
+            gs.items[item_idx].max_damage = 10;
+            gs.items[item_idx].current_damage = 11;
+            gs.items[item_idx].damage_state = 1;
+            gs.items[item_idx].armor = [5, 4];
+            gs.items[item_idx].weapon = [8, 7];
+            gs.items[item_idx].value = 100;
+
+            assert!(item_age(gs, item_idx));
+
+            assert_eq!(gs.items[item_idx].damage_state, 2);
+            assert_eq!(gs.items[item_idx].armor, [4, 3]);
+            assert_eq!(gs.items[item_idx].weapon, [6, 5]);
+            assert_eq!(gs.items[item_idx].value, 50);
+        });
+    }
+
+    #[test]
+    fn item_age_expires_no_age_items_after_timeout() {
+        with_test_gs(|gs| {
+            let item_idx = 1;
+            gs.items[item_idx] = core::types::Item::default();
+            gs.items[item_idx].used = USE_ACTIVE;
+            gs.items[item_idx].current_age[0] = (TICKS * 60 * 30 + 1) as u32;
+
+            assert!(item_age(gs, item_idx));
+            assert_eq!(gs.items[item_idx].damage_state, 5);
+        });
+    }
+
+    #[test]
+    fn lightage_uses_carriers_position_and_clamps_bright_tiles() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            gs.items[item_idx] = core::types::Item::default();
+            gs.items[item_idx].used = USE_ACTIVE;
+            gs.items[item_idx].carried = cn as u16;
+            gs.items[item_idx].active = 1;
+            let map_idx =
+                gs.characters[cn].x as usize + gs.characters[cn].y as usize * SERVER_MAPX as usize;
+            gs.map[map_idx].light = 300;
+
+            lightage(gs, item_idx, 2);
+
+            assert_eq!(gs.items[item_idx].current_age[1], 1_000);
+            assert_eq!(gs.items[item_idx].current_age[0], 0);
+        });
+    }
+
+    #[test]
+    fn char_item_expire_build_mode_leaves_items_and_clock_unchanged() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            gs.items[item_idx] = core::types::Item::default();
+            gs.items[item_idx].used = USE_ACTIVE;
+            gs.items[item_idx].flags = ItemFlags::IF_ALWAYSEXP1.bits();
+            gs.characters[cn].item[0] = item_idx as u32;
+            gs.characters[cn].flags |= CharacterFlags::BuildMode.bits();
+
+            char_item_expire(gs, cn);
+
+            assert_eq!(gs.ice_cloak_clock, 0);
+            assert_eq!(gs.items[item_idx].current_age[0], 0);
+            assert_eq!(gs.characters[cn].item[0], item_idx as u32);
+        });
+    }
+
+    #[test]
+    fn char_item_expire_removes_destroyed_backpack_item() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            gs.items[item_idx] = core::types::Item::default();
+            gs.items[item_idx].used = USE_ACTIVE;
+            gs.items[item_idx].flags = ItemFlags::IF_ALWAYSEXP1.bits();
+            gs.items[item_idx].damage_state = 4;
+            gs.items[item_idx].max_age[0] = 0;
+            gs.items[item_idx].current_age[0] = (TICKS * 60 * 30 + 1) as u32;
+            gs.characters[cn].item[0] = item_idx as u32;
+
+            char_item_expire(gs, cn);
+
+            assert_eq!(gs.items[item_idx].damage_state, 5);
+            assert_eq!(gs.characters[cn].item[0], 0);
+            assert_eq!(gs.items[item_idx].used, USE_EMPTY);
+        });
+    }
+
+    #[test]
+    fn item_damage_armor_never_damages_hand_slots() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let right = wear_damageable_item(gs, cn, WN_RHAND);
+            let left = 2;
+            gs.items[left] = gs.items[right];
+            gs.characters[cn].worn[WN_LHAND] = left as u32;
+
+            item_damage_armor(gs, cn, 1_000);
+
+            assert_eq!(gs.items[right].current_damage, 10);
+            assert_eq!(gs.items[left].current_damage, 10);
         });
     }
 }

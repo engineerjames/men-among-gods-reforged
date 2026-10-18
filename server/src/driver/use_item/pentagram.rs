@@ -659,3 +659,171 @@ pub fn expire_blood_penta(gs: &mut GameState, item_idx: usize) {
         item.sprite[0] = item.data[1] as i16 + item.data[0] as i16;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_helpers::{add_test_player, with_test_gs};
+    use core::{
+        constants::{USE_ACTIVE, USE_EMPTY},
+        string_operations::{c_string_to_str, write_ascii_into_fixed},
+    };
+
+    /// Seed the item template slot needed by `God::create_item`.
+    fn seed_template(gs: &mut GameState, template_id: usize) {
+        gs.item_templates[template_id] = core::types::Item::default();
+        gs.item_templates[template_id].used = USE_ACTIVE;
+        write_ascii_into_fixed(
+            &mut gs.item_templates[template_id].name,
+            &format!("template {template_id}"),
+        );
+        write_ascii_into_fixed(
+            &mut gs.item_templates[template_id].reference,
+            &format!("template {template_id}"),
+        );
+    }
+
+    /// Mark a runtime item as an active pentagram driver item.
+    fn active_pentagram(gs: &mut GameState, item_idx: usize, value: u32) {
+        gs.items[item_idx] = core::types::Item::default();
+        gs.items[item_idx].used = USE_ACTIVE;
+        gs.items[item_idx].driver = 33;
+        gs.items[item_idx].data[0] = value;
+        gs.items[item_idx].x = 20 + item_idx as u16;
+        gs.items[item_idx].y = 20;
+    }
+
+    #[test]
+    fn boost_char_prefixes_name_saturates_stats_and_creates_soulstone() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            seed_template(gs, 1146);
+            gs.characters[cn].points_tot = 0;
+            for attr in &mut gs.characters[cn].attrib {
+                attr[0] = u16::MAX;
+            }
+            for skill in &mut gs.characters[cn].skill {
+                skill[0] = u16::MAX;
+            }
+
+            assert!(!boost_char(gs, cn, 1));
+
+            assert_eq!(c_string_to_str(&gs.characters[cn].name), "Strong Tester");
+            assert!(
+                gs.characters[cn]
+                    .attrib
+                    .iter()
+                    .all(|attr| attr[0] == u16::MAX)
+            );
+            assert!(
+                gs.characters[cn]
+                    .skill
+                    .iter()
+                    .all(|skill| skill[0] == u16::MAX)
+            );
+            let soulstone = gs.characters[cn].item[0] as usize;
+            assert_ne!(soulstone, 0);
+            assert_eq!(gs.items[soulstone].used, USE_ACTIVE);
+            assert_eq!(gs.items[soulstone].driver, 68);
+            assert_eq!(gs.items[soulstone].data[0], 0);
+            assert_eq!(gs.items[soulstone].data[1], 0);
+        });
+    }
+
+    #[test]
+    fn solved_pentagram_awards_formula_bonus_and_activates_pentagrams() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            active_pentagram(gs, 1, 7);
+            active_pentagram(gs, 2, 3);
+            gs.items[2].light = [0, 3];
+
+            assert!(!solved_pentagram(gs, cn, 1));
+
+            assert_eq!(gs.characters[cn].points_tot, 22);
+            assert_eq!(gs.characters[cn].points, 22);
+            assert_eq!(gs.characters[cn].data[18], 0);
+            assert_eq!(gs.characters[cn].future3[0], 1);
+            assert!(gs.items[1].active >= 10 * 60);
+            assert!(gs.items[2].active >= 10 * 60);
+        });
+    }
+
+    #[test]
+    fn use_pentagram_active_item_returns_false_without_changing_owner() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            active_pentagram(gs, 1, 5);
+            gs.items[1].active = 1;
+            gs.items[1].data[8] = 0;
+
+            assert!(!use_pentagram(gs, cn, 1));
+
+            assert_eq!(gs.items[1].data[8], 0);
+            assert_eq!(gs.characters[cn].data[18], 0);
+        });
+    }
+
+    #[test]
+    fn pentagram_active_item_does_not_spawn_enemies() {
+        with_test_gs(|gs| {
+            active_pentagram(gs, 1, 5);
+            gs.items[1].active = 1;
+
+            pentagram(gs, 1);
+
+            assert_eq!(&gs.items[1].data[1..4], &[0, 0, 0]);
+            assert!(gs.characters.iter().all(|ch| ch.used == USE_EMPTY));
+        });
+    }
+
+    #[test]
+    fn blood_pentagram_use_sets_blood_state_and_sprite() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.items[1] = core::types::Item::default();
+            gs.items[1].used = USE_ACTIVE;
+            gs.items[1].data[1] = 40;
+            gs.items[1].sprite[0] = 40;
+
+            assert!(use_blook_pentagram(gs, cn, 1));
+
+            assert_eq!(gs.items[1].data[0], 1);
+            assert_eq!(gs.items[1].sprite[0], 41);
+        });
+    }
+
+    #[test]
+    fn expire_blood_penta_advances_and_wraps_sprite_offset() {
+        with_test_gs(|gs| {
+            gs.items[1] = core::types::Item::default();
+            gs.items[1].used = USE_ACTIVE;
+            gs.items[1].data[0] = 6;
+            gs.items[1].data[1] = 100;
+
+            expire_blood_penta(gs, 1);
+            assert_eq!(gs.items[1].data[0], 7);
+            assert_eq!(gs.items[1].sprite[0], 107);
+
+            expire_blood_penta(gs, 1);
+            assert_eq!(gs.items[1].data[0], 0);
+            assert_eq!(gs.items[1].sprite[0], 100);
+        });
+    }
+
+    #[test]
+    fn expire_blood_penta_ignores_clean_pentagram() {
+        with_test_gs(|gs| {
+            gs.items[1] = core::types::Item::default();
+            gs.items[1].used = USE_ACTIVE;
+            gs.items[1].data[0] = 0;
+            gs.items[1].data[1] = 100;
+            gs.items[1].sprite[0] = 77;
+
+            expire_blood_penta(gs, 1);
+
+            assert_eq!(gs.items[1].data[0], 0);
+            assert_eq!(gs.items[1].sprite[0], 77);
+        });
+    }
+}

@@ -934,3 +934,184 @@ pub fn use_garbage(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
 
     true
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::game_state::GameState;
+    use crate::test_helpers::{add_test_player, with_test_gs};
+    use core::constants::{ItemFlags, SERVER_MAPX, USE_ACTIVE, USE_EMPTY};
+    use core::string_operations::write_ascii_into_fixed;
+
+    /// Installs a minimal active, takeable item template for create-item tests.
+    fn make_takeable_template(gs: &mut GameState, template_id: usize, reference: &str) {
+        gs.item_templates[template_id] = core::types::Item::default();
+        gs.item_templates[template_id].used = USE_ACTIVE;
+        gs.item_templates[template_id].flags = ItemFlags::IF_TAKE.bits();
+        write_ascii_into_fixed(&mut gs.item_templates[template_id].name, reference);
+        write_ascii_into_fixed(&mut gs.item_templates[template_id].reference, reference);
+    }
+
+    /// Places a minimal active source item at a stable map coordinate.
+    fn make_source_item(gs: &mut GameState, item_idx: usize) {
+        gs.items[item_idx] = core::types::Item::default();
+        gs.items[item_idx].used = USE_ACTIVE;
+        gs.items[item_idx].x = 10;
+        gs.items[item_idx].y = 10;
+        write_ascii_into_fixed(&mut gs.items[item_idx].name, "source");
+        write_ascii_into_fixed(&mut gs.items[item_idx].reference, "source");
+    }
+
+    #[test]
+    fn use_create_gold_adds_gold_as_silver_units() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let source = 1;
+            make_source_item(gs, source);
+            gs.items[source].data[0] = 7;
+
+            assert!(use_create_gold(gs, cn, source));
+
+            assert_eq!(gs.characters[cn].gold, 700);
+        });
+    }
+
+    #[test]
+    fn use_create_item_gives_template_copy_to_inventory() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let source = 1;
+            let template_id = 42;
+            make_source_item(gs, source);
+            make_takeable_template(gs, template_id, "a test trinket");
+            gs.items[source].data[0] = template_id as u32;
+
+            assert!(use_create_item(gs, cn, source));
+
+            let created = gs.characters[cn].item[0] as usize;
+            assert_ne!(created, 0);
+            assert_eq!(gs.items[created].temp as usize, template_id);
+            assert_eq!(gs.items[created].carried as usize, cn);
+        });
+    }
+
+    #[test]
+    fn use_create_item_refuses_active_source_without_creating_item() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let source = 1;
+            let template_id = 43;
+            make_source_item(gs, source);
+            make_takeable_template(gs, template_id, "an active reward");
+            gs.items[source].active = 1;
+            gs.items[source].data[0] = template_id as u32;
+
+            assert!(!use_create_item(gs, cn, source));
+
+            assert_eq!(gs.characters[cn].item[0], 0);
+        });
+    }
+
+    #[test]
+    fn use_create_item2_consumes_required_cursor_item_on_success() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let source = 1;
+            let cursor = 2;
+            let required_template = 99;
+            let reward_template = 44;
+            make_source_item(gs, source);
+            make_takeable_template(gs, reward_template, "a gated reward");
+            gs.items[source].data[0] = reward_template as u32;
+            gs.items[source].data[1] = required_template as u32;
+            gs.items[cursor] = core::types::Item::default();
+            gs.items[cursor].used = USE_ACTIVE;
+            gs.items[cursor].temp = required_template as u16;
+            gs.characters[cn].citem = cursor as u32;
+
+            assert!(use_create_item2(gs, cn, source));
+
+            assert_eq!(gs.characters[cn].citem, 0);
+            assert_eq!(gs.items[cursor].used, USE_EMPTY);
+            let created = gs.characters[cn].item[0] as usize;
+            assert_eq!(gs.items[created].temp as usize, reward_template);
+        });
+    }
+
+    #[test]
+    fn use_spawn_requires_matching_cursor_template() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let source = 1;
+            let cursor = 2;
+            let required_template = 77;
+            make_source_item(gs, source);
+            gs.items[source].data[1] = required_template as u32;
+
+            assert!(!use_spawn(gs, cn, source));
+
+            gs.items[cursor] = core::types::Item::default();
+            gs.items[cursor].used = USE_ACTIVE;
+            gs.items[cursor].temp = (required_template - 1) as u16;
+            gs.characters[cn].citem = cursor as u32;
+            assert!(!use_spawn(gs, cn, source));
+            assert_eq!(gs.characters[cn].citem, cursor as u32);
+
+            gs.items[cursor].temp = required_template as u16;
+            assert!(use_spawn(gs, cn, source));
+            assert_eq!(gs.characters[cn].citem, 0);
+            assert_eq!(gs.items[cursor].used, USE_EMPTY);
+        });
+    }
+
+    #[test]
+    fn use_pile_removes_original_pile_and_releases_its_tile() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let pile = 1;
+            make_source_item(gs, pile);
+            gs.items[pile].data[0] = 0;
+            let map_idx =
+                gs.items[pile].x as usize + gs.items[pile].y as usize * SERVER_MAPX as usize;
+            gs.map[map_idx].it = pile as u32;
+
+            assert!(use_pile(gs, cn, pile));
+
+            assert_eq!(gs.items[pile].used, USE_EMPTY);
+            assert_ne!(gs.map[map_idx].it, pile as u32);
+        });
+    }
+
+    #[test]
+    fn use_garbage_disposes_cursor_item() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let garbage = 1;
+            let cursor = 2;
+            make_source_item(gs, garbage);
+            gs.items[cursor] = core::types::Item::default();
+            gs.items[cursor].used = USE_ACTIVE;
+            write_ascii_into_fixed(&mut gs.items[cursor].reference, "old boot");
+            gs.characters[cn].citem = cursor as u32;
+
+            assert!(use_garbage(gs, cn, garbage));
+
+            assert_eq!(gs.characters[cn].citem, 0);
+            assert_eq!(gs.items[cursor].used, USE_EMPTY);
+        });
+    }
+
+    #[test]
+    fn use_garbage_disposes_cursor_money() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let garbage = 1;
+            make_source_item(gs, garbage);
+            gs.characters[cn].citem = 0x8000_0123;
+
+            assert!(use_garbage(gs, cn, garbage));
+
+            assert_eq!(gs.characters[cn].citem, 0);
+        });
+    }
+}
