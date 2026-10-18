@@ -65,6 +65,9 @@ impl TemplateViewerApp {
         if character == before {
             return;
         }
+        if table == ViewMode::CharacterTemplates {
+            refresh_points_tot(&before, &mut character);
+        }
         let records = match table {
             ViewMode::CharacterTemplates => &mut self.character_templates,
             _ => &mut self.characters,
@@ -382,9 +385,29 @@ fn ui_character_tables(ui: &mut egui::Ui, character: &mut Character) {
         });
 }
 
+/// Recompute an edited template's `points_tot` when the edit changed its stats.
+///
+/// Templates carry hand-authored `points_tot` values from the legacy data that
+/// do not match the stat formula; they must survive untouched unless the stats
+/// that feed the formula actually change. A direct `points_tot` edit always wins.
+///
+/// # Arguments
+///
+/// * `before` - Template as it was before this edit.
+/// * `after` - Edited template; its `points_tot` is updated in place.
+fn refresh_points_tot(before: &Character, after: &mut Character) {
+    if after.points_tot != before.points_tot {
+        return;
+    }
+    let new_points = server::points::calculate_points_tot(after);
+    if new_points != server::points::calculate_points_tot(before) {
+        after.points_tot = new_points;
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::KINDRED_FLAGS;
+    use super::{Character, KINDRED_FLAGS, refresh_points_tot};
 
     #[test]
     fn kindred_flags_are_distinct_single_bits() {
@@ -394,5 +417,40 @@ mod tests {
             assert_eq!(seen & bit, 0);
             seen |= bit;
         }
+    }
+
+    /// Template with a legacy hand-set `points_tot` that disagrees with its stats.
+    fn legacy_template() -> Character {
+        let mut ch = Character::default();
+        ch.attrib[0][0] = 20;
+        ch.points_tot = 542_796;
+        ch
+    }
+
+    #[test]
+    fn non_stat_edit_keeps_legacy_points_tot() {
+        let before = legacy_template();
+        let mut after = before;
+        after.gold = 99;
+        refresh_points_tot(&before, &mut after);
+        assert_eq!(after.points_tot, 542_796);
+    }
+
+    #[test]
+    fn stat_edit_recomputes_points_tot() {
+        let before = legacy_template();
+        let mut after = before;
+        after.attrib[0][0] = 21;
+        refresh_points_tot(&before, &mut after);
+        assert_eq!(after.points_tot, server::points::calculate_points_tot(&after));
+    }
+
+    #[test]
+    fn direct_points_tot_edit_is_preserved() {
+        let before = legacy_template();
+        let mut after = before;
+        after.points_tot = 600_000;
+        refresh_points_tot(&before, &mut after);
+        assert_eq!(after.points_tot, 600_000);
     }
 }

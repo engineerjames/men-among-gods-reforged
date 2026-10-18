@@ -110,9 +110,14 @@ struct Cli {
     #[arg(long = "restore-worn", requires = "restore_from")]
     restore_worn: Vec<String>,
 
-    /// Older snapshot to read worn slots from for `--restore-worn`.
+    /// Older snapshot to read from for `--restore-worn` / `--restore-points-tot`.
     #[arg(long)]
     restore_from: Option<PathBuf>,
+
+    /// Edit: copy `points_tot` (and therefore rank) from `--restore-from` onto matched
+    /// character templates.
+    #[arg(long, requires = "restore_from")]
+    restore_points_tot: bool,
 
     /// Edit: set `armor_bonus` on matched character templates.
     #[arg(long)]
@@ -449,6 +454,7 @@ fn run(cli: &Cli, snapshot: &mut WorldSnapshot) -> Option<usize> {
 
     let editing = !cli.clear_worn.is_empty()
         || !cli.restore_worn.is_empty()
+        || cli.restore_points_tot
         || cli.set_armor_bonus.is_some()
         || cli.set_weapon_bonus.is_some()
         || cli.set_rank.is_some()
@@ -607,6 +613,11 @@ fn run(cli: &Cli, snapshot: &mut WorldSnapshot) -> Option<usize> {
                         ));
                         ch.worn[slot] = old;
                     }
+                }
+                let old = src.character_templates[id].points_tot;
+                if cli.restore_points_tot && ch.points_tot != old {
+                    changes.push(format!("points_tot {} -> {old}", ch.points_tot));
+                    ch.points_tot = old;
                 }
             }
             if let Some(v) = cli.set_armor_bonus

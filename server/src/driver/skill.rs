@@ -2132,7 +2132,7 @@ fn apply_curse_effect_after_focus(gs: &mut GameState, cn: usize, co: usize, sour
         if use_legacy_cross && gs.characters[maybe_co].attack_cn as usize != cn {
             continue;
         }
-        if !gs.may_attack_msg(cn, maybe_co, false) {
+        if !gs.may_aoe_attack(cn, maybe_co) {
             continue;
         }
         if curse_power + helpers::random_mod_i32(20)
@@ -2178,7 +2178,7 @@ pub fn warcry(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
         return false;
     }
 
-    if !gs.may_attack_msg(cn, co, false) {
+    if !gs.may_aoe_attack(cn, co) {
         return false;
     }
 
@@ -2385,7 +2385,7 @@ pub fn skill_soul_reflection(gs: &mut GameState, cn: usize) {
             if (gs.characters[co].flags & CharacterFlags::Immortal.bits()) != 0 {
                 continue;
             }
-            if !gs.may_attack_msg(cn, co, false) {
+            if !gs.may_aoe_attack(cn, co) {
                 continue;
             }
             if power < effective_resist(gs, cn, i32::from(gs.characters[co].skill[SK_RESIST][5])) {
@@ -2992,7 +2992,7 @@ pub fn cast_blast_effect(gs: &mut GameState, cn: usize, co: usize, power: i32, m
         if use_legacy_cross && gs.characters[maybe_co].attack_cn != cn as u16 {
             continue;
         }
-        if !gs.may_attack_msg(cn, maybe_co, false) {
+        if !gs.may_aoe_attack(cn, maybe_co) {
             continue;
         }
 
@@ -3149,7 +3149,7 @@ pub fn skill_lava_blast(gs: &mut GameState, cn: usize) {
         if use_legacy_cross && gs.characters[maybe_co].attack_cn != cn as u16 {
             continue;
         }
-        if !gs.may_attack_msg(cn, maybe_co, false) {
+        if !gs.may_aoe_attack(cn, maybe_co) {
             continue;
         }
         gs.remember_pvp(cn, maybe_co);
@@ -4848,7 +4848,7 @@ pub fn skill_parasite(gs: &mut GameState, cn: usize) {
         if maybe_co == cn || maybe_co == co {
             continue;
         }
-        if !gs.may_attack_msg(cn, maybe_co, false) {
+        if !gs.may_aoe_attack(cn, maybe_co) {
             continue;
         }
         if !apply_parasitic_dot(
@@ -4896,9 +4896,9 @@ pub fn skill_parasite(gs: &mut GameState, cn: usize) {
 ///
 /// # Returns
 ///
-/// * Points subtracted from the victim's action-speed calc, between 2 and 5.
+/// * Points subtracted from the victim's action-speed calc, between 6 and 20.
 pub(crate) fn gunpowder_flash_slow_points(power: u32) -> i32 {
-    (2 + power as i32 / 40).clamp(2, 5)
+    (3 + power as i32 / 40).clamp(6, 20)
 }
 
 /// Attaches the Gunpowder Flash slow to a single target.
@@ -5035,7 +5035,7 @@ pub fn skill_gunpowder_flash(gs: &mut GameState, cn: usize) {
         if maybe_co == cn || maybe_co == co || gs.characters[maybe_co].attack_cn != cn as u16 {
             continue;
         }
-        if !gs.may_attack_msg(cn, maybe_co, false) {
+        if !gs.may_aoe_attack(cn, maybe_co) {
             continue;
         }
         if !apply_gunpowder_flash(gs, cn, maybe_co, power) {
@@ -5133,7 +5133,10 @@ pub fn skill_deliver_death(gs: &mut GameState, cn: usize) {
 }
 
 /// Percent chance per landed melee hit that Disarm triggers.
-const DISARM_PROC_PERCENT: i32 = 20;
+const DISARM_PROC_PERCENT: i32 = 10;
+
+/// Modified Disarm skill at which procs also spread to adjacent attackers.
+const DISARM_AOE_MIN_POWER: i32 = 100;
 
 /// Attaches the Disarm weapon-skill penalty to one target and reports it.
 ///
@@ -5199,7 +5202,8 @@ fn apply_disarm(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
 }
 
 /// Passive Disarm: on a landed melee hit, may weaken the defender's weapon
-/// skill, and likewise any adjacent enemy that is attacking the attacker.
+/// skill. At [`DISARM_AOE_MIN_POWER`] and above, adjacent enemies attacking
+/// the attacker are affected too.
 ///
 /// # Arguments
 ///
@@ -5216,6 +5220,9 @@ pub fn disarm_on_hit(gs: &mut GameState, cn: usize, co: usize) {
 
     let power = i32::from(gs.characters[cn].skill[SK_DISARM][5]);
     apply_disarm(gs, cn, co, power);
+    if power < DISARM_AOE_MIN_POWER {
+        return;
+    }
 
     // Secondary targets mirror Stun: adjacent attackers, each with a resist roll.
     let caster_x = i32::from(gs.characters[cn].x);
@@ -5224,7 +5231,7 @@ pub fn disarm_on_hit(gs: &mut GameState, cn: usize, co: usize) {
         if maybe_co == cn || maybe_co == co || gs.characters[maybe_co].attack_cn != cn as u16 {
             continue;
         }
-        if !gs.may_attack_msg(cn, maybe_co, false) {
+        if !gs.may_aoe_attack(cn, maybe_co) {
             continue;
         }
         let resist = effective_resist(
@@ -5323,7 +5330,7 @@ pub fn skill_blade_dance(gs: &mut GameState, cn: usize) {
         if co == cn {
             continue;
         }
-        if !gs.may_attack_msg(cn, co, false) {
+        if !gs.may_aoe_attack(cn, co) {
             continue;
         }
         let base_dam = weapon + helpers::random_mod_i32(weapon.max(1));
@@ -6302,7 +6309,7 @@ pub fn skill_anguish_earth(gs: &mut GameState, cn: usize) {
         if maybe_co == cn || maybe_co == co {
             continue;
         }
-        if !gs.may_attack_msg(cn, maybe_co, false) {
+        if !gs.may_aoe_attack(cn, maybe_co) {
             continue;
         }
         let resist = effective_resist(
@@ -7208,7 +7215,7 @@ mod offensive_target_tests {
             place_attacker(gs, cn, bystander, -1, 0);
             gs.characters[bystander].attack_cn = 0;
 
-            // 20% proc and a resist roll on secondaries: retry until both land.
+            // 10% proc and a resist roll on secondaries: retry until both land.
             for _ in 0..500 {
                 disarm_on_hit(gs, cn, defender);
             }
@@ -7216,6 +7223,28 @@ mod offensive_target_tests {
             assert!(has_spell_temp(gs, defender, SK_DISARM));
             assert!(has_spell_temp(gs, side, SK_DISARM));
             assert!(!has_spell_temp(gs, bystander, SK_DISARM));
+        });
+    }
+
+    #[test]
+    fn disarm_below_aoe_threshold_hits_defender_only() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.item_templates[1].used = USE_ACTIVE;
+            gs.characters[cn].flags |= CharacterFlags::Infrared.bits();
+            gs.characters[cn].skill[SK_DISARM][0] = 1;
+            gs.characters[cn].skill[SK_DISARM][5] = (DISARM_AOE_MIN_POWER - 1) as u16;
+
+            let (defender, side) = (2, 3);
+            place_attacker(gs, cn, defender, 1, 0);
+            place_attacker(gs, cn, side, 0, 1);
+
+            for _ in 0..500 {
+                disarm_on_hit(gs, cn, defender);
+            }
+
+            assert!(has_spell_temp(gs, defender, SK_DISARM));
+            assert!(!has_spell_temp(gs, side, SK_DISARM));
         });
     }
 
