@@ -52,7 +52,7 @@ pub const SK_GUNPOWDER_FLASH: usize = 38;
 pub const SK_GUNPOWDER_FLASH2: usize = SK_GUNPOWDER_FLASH + 100;
 /// Deliver Death: instant-kill execute on low-HP targets, long cooldown that resets on a successful kill.
 pub const SK_DELIVER_DEATH: usize = 39;
-/// Disarm: passive on-hit proc that lowers the target's (and adjacent attackers') weapon skill.
+/// Disarm: passive on-hit proc that lowers the target's weapon skill (and adjacent attackers' at high skill).
 pub const SK_DISARM: usize = 40;
 /// Contagion: upgraded Curse with longer duration and a DoT that spreads on the target's death.
 pub const SK_CONTAGION: usize = 41;
@@ -754,7 +754,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
         40,
         SkillCategory::General,
         "Disarm",
-        "Passive: Melee hits may disarm the target and adjacent attackers.",
+        "Passive: Melee hits may disarm the target, and adjacent attackers at high skill.",
         2,
         1,
         4,

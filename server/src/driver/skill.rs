@@ -4896,9 +4896,9 @@ pub fn skill_parasite(gs: &mut GameState, cn: usize) {
 ///
 /// # Returns
 ///
-/// * Points subtracted from the victim's action-speed calc, between 2 and 5.
+/// * Points subtracted from the victim's action-speed calc, between 6 and 20.
 pub(crate) fn gunpowder_flash_slow_points(power: u32) -> i32 {
-    (2 + power as i32 / 40).clamp(2, 5)
+    (3 + power as i32 / 40).clamp(6, 20)
 }
 
 /// Attaches the Gunpowder Flash slow to a single target.
@@ -5133,7 +5133,10 @@ pub fn skill_deliver_death(gs: &mut GameState, cn: usize) {
 }
 
 /// Percent chance per landed melee hit that Disarm triggers.
-const DISARM_PROC_PERCENT: i32 = 20;
+const DISARM_PROC_PERCENT: i32 = 10;
+
+/// Modified Disarm skill at which procs also spread to adjacent attackers.
+const DISARM_AOE_MIN_POWER: i32 = 100;
 
 /// Attaches the Disarm weapon-skill penalty to one target and reports it.
 ///
@@ -5199,7 +5202,8 @@ fn apply_disarm(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
 }
 
 /// Passive Disarm: on a landed melee hit, may weaken the defender's weapon
-/// skill, and likewise any adjacent enemy that is attacking the attacker.
+/// skill. At [`DISARM_AOE_MIN_POWER`] and above, adjacent enemies attacking
+/// the attacker are affected too.
 ///
 /// # Arguments
 ///
@@ -5216,6 +5220,9 @@ pub fn disarm_on_hit(gs: &mut GameState, cn: usize, co: usize) {
 
     let power = i32::from(gs.characters[cn].skill[SK_DISARM][5]);
     apply_disarm(gs, cn, co, power);
+    if power < DISARM_AOE_MIN_POWER {
+        return;
+    }
 
     // Secondary targets mirror Stun: adjacent attackers, each with a resist roll.
     let caster_x = i32::from(gs.characters[cn].x);
@@ -7208,7 +7215,7 @@ mod offensive_target_tests {
             place_attacker(gs, cn, bystander, -1, 0);
             gs.characters[bystander].attack_cn = 0;
 
-            // 20% proc and a resist roll on secondaries: retry until both land.
+            // 10% proc and a resist roll on secondaries: retry until both land.
             for _ in 0..500 {
                 disarm_on_hit(gs, cn, defender);
             }
@@ -7216,6 +7223,28 @@ mod offensive_target_tests {
             assert!(has_spell_temp(gs, defender, SK_DISARM));
             assert!(has_spell_temp(gs, side, SK_DISARM));
             assert!(!has_spell_temp(gs, bystander, SK_DISARM));
+        });
+    }
+
+    #[test]
+    fn disarm_below_aoe_threshold_hits_defender_only() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.item_templates[1].used = USE_ACTIVE;
+            gs.characters[cn].flags |= CharacterFlags::Infrared.bits();
+            gs.characters[cn].skill[SK_DISARM][0] = 1;
+            gs.characters[cn].skill[SK_DISARM][5] = (DISARM_AOE_MIN_POWER - 1) as u16;
+
+            let (defender, side) = (2, 3);
+            place_attacker(gs, cn, defender, 1, 0);
+            place_attacker(gs, cn, side, 0, 1);
+
+            for _ in 0..500 {
+                disarm_on_hit(gs, cn, defender);
+            }
+
+            assert!(has_spell_temp(gs, defender, SK_DISARM));
+            assert!(!has_spell_temp(gs, side, SK_DISARM));
         });
     }
 

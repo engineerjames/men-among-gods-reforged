@@ -474,7 +474,7 @@ impl GameState {
         let action_speed_calc = base_speed_calc
             + (base_speed_calc as f32 * (talent_bonuses.attack_speed_percent as f32 / 100.0))
                 .round() as i32
-            + if flash_haste { 2 } else { 0 }
+            + if flash_haste { 3 } else { 0 }
             - flash_slow;
 
         self.characters[cn].speed = 20 - movement_speed_calc as i16;
