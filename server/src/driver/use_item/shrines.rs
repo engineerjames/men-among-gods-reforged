@@ -1107,6 +1107,8 @@ mod tests {
     use core::skills::SK_WEAPON;
     use core::string_operations::write_ascii_into_fixed;
 
+    type PromotionCase = (fn(&mut GameState, usize), usize, i32, u16);
+
     /// Installs the minimum character template data needed for `minor_racechange`.
     fn install_character_template(
         gs: &mut GameState,
@@ -1134,7 +1136,7 @@ mod tests {
     fn change_promotions_apply_template_kindred_and_skills() {
         with_test_gs(|gs| {
             let (cn, _nr) = add_test_player(gs);
-            let cases: &[(fn(&mut GameState, usize), usize, i32, u16)] = &[
+            let cases: &[PromotionCase] = &[
                 (
                     change_to_archtemplar,
                     544,
