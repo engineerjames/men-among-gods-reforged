@@ -793,7 +793,7 @@ impl GameState {
                     if !Character::is_sane_character(neighbor) {
                         continue;
                     }
-                    if !self.may_attack_msg(caster, neighbor, false) {
+                    if !self.may_aoe_attack(caster, neighbor) {
                         continue;
                     }
                     if crate::driver::skill::apply_parasitic_dot(
@@ -880,7 +880,7 @@ impl GameState {
                 if self.characters[neighbor].flags & CharacterFlags::Body.bits() != 0 {
                     continue;
                 }
-                if !self.may_attack_msg(caster, neighbor, false) {
+                if !self.may_aoe_attack(caster, neighbor) {
                     continue;
                 }
 

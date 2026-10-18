@@ -2132,7 +2132,7 @@ fn apply_curse_effect_after_focus(gs: &mut GameState, cn: usize, co: usize, sour
         if use_legacy_cross && gs.characters[maybe_co].attack_cn as usize != cn {
             continue;
         }
-        if !gs.may_attack_msg(cn, maybe_co, false) {
+        if !gs.may_aoe_attack(cn, maybe_co) {
             continue;
         }
         if curse_power + helpers::random_mod_i32(20)
@@ -2178,7 +2178,7 @@ pub fn warcry(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
         return false;
     }
 
-    if !gs.may_attack_msg(cn, co, false) {
+    if !gs.may_aoe_attack(cn, co) {
         return false;
     }
 
@@ -2385,7 +2385,7 @@ pub fn skill_soul_reflection(gs: &mut GameState, cn: usize) {
             if (gs.characters[co].flags & CharacterFlags::Immortal.bits()) != 0 {
                 continue;
             }
-            if !gs.may_attack_msg(cn, co, false) {
+            if !gs.may_aoe_attack(cn, co) {
                 continue;
             }
             if power < effective_resist(gs, cn, i32::from(gs.characters[co].skill[SK_RESIST][5])) {
@@ -2992,7 +2992,7 @@ pub fn cast_blast_effect(gs: &mut GameState, cn: usize, co: usize, power: i32, m
         if use_legacy_cross && gs.characters[maybe_co].attack_cn != cn as u16 {
             continue;
         }
-        if !gs.may_attack_msg(cn, maybe_co, false) {
+        if !gs.may_aoe_attack(cn, maybe_co) {
             continue;
         }
 
@@ -3149,7 +3149,7 @@ pub fn skill_lava_blast(gs: &mut GameState, cn: usize) {
         if use_legacy_cross && gs.characters[maybe_co].attack_cn != cn as u16 {
             continue;
         }
-        if !gs.may_attack_msg(cn, maybe_co, false) {
+        if !gs.may_aoe_attack(cn, maybe_co) {
             continue;
         }
         gs.remember_pvp(cn, maybe_co);
@@ -4848,7 +4848,7 @@ pub fn skill_parasite(gs: &mut GameState, cn: usize) {
         if maybe_co == cn || maybe_co == co {
             continue;
         }
-        if !gs.may_attack_msg(cn, maybe_co, false) {
+        if !gs.may_aoe_attack(cn, maybe_co) {
             continue;
         }
         if !apply_parasitic_dot(
@@ -5035,7 +5035,7 @@ pub fn skill_gunpowder_flash(gs: &mut GameState, cn: usize) {
         if maybe_co == cn || maybe_co == co || gs.characters[maybe_co].attack_cn != cn as u16 {
             continue;
         }
-        if !gs.may_attack_msg(cn, maybe_co, false) {
+        if !gs.may_aoe_attack(cn, maybe_co) {
             continue;
         }
         if !apply_gunpowder_flash(gs, cn, maybe_co, power) {
@@ -5224,7 +5224,7 @@ pub fn disarm_on_hit(gs: &mut GameState, cn: usize, co: usize) {
         if maybe_co == cn || maybe_co == co || gs.characters[maybe_co].attack_cn != cn as u16 {
             continue;
         }
-        if !gs.may_attack_msg(cn, maybe_co, false) {
+        if !gs.may_aoe_attack(cn, maybe_co) {
             continue;
         }
         let resist = effective_resist(
@@ -5323,7 +5323,7 @@ pub fn skill_blade_dance(gs: &mut GameState, cn: usize) {
         if co == cn {
             continue;
         }
-        if !gs.may_attack_msg(cn, co, false) {
+        if !gs.may_aoe_attack(cn, co) {
             continue;
         }
         let base_dam = weapon + helpers::random_mod_i32(weapon.max(1));
@@ -6302,7 +6302,7 @@ pub fn skill_anguish_earth(gs: &mut GameState, cn: usize) {
         if maybe_co == cn || maybe_co == co {
             continue;
         }
-        if !gs.may_attack_msg(cn, maybe_co, false) {
+        if !gs.may_aoe_attack(cn, maybe_co) {
             continue;
         }
         let resist = effective_resist(

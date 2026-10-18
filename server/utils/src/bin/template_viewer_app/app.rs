@@ -313,12 +313,11 @@ impl TemplateViewerApp {
         }
     }
 
-    /// Recompute derived fields and copy edited views back into the loaded snapshot.
+    /// Copy edited views back into the loaded snapshot.
+    ///
+    /// `points_tot` is deliberately not recomputed here: unedited templates keep
+    /// their legacy values (see `refresh_points_tot` in `character_details`).
     fn sync_loaded_world_from_views(&mut self) -> Result<(), String> {
-        for tpl in &mut self.character_templates {
-            tpl.points_tot = server::points::calculate_points_tot(tpl);
-        }
-
         let Some(world) = self.loaded_world.as_mut() else {
             return Err("No world loaded".to_owned());
         };

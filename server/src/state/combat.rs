@@ -596,7 +596,7 @@ impl GameState {
                     {
                         continue;
                     }
-                    if !self.may_attack_msg(attacker_index, co2, false) {
+                    if !self.may_aoe_attack(attacker_index, co2) {
                         continue;
                     }
                     if surround_eff + helpers::random_mod_i32(20) > self.get_fight_skill(co2) {
@@ -1023,6 +1023,41 @@ impl GameState {
     /// * `true` if the attack is allowed.
     /// * `false` if PvP, safety, map, or rank rules block the attack.
     pub(crate) fn may_attack_msg(&mut self, cn: usize, co: usize, msg: bool) -> bool {
+        self.may_attack_impl(cn, co, msg, true)
+    }
+
+    /// Checks whether an area-of-effect splash from `cn` may hit `co`.
+    ///
+    /// Same rules as [`Self::may_attack_msg`] without the unsafe-god bypass, so
+    /// a god's splash (or splash onto a god) never catches characters a
+    /// regular player could not attack. Explicitly targeted attacks keep the
+    /// god override.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Caster/attacker character index.
+    /// * `co` - Character caught in the area.
+    ///
+    /// # Returns
+    ///
+    /// * `true` if the splash may affect `co`.
+    pub(crate) fn may_aoe_attack(&mut self, cn: usize, co: usize) -> bool {
+        self.may_attack_impl(cn, co, false, false)
+    }
+
+    /// Shared implementation of [`Self::may_attack_msg`] and [`Self::may_aoe_attack`].
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Attacker character index.
+    /// * `co` - Target character index.
+    /// * `msg` - Whether to display messages explaining why attack is not allowed.
+    /// * `god_override` - Whether unsafe gods bypass all attack rules.
+    ///
+    /// # Returns
+    ///
+    /// * `true` if the attack is allowed.
+    fn may_attack_impl(&mut self, cn: usize, co: usize, msg: bool, god_override: bool) -> bool {
         use core::constants::*;
 
         // Sanity checks
@@ -1034,14 +1069,16 @@ impl GameState {
         }
 
         // Unsafe gods may attack anyone
-        if (self.characters[cn].flags & CharacterFlags::God.bits()) != 0
+        if god_override
+            && (self.characters[cn].flags & CharacterFlags::God.bits()) != 0
             && (self.characters[cn].flags & CharacterFlags::Safe.bits()) == 0
         {
             return true;
         }
 
         // Unsafe gods may be attacked by anyone
-        if (self.characters[co].flags & CharacterFlags::God.bits()) != 0
+        if god_override
+            && (self.characters[co].flags & CharacterFlags::God.bits()) != 0
             && (self.characters[co].flags & CharacterFlags::Safe.bits()) == 0
         {
             return true;
@@ -1313,6 +1350,21 @@ mod tests {
 
             assert!(!gs.may_attack_msg(1, 2, false));
             assert!(gs.may_attack_msg(1, 3, false));
+        });
+    }
+
+    #[test]
+    fn god_aoe_spares_players_but_hits_npcs() {
+        with_test_gs(|gs| {
+            let god = CharacterFlags::Player.bits() | CharacterFlags::God.bits();
+            seed_character(gs, 1, god, 0);
+            seed_character(gs, 2, CharacterFlags::Player.bits(), 0);
+            seed_character(gs, 3, 0, 0);
+
+            assert!(gs.may_attack_msg(1, 2, false), "direct god attack keeps override");
+            assert!(!gs.may_aoe_attack(1, 2), "god splash must spare players");
+            assert!(gs.may_aoe_attack(1, 3), "god splash still hits NPCs");
+            assert!(!gs.may_aoe_attack(2, 1), "player splash must spare gods");
         });
     }
 
