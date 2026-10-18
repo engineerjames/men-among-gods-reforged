@@ -764,11 +764,12 @@ mod tests {
     }
 
     fn character_at(x: i16, y: i16, dir: u8) -> Character {
-        let mut ch = Character::default();
-        ch.x = x;
-        ch.y = y;
-        ch.dir = dir;
-        ch
+        Character {
+            x,
+            y,
+            dir,
+            ..Default::default()
+        }
     }
 
     #[test]
