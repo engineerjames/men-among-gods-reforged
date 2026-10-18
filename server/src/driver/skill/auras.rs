@@ -35,8 +35,9 @@ pub fn skill_soul_reflection(gs: &mut GameState, cn: usize) {
     let yt = std::cmp::min(core::constants::SERVER_MAPY - 1, caster_y + 8);
 
     let mut routed = 0;
-    for x in xf..xt {
-        for y in yf..yt {
+    // Inclusive bounds so the radius is 8 tiles in every direction.
+    for x in xf..=xt {
+        for y in yf..=yt {
             let m = (x + y * core::constants::SERVER_MAPX) as usize;
             let co = gs.map[m].ch as usize;
             if co == 0 || co == cn {
@@ -127,6 +128,8 @@ pub fn skill_war_banner_aura(gs: &mut GameState, cn: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::aura::logic::has_aura;
+    use crate::driver::skill::tests::{active_spell_item, place_attacker};
     use crate::test_helpers::{add_test_player, with_test_gs};
     use core::constants::SERVER_MAPX;
     use core::constants::USE_ACTIVE;
@@ -168,6 +171,145 @@ mod tests {
             assert_eq!(gs.characters[npc].attack_cn, 0);
             assert_eq!(gs.characters[other_player].data[78], 0);
             assert_eq!(gs.characters[other_player].attack_cn, cn as u16);
+        });
+    }
+
+    /// Player with Soul Reflection 50 and an NPC attacker (index 2) next to them.
+    fn reflector_with_npc(gs: &mut GameState) -> (usize, usize) {
+        let (cn, _nr) = add_test_player(gs);
+        gs.item_templates[1].used = USE_ACTIVE;
+        gs.characters[cn].skill[SK_SOUL_REFLECTION][0] = 1;
+        gs.characters[cn].skill[SK_SOUL_REFLECTION][5] = 50;
+        gs.characters[cn].a_end = 400_000;
+        gs.globals.ticker = 1000;
+        place_attacker(gs, cn, 2, 1, 0);
+        (cn, 2)
+    }
+
+    #[test]
+    fn soul_reflection_requires_endurance() {
+        with_test_gs(|gs| {
+            let (cn, npc) = reflector_with_npc(gs);
+            gs.characters[cn].a_end = 149_999;
+
+            skill_soul_reflection(gs, cn);
+
+            assert_eq!(gs.characters[cn].a_end, 149_999);
+            assert_eq!(gs.characters[npc].attack_cn, cn as u16);
+            assert!(active_spell_item(gs, cn, SK_SOUL_REFLECTION).is_none());
+        });
+    }
+
+    #[test]
+    fn soul_reflection_spends_endurance_and_blocks_recast() {
+        with_test_gs(|gs| {
+            let (cn, _npc) = reflector_with_npc(gs);
+
+            skill_soul_reflection(gs, cn);
+            assert_eq!(gs.characters[cn].a_end, 250_000);
+            let cooldown =
+                active_spell_item(gs, cn, SK_SOUL_REFLECTION).expect("cooldown should be added");
+            assert_eq!(gs.items[cooldown].active, (TICKS * 30) as u32);
+
+            skill_soul_reflection(gs, cn);
+            assert_eq!(gs.characters[cn].a_end, 250_000);
+        });
+    }
+
+    #[test]
+    fn soul_reflection_spares_immortal_and_resistant_npcs() {
+        with_test_gs(|gs| {
+            let (cn, npc) = reflector_with_npc(gs);
+            gs.characters[npc].flags |= CharacterFlags::Immortal.bits();
+            let resistant = 3;
+            place_attacker(gs, cn, resistant, 0, 1);
+            gs.characters[resistant].skill[SK_RESIST][5] = 51;
+
+            skill_soul_reflection(gs, cn);
+
+            assert_eq!(gs.characters[npc].data[78], 0);
+            assert_eq!(gs.characters[npc].attack_cn, cn as u16);
+            assert_eq!(gs.characters[resistant].data[78], 0);
+            assert_eq!(gs.characters[resistant].attack_cn, cn as u16);
+        });
+    }
+
+    #[test]
+    fn soul_reflection_routs_npcs_with_resist_equal_to_power() {
+        with_test_gs(|gs| {
+            let (cn, npc) = reflector_with_npc(gs);
+            gs.characters[npc].skill[SK_RESIST][5] = 50;
+            gs.characters[npc].goto_x = 5;
+            gs.characters[npc].goto_y = 5;
+
+            skill_soul_reflection(gs, cn);
+
+            assert_eq!(gs.characters[npc].data[78], 1000 + TICKS * 10);
+            assert_eq!(gs.characters[npc].goto_x, 0);
+            assert_eq!(gs.characters[npc].goto_y, 0);
+        });
+    }
+
+    #[test]
+    fn curse_aura_toggles_on_and_off() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+
+            skill_curse_aura(gs, cn);
+            assert!(has_aura(gs, cn, AuraId::CurseAura));
+
+            skill_curse_aura(gs, cn);
+            assert!(!has_aura(gs, cn, AuraId::CurseAura));
+        });
+    }
+
+    #[test]
+    fn war_banner_aura_toggles_on_and_off() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+
+            skill_war_banner_aura(gs, cn);
+            assert!(has_aura(gs, cn, AuraId::WarBannerAura));
+
+            skill_war_banner_aura(gs, cn);
+            assert!(!has_aura(gs, cn, AuraId::WarBannerAura));
+        });
+    }
+
+    #[test]
+    fn switching_auras_replaces_the_active_one() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+
+            skill_curse_aura(gs, cn);
+            skill_war_banner_aura(gs, cn);
+
+            assert!(has_aura(gs, cn, AuraId::WarBannerAura));
+            assert!(!has_aura(gs, cn, AuraId::CurseAura));
+        });
+    }
+
+    #[test]
+    fn soul_reflection_reaches_eight_tiles_in_every_direction() {
+        with_test_gs(|gs| {
+            let (cn, _npc) = reflector_with_npc(gs);
+            gs.characters[cn].x = 50;
+            gs.characters[cn].y = 50;
+            let edges = [(3, 8, 0), (4, 0, 8), (5, -8, 0), (6, 0, -8)];
+            for (co, dx, dy) in edges {
+                place_attacker(gs, cn, co, dx, dy);
+            }
+            let (outside_east, outside_south) = (7, 8);
+            place_attacker(gs, cn, outside_east, 9, 0);
+            place_attacker(gs, cn, outside_south, 0, 9);
+
+            skill_soul_reflection(gs, cn);
+
+            for (co, dx, dy) in edges {
+                assert_eq!(gs.characters[co].attack_cn, 0, "offset ({dx}, {dy})");
+            }
+            assert_eq!(gs.characters[outside_east].attack_cn, cn as u16);
+            assert_eq!(gs.characters[outside_south].attack_cn, cn as u16);
         });
     }
 }

@@ -264,3 +264,79 @@ pub fn skill_stun(gs: &mut GameState, cn: usize) {
     );
     add_exhaust(gs, cn, core::constants::TICKS * 3);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::driver::skill::tests::{active_spell_item, caster_and_target};
+    use crate::test_helpers::with_test_gs;
+    use core::constants::TICKS;
+
+    #[test]
+    fn spell_stun_lasts_power_plus_one_second() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+
+            assert!(spell_stun(gs, cn, co, 30));
+
+            let in_ = active_spell_item(gs, co, SK_STUN).expect("stun");
+            assert_eq!(gs.items[in_].power, 30);
+            assert_eq!(gs.items[in_].active, (30 + TICKS) as u32);
+        });
+    }
+
+    #[test]
+    fn spell_stun_duration_is_reduced_by_target_immunity() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+            gs.characters[co].skill[SK_IMMUN][5] = 20;
+
+            assert!(spell_stun(gs, cn, co, 30));
+
+            let in_ = active_spell_item(gs, co, SK_STUN).expect("stun");
+            assert_eq!(gs.items[in_].active, (20 + TICKS) as u32);
+        });
+    }
+
+    #[test]
+    fn spell_stun_skips_immortal_targets() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+            gs.characters[co].flags |= CharacterFlags::Immortal.bits();
+
+            assert!(!spell_stun(gs, cn, co, 30));
+            assert!(active_spell_item(gs, co, SK_STUN).is_none());
+        });
+    }
+
+    #[test]
+    fn skill_stun_refuses_to_target_the_caster() {
+        with_test_gs(|gs| {
+            let (cn, _co) = caster_and_target(gs);
+            gs.characters[cn].skill_target1 = cn as u16;
+            gs.characters[cn].skill[SK_STUN][5] = 50;
+            gs.characters[cn].a_mana = 100_000;
+
+            skill_stun(gs, cn);
+
+            assert_eq!(gs.characters[cn].a_mana, 100_000);
+            assert!(active_spell_item(gs, cn, SK_STUN).is_none());
+        });
+    }
+
+    #[test]
+    fn skill_stun_spends_mana_on_a_lost_focus_without_exhausting() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+            gs.characters[cn].skill[SK_STUN][5] = 10;
+            gs.characters[co].skill[SK_RESIST][5] = 100;
+            gs.characters[cn].a_mana = 100_000;
+
+            skill_stun(gs, cn);
+
+            assert_eq!(gs.characters[cn].a_mana, 80_000);
+            assert!(active_spell_item(gs, co, SK_STUN).is_none());
+            assert!(!is_exhausted(gs, cn));
+        });
+    }
+}

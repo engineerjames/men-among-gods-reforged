@@ -268,3 +268,96 @@ pub fn cast_blast_effect(gs: &mut GameState, cn: usize, co: usize, power: i32, m
         0,
     );
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::driver::skill::tests::{attach_marker, caster_and_target};
+    use crate::test_helpers::with_test_gs;
+
+    #[test]
+    fn compute_blast_damage_is_double_power_after_immunity() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+            gs.characters[cn].skill[SK_BLAST][5] = 50;
+
+            assert_eq!(compute_blast_damage(gs, cn, co), (50, 100));
+
+            gs.characters[co].skill[SK_IMMUN][5] = 40;
+            assert_eq!(compute_blast_damage(gs, cn, co), (30, 60));
+        });
+    }
+
+    #[test]
+    fn compute_blast_damage_consumes_anguish_lava_for_bonus_damage() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+            gs.characters[cn].skill[SK_BLAST][5] = 50;
+            attach_marker(gs, co, 0, 500, SK_ANGUISH_LAVA as u16);
+
+            // Marker power 25 -> 150% + 12% bonus.
+            assert_eq!(compute_blast_damage(gs, cn, co), (50, 162));
+            assert_eq!(gs.items[500].active, 0);
+        });
+    }
+
+    #[test]
+    fn compute_blast_damage_caps_anguish_lava_bonus_at_double() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+            gs.characters[cn].skill[SK_BLAST][5] = 50;
+            attach_marker(gs, co, 0, 500, SK_ANGUISH_LAVA as u16);
+            gs.items[500].power = 500;
+
+            assert_eq!(compute_blast_damage(gs, cn, co), (50, 200));
+        });
+    }
+
+    #[test]
+    fn spellcost_blast_spends_mana_for_regular_casters() {
+        with_test_gs(|gs| {
+            let (cn, _co) = caster_and_target(gs);
+            gs.characters[cn].a_mana = 10_000;
+            gs.characters[cn].a_end = 10_000;
+
+            assert_eq!(spellcost_blast(gs, cn, 5), 0);
+
+            assert_eq!(gs.characters[cn].a_mana, 5_000);
+            assert_eq!(gs.characters[cn].a_end, 10_000);
+        });
+    }
+
+    #[test]
+    fn skill_blast_rejects_self_and_stoned_targets() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+            gs.characters[cn].skill[SK_BLAST][5] = 50;
+            gs.characters[cn].a_mana = 100_000;
+
+            gs.characters[cn].skill_target1 = cn as u16;
+            skill_blast(gs, cn);
+            assert_eq!(gs.characters[cn].a_mana, 100_000);
+            assert!(!is_exhausted(gs, cn));
+
+            gs.characters[cn].skill_target1 = co as u16;
+            gs.characters[co].flags |= CharacterFlags::Stoned.bits();
+            skill_blast(gs, cn);
+            assert_eq!(gs.characters[cn].a_mana, 100_000);
+            assert!(!is_exhausted(gs, cn));
+        });
+    }
+
+    #[test]
+    fn skill_blast_is_refused_while_exhausted() {
+        with_test_gs(|gs| {
+            let (cn, _co) = caster_and_target(gs);
+            gs.characters[cn].skill[SK_BLAST][5] = 50;
+            gs.characters[cn].a_mana = 100_000;
+            add_exhaust(gs, cn, 10);
+
+            skill_blast(gs, cn);
+
+            assert_eq!(gs.characters[cn].a_mana, 100_000);
+        });
+    }
+}

@@ -1174,3 +1174,277 @@ pub fn skill_heal(gs: &mut GameState, cn: usize) {
 
     add_exhaust(gs, cn, TICKS * 2);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::driver::skill::common::remove_active_spell_temp;
+    use crate::driver::skill::tests::{active_spell_item, place_attacker};
+    use crate::test_helpers::{add_test_player, with_test_gs};
+    use core::constants::USE_ACTIVE;
+    use core::traits::KIN_TEMPLAR;
+
+    /// Player at (10,10) with neutral kindred, no moon, and a usable spell template.
+    fn caster(gs: &mut GameState) -> usize {
+        let (cn, _nr) = add_test_player(gs);
+        gs.item_templates[1].used = USE_ACTIVE;
+        gs.globals.newmoon = 0;
+        gs.globals.fullmoon = 0;
+        gs.characters[cn].kindred = 0;
+        gs.characters[cn].flags |= CharacterFlags::Infrared.bits();
+        cn
+    }
+
+    fn set_spellpower(gs: &mut GameState, cn: usize, per_attrib: u16) {
+        for a in 0..5 {
+            gs.characters[cn].attrib[a][0] = per_attrib;
+        }
+    }
+
+    #[test]
+    fn spell_light_scales_with_power_and_caps_at_250() {
+        with_test_gs(|gs| {
+            let cn = caster(gs);
+            assert!(spell_light(gs, cn, cn, 10));
+            let in_ = active_spell_item(gs, cn, SK_LIGHT).expect("light spell");
+            assert_eq!(gs.items[in_].light[1], 40);
+
+            assert!(spell_light(gs, cn, cn, 100));
+            let in_ = active_spell_item(gs, cn, SK_LIGHT).expect("light spell");
+            assert_eq!(gs.items[in_].light[1], 250);
+            assert_eq!(gs.items[in_].active, (TICKS * 60 * 30) as u32);
+        });
+    }
+
+    #[test]
+    fn spell_light_can_target_another_character() {
+        with_test_gs(|gs| {
+            let cn = caster(gs);
+            place_attacker(gs, cn, 2, 1, 0);
+
+            assert!(spell_light(gs, cn, 2, 10));
+
+            assert!(active_spell_item(gs, 2, SK_LIGHT).is_some());
+            assert!(active_spell_item(gs, cn, SK_LIGHT).is_none());
+        });
+    }
+
+    #[test]
+    fn spell_protect_enhance_and_bless_cap_power_at_target_spellpower() {
+        with_test_gs(|gs| {
+            let cn = caster(gs);
+            set_spellpower(gs, cn, 4);
+
+            spell_protect(gs, cn, cn, 100);
+            spell_enhance(gs, cn, cn, 100);
+            spell_bless(gs, cn, cn, 100);
+
+            let protect = active_spell_item(gs, cn, SK_PROTECT).expect("protect");
+            assert_eq!(gs.items[protect].power, 20);
+            assert_eq!(gs.items[protect].armor[1], 20 / 4 + 4);
+
+            let enhance = active_spell_item(gs, cn, SK_ENHANCE).expect("enhance");
+            assert_eq!(gs.items[enhance].power, 20);
+            assert_eq!(gs.items[enhance].weapon[1], 20 / 4 + 4);
+
+            let bless = active_spell_item(gs, cn, SK_BLESS).expect("bless");
+            assert_eq!(gs.items[bless].power, 20);
+            assert!(gs.items[bless].attrib.iter().all(|a| a[1] == 20 / 5 + 3));
+        });
+    }
+
+    #[test]
+    fn spell_protect_uses_full_power_below_the_cap() {
+        with_test_gs(|gs| {
+            let cn = caster(gs);
+            set_spellpower(gs, cn, 100);
+
+            spell_protect(gs, cn, cn, 40);
+
+            let protect = active_spell_item(gs, cn, SK_PROTECT).expect("protect");
+            assert_eq!(gs.items[protect].power, 40);
+            assert_eq!(gs.items[protect].armor[1], 14);
+            assert_eq!(gs.items[protect].active, (TICKS * 60 * 10) as u32);
+        });
+    }
+
+    #[test]
+    fn spell_mshield_derives_armor_and_power_from_duration() {
+        with_test_gs(|gs| {
+            let cn = caster(gs);
+
+            assert!(spell_mshield(gs, cn, cn, 40));
+
+            let in_ = active_spell_item(gs, cn, SK_MSHIELD).expect("magic shield");
+            assert_eq!(gs.items[in_].active, 10240);
+            assert_eq!(gs.items[in_].armor[1], 11);
+            assert_eq!(gs.items[in_].power, 40);
+        });
+    }
+
+    #[test]
+    fn spell_heal_restores_hp_up_to_maximum() {
+        with_test_gs(|gs| {
+            let cn = caster(gs);
+            gs.characters[cn].hp[5] = 100;
+            gs.characters[cn].a_hp = 0;
+
+            spell_heal(gs, cn, cn, 10);
+            assert_eq!(gs.characters[cn].a_hp, 25_000);
+
+            spell_heal(gs, cn, cn, 100);
+            assert_eq!(gs.characters[cn].a_hp, 100_000);
+        });
+    }
+
+    #[test]
+    fn spell_heal_on_others_applies_caster_race_modifier() {
+        with_test_gs(|gs| {
+            let cn = caster(gs);
+            gs.characters[cn].kindred = KIN_TEMPLAR as i32;
+            place_attacker(gs, cn, 2, 1, 0);
+            gs.characters[2].hp[5] = 1000;
+            gs.characters[2].a_hp = 0;
+
+            spell_heal(gs, cn, 2, 10);
+
+            assert_eq!(gs.characters[2].a_hp, 22_500);
+        });
+    }
+
+    #[test]
+    fn skill_wimp_toggles_guardian_angel_and_costs_endurance() {
+        with_test_gs(|gs| {
+            let cn = caster(gs);
+            gs.characters[cn].skill[SK_WIMPY][5] = 30;
+            gs.characters[cn].a_end = 25_000;
+
+            skill_wimp(gs, cn);
+            let in_ = active_spell_item(gs, cn, SK_WIMPY).expect("guardian angel");
+            assert_eq!(gs.items[in_].power, 30);
+            assert_ne!(gs.items[in_].flags & ItemFlags::IF_PERMSPELL.bits(), 0);
+            assert_eq!(gs.characters[cn].a_end, 5_000);
+
+            skill_wimp(gs, cn);
+            assert!(active_spell_item(gs, cn, SK_WIMPY).is_none());
+            assert_eq!(gs.characters[cn].a_end, 5_000);
+
+            // Too exhausted to recast.
+            skill_wimp(gs, cn);
+            assert!(active_spell_item(gs, cn, SK_WIMPY).is_none());
+            assert_eq!(gs.characters[cn].a_end, 5_000);
+        });
+    }
+
+    #[test]
+    fn skill_light_is_rate_limited_for_players() {
+        with_test_gs(|gs| {
+            let cn = caster(gs);
+            gs.characters[cn].skill[SK_LIGHT][5] = 20;
+            gs.characters[cn].a_mana = 10_000;
+            gs.characters[cn].data[71] = MAXSAY;
+
+            skill_light(gs, cn);
+
+            assert_eq!(gs.characters[cn].a_mana, 10_000);
+            assert!(active_spell_item(gs, cn, SK_LIGHT).is_none());
+        });
+    }
+
+    #[test]
+    fn skill_light_costs_mana_and_exhausts() {
+        with_test_gs(|gs| {
+            let cn = caster(gs);
+            gs.characters[cn].skill[SK_LIGHT][5] = 20;
+            gs.characters[cn].a_mana = 10_000;
+            gs.characters[cn].data[71] = 0;
+
+            skill_light(gs, cn);
+
+            assert_eq!(gs.characters[cn].a_mana, 5_000);
+            assert!(active_spell_item(gs, cn, SK_LIGHT).is_some());
+            assert!(is_exhausted(gs, cn));
+        });
+    }
+
+    #[test]
+    fn skill_protect_does_nothing_without_the_skill() {
+        with_test_gs(|gs| {
+            let cn = caster(gs);
+            gs.characters[cn].skill[SK_PROTECT][5] = 0;
+            gs.characters[cn].a_mana = 100_000;
+
+            skill_protect(gs, cn);
+
+            assert_eq!(gs.characters[cn].a_mana, 100_000);
+            assert!(active_spell_item(gs, cn, SK_PROTECT).is_none());
+        });
+    }
+
+    #[test]
+    fn friendly_buffs_on_npc_targets_are_redirected_to_the_caster() {
+        with_test_gs(|gs| {
+            let cn = caster(gs);
+            set_spellpower(gs, cn, 100);
+            place_attacker(gs, cn, 2, 1, 0);
+            gs.characters[cn].skill_target1 = 2;
+            gs.characters[cn].skill[SK_PROTECT][5] = 40;
+            gs.characters[cn].a_mana = 100_000;
+
+            skill_protect(gs, cn);
+
+            assert!(active_spell_item(gs, cn, SK_PROTECT).is_some());
+            assert!(active_spell_item(gs, 2, SK_PROTECT).is_none());
+            assert_eq!(gs.characters[cn].a_mana, 85_000);
+            assert!(is_exhausted(gs, cn));
+        });
+    }
+
+    #[test]
+    fn skill_bless_and_heal_charge_their_mana_costs() {
+        with_test_gs(|gs| {
+            let cn = caster(gs);
+            set_spellpower(gs, cn, 100);
+            gs.characters[cn].skill_target1 = 0;
+            gs.characters[cn].skill[SK_BLESS][5] = 40;
+            gs.characters[cn].skill[SK_HEAL][5] = 10;
+            gs.characters[cn].hp[5] = 500;
+            gs.characters[cn].a_hp = 0;
+            gs.characters[cn].a_mana = 100_000;
+
+            skill_bless(gs, cn);
+            assert_eq!(gs.characters[cn].a_mana, 65_000);
+            assert!(active_spell_item(gs, cn, SK_BLESS).is_some());
+
+            // Still exhausted from Bless, so Heal is refused.
+            skill_heal(gs, cn);
+            assert_eq!(gs.characters[cn].a_mana, 65_000);
+            assert_eq!(gs.characters[cn].a_hp, 0);
+
+            assert!(remove_active_spell_temp(
+                gs,
+                cn,
+                core::skills::SK_BLAST as u16
+            ));
+
+            skill_heal(gs, cn);
+            assert_eq!(gs.characters[cn].a_mana, 40_000);
+            assert_eq!(gs.characters[cn].a_hp, 25_000);
+        });
+    }
+
+    #[test]
+    fn skill_mshield_is_refused_while_exhausted() {
+        with_test_gs(|gs| {
+            let cn = caster(gs);
+            gs.characters[cn].skill[SK_MSHIELD][5] = 40;
+            gs.characters[cn].a_mana = 100_000;
+            add_exhaust(gs, cn, 10);
+
+            skill_mshield(gs, cn);
+
+            assert_eq!(gs.characters[cn].a_mana, 100_000);
+            assert!(active_spell_item(gs, cn, SK_MSHIELD).is_none());
+        });
+    }
+}

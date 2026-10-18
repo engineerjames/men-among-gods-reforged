@@ -549,3 +549,151 @@ pub fn skill_recall(gs: &mut GameState, cn: usize) {
         0,
     );
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::driver::skill::tests::{active_spell_item, caster_and_target};
+    use crate::test_helpers::with_test_gs;
+    use core::constants::{USE_ACTIVE, USE_EMPTY};
+
+    /// Put a damaged item of the given power in the caster's hand at index 500.
+    fn damaged_citem(gs: &mut GameState, cn: usize, power: u32) {
+        gs.items[500] = core::types::Item::default();
+        gs.items[500].used = USE_ACTIVE;
+        gs.items[500].temp = 1;
+        gs.items[500].power = power;
+        gs.items[500].damage_state = 2;
+        gs.items[500].carried = cn as u16;
+        gs.characters[cn].citem = 500;
+    }
+
+    #[test]
+    fn skill_repair_rejects_items_it_cannot_work_on() {
+        with_test_gs(|gs| {
+            let (cn, _co) = caster_and_target(gs);
+            gs.characters[cn].skill[SK_REPAIR][5] = 50;
+            gs.characters[cn].a_end = 100_000;
+
+            gs.characters[cn].citem = 0;
+            skill_repair(gs, cn);
+
+            damaged_citem(gs, cn, 10);
+            gs.items[500].damage_state = 0;
+            skill_repair(gs, cn);
+
+            damaged_citem(gs, cn, 60);
+            skill_repair(gs, cn);
+
+            damaged_citem(gs, cn, 10);
+            gs.items[500].flags |= ItemFlags::IF_NOREPAIR.bits();
+            skill_repair(gs, cn);
+
+            damaged_citem(gs, cn, 10);
+            gs.characters[cn].a_end = 9_000;
+            skill_repair(gs, cn);
+
+            assert_eq!(gs.characters[cn].a_end, 9_000);
+            assert_eq!(gs.characters[cn].citem, 500);
+            assert_eq!(gs.items[500].used, USE_ACTIVE);
+        });
+    }
+
+    #[test]
+    fn skill_repair_replaces_the_item_with_a_fresh_copy() {
+        with_test_gs(|gs| {
+            let (cn, _co) = caster_and_target(gs);
+            gs.characters[cn].skill[SK_REPAIR][5] = 100;
+
+            // Success is 95% per attempt; retry so the test is not flaky.
+            for _ in 0..20 {
+                damaged_citem(gs, cn, 1);
+                gs.characters[cn].a_end = 100_000;
+                skill_repair(gs, cn);
+                assert_eq!(gs.characters[cn].a_end, 99_000);
+                if gs.characters[cn].citem != 500 {
+                    break;
+                }
+            }
+
+            let repaired = gs.characters[cn].citem as usize;
+            assert_ne!(repaired, 500);
+            assert_eq!(gs.items[500].used, USE_EMPTY);
+            assert_eq!(gs.items[repaired].carried, cn as u16);
+            assert_eq!(gs.items[repaired].damage_state, 0);
+        });
+    }
+
+    #[test]
+    fn skill_recall_stores_the_temple_and_exhausts() {
+        with_test_gs(|gs| {
+            let (cn, _co) = caster_and_target(gs);
+            gs.characters[cn].temple_x = 512;
+            gs.characters[cn].temple_y = 256;
+            gs.characters[cn].skill[SK_RECALL][5] = 40;
+            gs.characters[cn].a_mana = 20_000;
+
+            skill_recall(gs, cn);
+
+            let in_ = active_spell_item(gs, cn, SK_RECALL).expect("recall");
+            assert_eq!(gs.items[in_].data[0], 512);
+            assert_eq!(gs.items[in_].data[1], 256);
+            assert_eq!(gs.items[in_].power, 40);
+            // (60 - 40/4) legacy ticks, converted to server ticks.
+            assert_eq!(gs.items[in_].active, (50 * TICKS / LEGACY_TICKS) as u32);
+            assert_eq!(gs.characters[cn].a_mana, 5_000);
+            assert!(is_exhausted(gs, cn));
+        });
+    }
+
+    #[test]
+    fn skill_recall_delay_never_drops_below_half_a_second() {
+        with_test_gs(|gs| {
+            let (cn, _co) = caster_and_target(gs);
+            gs.characters[cn].skill[SK_RECALL][5] = 255;
+            gs.characters[cn].a_mana = 20_000;
+
+            skill_recall(gs, cn);
+
+            let in_ = active_spell_item(gs, cn, SK_RECALL).expect("recall");
+            assert_eq!(gs.items[in_].active, (TICKS / 2) as u32);
+        });
+    }
+
+    #[test]
+    fn skill_recall_and_identify_are_refused_while_exhausted() {
+        with_test_gs(|gs| {
+            let (cn, _co) = caster_and_target(gs);
+            gs.characters[cn].a_mana = 100_000;
+            add_exhaust(gs, cn, 10);
+
+            skill_recall(gs, cn);
+            skill_identify(gs, cn);
+
+            assert_eq!(gs.characters[cn].a_mana, 100_000);
+            assert!(active_spell_item(gs, cn, SK_RECALL).is_none());
+        });
+    }
+
+    #[test]
+    fn skill_identify_toggles_identified_flag_on_held_item() {
+        with_test_gs(|gs| {
+            let (cn, _co) = caster_and_target(gs);
+            gs.characters[cn].skill[SK_IDENT][5] = 100;
+            damaged_citem(gs, cn, 1);
+
+            // Success is 95% per attempt; retry so the test is not flaky.
+            for _ in 0..20 {
+                gs.characters[cn].a_mana = 100_000;
+                skill_identify(gs, cn);
+                assert_eq!(gs.characters[cn].a_mana, 75_000);
+                if gs.items[500].flags & ItemFlags::IF_IDENTIFIED.bits() != 0 {
+                    break;
+                }
+            }
+
+            assert_ne!(gs.items[500].flags & ItemFlags::IF_IDENTIFIED.bits(), 0);
+            assert!(is_exhausted(gs, cn));
+        });
+    }
+}

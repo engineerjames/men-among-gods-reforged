@@ -523,6 +523,29 @@ mod tests {
         gs.characters[cn].spell[slot] = item_idx as u32;
     }
 
+    /// Set up a player caster with neutral spell modifiers and an adjacent hostile
+    /// NPC (index 2) selected as the skill target. Returns `(cn, co)`.
+    pub(super) fn caster_and_target(gs: &mut GameState) -> (usize, usize) {
+        let (cn, _nr) = add_test_player(gs);
+        gs.item_templates[1].used = USE_ACTIVE;
+        gs.globals.newmoon = 0;
+        gs.globals.fullmoon = 0;
+        gs.characters[cn].kindred = 0;
+        gs.characters[cn].flags |= CharacterFlags::Infrared.bits();
+        place_attacker(gs, cn, 2, 1, 0);
+        gs.characters[cn].skill_target1 = 2;
+        (cn, 2)
+    }
+
+    /// Return the item index of `cn`'s active spell with the given `temp`, if any.
+    pub(super) fn active_spell_item(gs: &GameState, cn: usize, temp: usize) -> Option<usize> {
+        gs.characters[cn]
+            .spell
+            .iter()
+            .map(|&item_idx| item_idx as usize)
+            .find(|&item_idx| item_idx != 0 && gs.items[item_idx].temp == temp as u16)
+    }
+
     #[test]
     fn explicit_target_and_attack_cn_take_priority() {
         with_test_gs(|gs| {
@@ -590,6 +613,119 @@ mod tests {
             gs.characters[bystander].attack_cn = 0;
 
             assert_eq!(resolve_offensive_target(gs, cn), cn);
+        });
+    }
+
+    #[test]
+    fn dir_to_delta_covers_every_adjacent_tile_once() {
+        let dirs = [
+            DX_UP,
+            DX_RIGHTUP,
+            DX_RIGHT,
+            DX_RIGHTDOWN,
+            DX_DOWN,
+            DX_LEFTDOWN,
+            DX_LEFT,
+            DX_LEFTUP,
+        ];
+        let deltas: Vec<_> = dirs
+            .iter()
+            .map(|&dir| dir_to_delta(dir).expect("valid direction"))
+            .collect();
+        assert_eq!(deltas, ADJACENT_DELTAS.to_vec());
+        assert_eq!(dir_to_delta(0), None);
+    }
+
+    #[test]
+    fn attacker_at_delta_ignores_bodies_and_out_of_bounds_tiles() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].flags |= CharacterFlags::Infrared.bits();
+            place_attacker(gs, cn, 2, 1, 0);
+
+            assert_eq!(attacker_at_delta(gs, cn, 10, 10, (1, 0)), Some(2));
+            assert_eq!(attacker_at_delta(gs, cn, 0, 0, (-1, 0)), None);
+
+            gs.characters[2].flags |= CharacterFlags::Body.bits();
+            assert_eq!(attacker_at_delta(gs, cn, 10, 10, (1, 0)), None);
+        });
+    }
+
+    #[test]
+    fn hostile_cast_preflight_rejects_self_and_stoned_targets() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].flags |= CharacterFlags::Infrared.bits();
+            assert!(!hostile_cast_preflight(gs, cn, cn, "self\n"));
+
+            place_attacker(gs, cn, 2, 1, 0);
+            gs.characters[2].flags |= CharacterFlags::Stoned.bits();
+            assert!(!hostile_cast_preflight(gs, cn, 2, "self\n"));
+
+            gs.characters[2].flags &= !CharacterFlags::Stoned.bits();
+            assert!(hostile_cast_preflight(gs, cn, 2, "self\n"));
+        });
+    }
+
+    #[test]
+    fn hostile_cast_preflight_rejects_targets_out_of_sight() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].flags |= CharacterFlags::Infrared.bits();
+            place_attacker(gs, cn, 2, 60, 60);
+
+            assert!(!hostile_cast_preflight(gs, cn, 2, "self\n"));
+        });
+    }
+
+    #[test]
+    fn skill_driver_rejects_skills_the_character_lacks() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.item_templates[1].used = USE_ACTIVE;
+            gs.characters[cn].a_mana = 100_000;
+
+            skill_driver(gs, cn, SK_MSHIELD as i32);
+
+            assert_eq!(gs.characters[cn].a_mana, 100_000);
+            assert!(active_spell_item(gs, cn, SK_MSHIELD).is_none());
+        });
+    }
+
+    #[test]
+    fn skill_driver_dispatches_to_the_matching_skill() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.item_templates[1].used = USE_ACTIVE;
+            gs.characters[cn].skill[SK_MSHIELD][0] = 1;
+            gs.characters[cn].skill[SK_MSHIELD][5] = 40;
+            gs.characters[cn].a_mana = 100_000;
+
+            skill_driver(gs, cn, SK_MSHIELD as i32);
+
+            assert_eq!(gs.characters[cn].a_mana, 75_000);
+            assert!(active_spell_item(gs, cn, SK_MSHIELD).is_some());
+        });
+    }
+
+    #[test]
+    fn skill_driver_blocks_spells_but_not_physical_skills_under_nomagic() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.item_templates[1].used = USE_ACTIVE;
+            gs.characters[cn].flags |= CharacterFlags::NoMagic.bits();
+            gs.characters[cn].skill[SK_MSHIELD][0] = 1;
+            gs.characters[cn].skill[SK_MSHIELD][5] = 40;
+            gs.characters[cn].skill[SK_WARCRY][0] = 1;
+            gs.characters[cn].a_mana = 100_000;
+            gs.characters[cn].a_end = 200_000;
+
+            skill_driver(gs, cn, SK_MSHIELD as i32);
+            assert_eq!(gs.characters[cn].a_mana, 100_000);
+            assert!(active_spell_item(gs, cn, SK_MSHIELD).is_none());
+
+            skill_driver(gs, cn, SK_WARCRY as i32);
+            assert_eq!(gs.characters[cn].a_end, 50_000);
         });
     }
 }

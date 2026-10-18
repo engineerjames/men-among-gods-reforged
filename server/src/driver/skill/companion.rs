@@ -713,9 +713,37 @@ pub fn skill_spectral_pact(gs: &mut GameState, cn: usize) {
 mod tests {
     use super::*;
     use crate::driver::skill::blast::spellcost_blast;
-    use crate::driver::skill::tests::attach_marker;
+    use crate::driver::skill::tests::{active_spell_item, attach_marker};
     use crate::test_helpers::{add_test_player, with_test_gs};
     use core::constants::USE_ACTIVE;
+
+    /// Player owner with neutral spell modifiers and a usable spell template.
+    fn owner(gs: &mut GameState) -> usize {
+        let (cn, _nr) = add_test_player(gs);
+        gs.item_templates[1].used = USE_ACTIVE;
+        gs.globals.newmoon = 0;
+        gs.globals.fullmoon = 0;
+        gs.characters[cn].kindred = 0;
+        cn
+    }
+
+    /// Live companion at index 2 owned by `owner`, with stat caps high enough
+    /// that `recompute_companion_stats` results are not clamped.
+    fn add_companion(gs: &mut GameState, owner: usize) -> usize {
+        let cc = 2;
+        gs.characters[cc] = core::types::Character::default();
+        gs.characters[cc].used = USE_ACTIVE;
+        gs.characters[cc].temp = CT_COMPANION as u16;
+        gs.characters[cc].data[63] = owner as i32;
+        for n in 0..5 {
+            gs.characters[cc].attrib[n][2] = 250;
+            gs.characters[cc].attrib[n][3] = 1;
+        }
+        gs.characters[cc].hp[2] = 1000;
+        gs.characters[cc].end[2] = 1000;
+        gs.characters[owner].data[CHD_COMPANION] = cc as i32;
+        cc
+    }
 
     #[test]
     fn spellcaster_kindred_blast_spends_companion_endurance() {
@@ -775,6 +803,160 @@ mod tests {
                 owner,
                 SK_REVENANT_CONDUIT2 as u16
             ));
+        });
+    }
+
+    #[test]
+    fn owner_has_live_companion_ignores_bodies_and_foreign_companions() {
+        with_test_gs(|gs| {
+            let cn = owner(gs);
+            assert!(!owner_has_live_companion(gs, cn));
+
+            let cc = add_companion(gs, cn);
+            assert!(owner_has_live_companion(gs, cn));
+
+            gs.characters[cc].flags |= CharacterFlags::Body.bits();
+            assert!(!owner_has_live_companion(gs, cn));
+
+            gs.characters[cc].flags &= !CharacterFlags::Body.bits();
+            gs.characters[cc].data[63] = 99;
+            assert!(!owner_has_live_companion(gs, cn));
+        });
+    }
+
+    #[test]
+    fn restat_owned_companions_scales_stats_from_ghost_skill() {
+        with_test_gs(|gs| {
+            let cn = owner(gs);
+            let cc = add_companion(gs, cn);
+            gs.characters[cn].skill[SK_GHOST][5] = 110;
+
+            restat_owned_companions(gs, cn);
+
+            // base = 110 * 4 / 11 = 40; attributes are base * 3 / attrib[3].
+            assert!(gs.characters[cc].attrib.iter().all(|a| a[0] == 120));
+            assert_eq!(gs.characters[cc].hp[0], 200);
+            assert_eq!(gs.characters[cc].end[0], 200);
+            assert_eq!(gs.characters[cc].mana[0], 0);
+        });
+    }
+
+    #[test]
+    fn revenant_conduit_boosts_existing_companions_and_toggles_off() {
+        with_test_gs(|gs| {
+            let cn = owner(gs);
+            let cc = add_companion(gs, cn);
+            gs.characters[cn].skill[SK_GHOST][5] = 110;
+            gs.characters[cn].skill[SK_REVENANT_CONDUIT][5] = 20;
+            gs.characters[cn].a_end = 30_000;
+            gs.characters[cn].a_mana = 50_000;
+
+            skill_revenant_conduit(gs, cn);
+
+            let in_ = active_spell_item(gs, cn, SK_REVENANT_CONDUIT2).expect("conduit");
+            assert_eq!(gs.items[in_].power, 60);
+            assert_eq!(gs.items[in_].active, (TICKS * 360) as u32);
+            assert_eq!(gs.characters[cn].a_mana, 33_000);
+            // Endurance is only checked here; the drain happens over time.
+            assert_eq!(gs.characters[cn].a_end, 30_000);
+            // 110 * 160% = 176 -> base 64 -> attributes 192.
+            assert_eq!(gs.characters[cc].attrib[0][0], 192);
+
+            skill_revenant_conduit(gs, cn);
+
+            assert!(active_spell_item(gs, cn, SK_REVENANT_CONDUIT2).is_none());
+            assert_eq!(gs.characters[cn].a_mana, 33_000);
+            assert_eq!(gs.characters[cc].attrib[0][0], 120);
+        });
+    }
+
+    #[test]
+    fn revenant_conduit_boost_is_clamped() {
+        with_test_gs(|gs| {
+            let cn = owner(gs);
+            gs.characters[cn].a_end = 30_000;
+            gs.characters[cn].a_mana = 100_000;
+
+            gs.characters[cn].skill[SK_REVENANT_CONDUIT][5] = 5;
+            skill_revenant_conduit(gs, cn);
+            let in_ = active_spell_item(gs, cn, SK_REVENANT_CONDUIT2).expect("conduit");
+            assert_eq!(gs.items[in_].power, 30);
+            skill_revenant_conduit(gs, cn);
+
+            gs.characters[cn].skill[SK_REVENANT_CONDUIT][5] = 200;
+            skill_revenant_conduit(gs, cn);
+            let in_ = active_spell_item(gs, cn, SK_REVENANT_CONDUIT2).expect("conduit");
+            assert_eq!(gs.items[in_].power, 150);
+        });
+    }
+
+    #[test]
+    fn revenant_conduit_requires_endurance() {
+        with_test_gs(|gs| {
+            let cn = owner(gs);
+            gs.characters[cn].skill[SK_REVENANT_CONDUIT][5] = 20;
+            gs.characters[cn].a_end = 24_000;
+            gs.characters[cn].a_mana = 50_000;
+
+            skill_revenant_conduit(gs, cn);
+
+            assert!(active_spell_item(gs, cn, SK_REVENANT_CONDUIT2).is_none());
+            assert_eq!(gs.characters[cn].a_mana, 50_000);
+        });
+    }
+
+    #[test]
+    fn spectral_pact_sets_redirect_percent_and_cannot_stack() {
+        with_test_gs(|gs| {
+            let cn = owner(gs);
+            gs.characters[cn].skill[SK_SPECTRAL_PACT][5] = 50;
+            gs.characters[cn].a_mana = 50_000;
+
+            skill_spectral_pact(gs, cn);
+
+            let in_ = active_spell_item(gs, cn, SK_SPECTRAL_PACT2).expect("pact");
+            assert_eq!(gs.items[in_].power, 90);
+            assert_eq!(gs.items[in_].active, (TICKS * 180) as u32);
+            assert_eq!(gs.characters[cn].a_mana, 30_000);
+
+            skill_spectral_pact(gs, cn);
+            assert_eq!(gs.characters[cn].a_mana, 30_000);
+            assert_eq!(active_spell_item(gs, cn, SK_SPECTRAL_PACT2), Some(in_));
+        });
+    }
+
+    #[test]
+    fn skill_ghost_is_refused_in_build_mode_and_when_slots_are_full() {
+        with_test_gs(|gs| {
+            let cn = owner(gs);
+            gs.characters[cn].a_mana = 100_000;
+
+            gs.characters[cn].flags |= CharacterFlags::BuildMode.bits();
+            skill_ghost(gs, cn);
+            assert_eq!(gs.characters[cn].a_mana, 100_000);
+            gs.characters[cn].flags &= !CharacterFlags::BuildMode.bits();
+
+            add_companion(gs, cn);
+            skill_ghost(gs, cn);
+            assert_eq!(gs.characters[cn].a_mana, 100_000);
+            assert_eq!(gs.characters[cn].data[CHD_COMPANION], 2);
+        });
+    }
+
+    #[test]
+    fn skill_ghost_is_refused_in_the_gatekeeper_room() {
+        with_test_gs(|gs| {
+            let cn = owner(gs);
+            gs.characters[cn].x = 43;
+            gs.characters[cn].y = 597;
+            gs.characters[cn].a_mana = 100_000;
+
+            skill_ghost(gs, cn);
+
+            // The room check runs after the mana cost, so the cast is paid for.
+            assert_eq!(gs.characters[cn].a_mana, 55_000);
+            assert_eq!(gs.characters[cn].data[CHD_COMPANION], 0);
+            assert_eq!(gs.characters[cn].data[CHD_COMPANION2], 0);
         });
     }
 }

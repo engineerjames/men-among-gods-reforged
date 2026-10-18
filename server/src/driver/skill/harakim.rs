@@ -881,9 +881,11 @@ pub fn skill_anguish_ice(gs: &mut GameState, cn: usize) {
 mod tests {
     use super::*;
     use crate::driver::skill::common::has_active_spell_temp;
-    use crate::driver::skill::tests::attach_marker;
+    use crate::driver::skill::common::remove_active_spell_temp;
+    use crate::driver::skill::tests::{active_spell_item, attach_marker, caster_and_target};
     use crate::test_helpers::{add_test_player, with_test_gs};
     use core::constants::USE_ACTIVE;
+    use core::skills::{SK_BLAST, SK_BLESS};
 
     #[test]
     fn element_switching_boosts_changed_element_damage() {
@@ -1013,6 +1015,163 @@ mod tests {
             assert_eq!(gs.characters[cn].x, start_x);
             assert_eq!(gs.characters[cn].y, start_y);
             assert_eq!(gs.characters[cn].cerrno, core::constants::ERR_FAILED as u16);
+        });
+    }
+
+    /// Cast Dispel until it succeeds, refunding mana and clearing exhaustion each try.
+    fn dispel_until_success(gs: &mut GameState, cn: usize, co: usize, temp: usize) {
+        for _ in 0..20 {
+            gs.characters[cn].a_mana = 100_000;
+            skill_dispel(gs, cn);
+            if active_spell_item(gs, co, temp).is_none() {
+                return;
+            }
+            remove_active_spell_temp(gs, cn, SK_BLAST as u16);
+        }
+    }
+
+    #[test]
+    fn dispel_removes_curse_before_other_spells() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.item_templates[1].used = USE_ACTIVE;
+            gs.characters[cn].skill[SK_DISPEL][5] = 100;
+            attach_marker(gs, cn, 0, 500, SK_BLESS as u16);
+            attach_marker(gs, cn, 1, 501, SK_CURSE as u16);
+
+            dispel_until_success(gs, cn, cn, SK_CURSE);
+
+            assert!(active_spell_item(gs, cn, SK_CURSE).is_none());
+            assert!(active_spell_item(gs, cn, SK_BLESS).is_some());
+            assert_eq!(gs.items[501].used, USE_EMPTY);
+            assert_eq!(gs.characters[cn].a_mana, 75_000);
+            assert!(is_exhausted(gs, cn));
+        });
+    }
+
+    #[test]
+    fn dispel_removes_curse_from_another_character() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+            gs.characters[cn].skill[SK_DISPEL][5] = 100;
+            attach_marker(gs, co, 0, 500, SK_CURSE as u16);
+
+            dispel_until_success(gs, cn, co, SK_CURSE);
+
+            assert!(active_spell_item(gs, co, SK_CURSE).is_none());
+        });
+    }
+
+    #[test]
+    fn dispel_ignores_wimpy_and_reports_unspelled_target() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].skill[SK_DISPEL][5] = 100;
+            gs.characters[cn].a_mana = 100_000;
+            attach_marker(gs, cn, 0, 500, SK_WIMPY as u16);
+
+            skill_dispel(gs, cn);
+
+            assert_eq!(gs.characters[cn].a_mana, 100_000);
+            assert!(active_spell_item(gs, cn, SK_WIMPY).is_some());
+        });
+    }
+
+    #[test]
+    fn dispel_is_refused_while_exhausted() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.item_templates[1].used = USE_ACTIVE;
+            gs.characters[cn].skill[SK_DISPEL][5] = 100;
+            gs.characters[cn].a_mana = 100_000;
+            attach_marker(gs, cn, 0, 500, SK_CURSE as u16);
+            add_exhaust(gs, cn, TICKS);
+
+            skill_dispel(gs, cn);
+
+            assert_eq!(gs.characters[cn].a_mana, 100_000);
+            assert!(active_spell_item(gs, cn, SK_CURSE).is_some());
+        });
+    }
+
+    #[test]
+    fn lava_blast_dot_records_caster_and_burns_for_15_seconds() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+
+            apply_lava_blast_dot(gs, cn, co, 0);
+
+            let item = active_spell_item(gs, co, SK_LAVA_BLAST).expect("lava burn attached");
+            assert_eq!(gs.items[item].data[0] as usize, cn);
+            assert_eq!(gs.items[item].power, 1);
+            assert_eq!(gs.items[item].active, (TICKS * 15) as u32);
+        });
+    }
+
+    #[test]
+    fn anguish_ice_lowers_armor_and_weapon() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+            gs.characters[cn].skill[SK_ANGUISH_ICE][5] = 80;
+
+            for _ in 0..20 {
+                gs.characters[cn].a_mana = 100_000;
+                skill_anguish_ice(gs, cn);
+                assert_eq!(gs.characters[cn].a_mana, 65_000);
+                if active_spell_item(gs, co, SK_ANGUISH_ICE).is_some() {
+                    break;
+                }
+            }
+
+            let item = active_spell_item(gs, co, SK_ANGUISH_ICE).expect("anguish attached");
+            assert_eq!(gs.items[item].armor[1], -10);
+            assert_eq!(gs.items[item].weapon[1], -10);
+            assert_eq!(gs.items[item].active, (TICKS * 20) as u32);
+            assert_eq!(gs.items[item].data[0] as usize, cn);
+        });
+    }
+
+    #[test]
+    fn anguish_ice_modifiers_have_a_floor() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+            gs.characters[cn].skill[SK_ANGUISH_ICE][5] = 8;
+
+            for _ in 0..20 {
+                gs.characters[cn].a_mana = 100_000;
+                skill_anguish_ice(gs, cn);
+                if active_spell_item(gs, co, SK_ANGUISH_ICE).is_some() {
+                    break;
+                }
+            }
+
+            let item = active_spell_item(gs, co, SK_ANGUISH_ICE).expect("anguish attached");
+            assert_eq!(gs.items[item].armor[1], -2);
+            assert_eq!(gs.items[item].weapon[1], -2);
+        });
+    }
+
+    #[test]
+    fn anguish_preflight_rejects_self_target_without_cost() {
+        with_test_gs(|gs| {
+            let (cn, _co) = caster_and_target(gs);
+            gs.characters[cn].skill_target1 = cn as u16;
+            gs.characters[cn].a_mana = 100_000;
+
+            assert!(anguish_preflight(gs, cn, SK_ANGUISH_LAVA, 30).is_none());
+            assert_eq!(gs.characters[cn].a_mana, 100_000);
+        });
+    }
+
+    #[test]
+    fn anguish_preflight_is_refused_while_exhausted() {
+        with_test_gs(|gs| {
+            let (cn, _co) = caster_and_target(gs);
+            gs.characters[cn].a_mana = 100_000;
+            add_exhaust(gs, cn, TICKS);
+
+            assert!(anguish_preflight(gs, cn, SK_ANGUISH_LAVA, 30).is_none());
+            assert_eq!(gs.characters[cn].a_mana, 100_000);
         });
     }
 }

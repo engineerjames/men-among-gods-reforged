@@ -667,7 +667,7 @@ pub fn skill_blade_dance(gs: &mut GameState, cn: usize) {
 mod tests {
     use super::*;
     use crate::driver::skill::curse::apply_curse_effect_after_focus;
-    use crate::driver::skill::tests::place_attacker;
+    use crate::driver::skill::tests::{active_spell_item, caster_and_target, place_attacker};
     use crate::test_helpers::{add_test_player, with_test_gs};
     use core::constants::USE_ACTIVE;
     use core::constants::{DX_RIGHT, SERVER_MAPX};
@@ -682,14 +682,6 @@ mod tests {
         gs.characters[co].y = y;
         gs.characters[co].attack_cn = cn as u16;
         gs.map[x as usize + y as usize * SERVER_MAPX as usize].ch = co as u32;
-    }
-
-    fn active_spell_item(gs: &GameState, cn: usize, temp: usize) -> Option<usize> {
-        gs.characters[cn]
-            .spell
-            .iter()
-            .map(|&item_idx| item_idx as usize)
-            .find(|&item_idx| item_idx != 0 && gs.items[item_idx].temp == temp as u16)
     }
 
     #[test]
@@ -876,6 +868,207 @@ mod tests {
             }
 
             assert!(!has_spell_temp(gs, 2, SK_DISARM));
+        });
+    }
+
+    #[test]
+    fn gunpowder_flash_slow_points_are_clamped() {
+        assert_eq!(gunpowder_flash_slow_points(0), 6);
+        assert_eq!(gunpowder_flash_slow_points(400), 13);
+        assert_eq!(gunpowder_flash_slow_points(10_000), 20);
+    }
+
+    #[test]
+    fn parasitic_dot_records_caster_power_and_duration() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+            gs.characters[co].skill[SK_IMMUN][5] = 20;
+
+            assert!(apply_parasitic_dot(
+                gs,
+                cn,
+                co,
+                50,
+                SK_PARASITE as u16,
+                TICKS * 24,
+                b"Parasite",
+            ));
+
+            let item = active_spell_item(gs, co, SK_PARASITE).expect("parasite attached");
+            assert_eq!(gs.items[item].data[0] as usize, cn);
+            assert_eq!(gs.items[item].data[1], 0);
+            assert_eq!(gs.items[item].power, 40);
+            assert_eq!(gs.items[item].active, (TICKS * 24) as u32);
+        });
+    }
+
+    #[test]
+    fn parasitic_dot_spares_immortal_targets() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+            gs.characters[co].flags |= CharacterFlags::Immortal.bits();
+
+            assert!(!apply_parasitic_dot(
+                gs,
+                cn,
+                co,
+                50,
+                SK_PARASITE as u16,
+                TICKS * 24,
+                b"Parasite",
+            ));
+            assert!(active_spell_item(gs, co, SK_PARASITE).is_none());
+        });
+    }
+
+    #[test]
+    fn parasite_costs_mana_and_infects_target_and_cross_neighbours() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+            gs.characters[cn].skill[SK_PARASITE][5] = 50;
+            gs.characters[cn].a_mana = 20_000;
+            let (side, diagonal) = (3, 4);
+            place_attacker(gs, cn, side, 0, 1);
+            place_attacker(gs, cn, diagonal, 1, 1);
+
+            skill_parasite(gs, cn);
+
+            assert_eq!(gs.characters[cn].a_mana, 10_000);
+            assert!(active_spell_item(gs, co, SK_PARASITE).is_some());
+            assert!(active_spell_item(gs, side, SK_PARASITE).is_some());
+            assert!(active_spell_item(gs, diagonal, SK_PARASITE).is_none());
+        });
+    }
+
+    #[test]
+    fn parasite_without_mana_does_nothing() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+            gs.characters[cn].skill[SK_PARASITE][5] = 50;
+            gs.characters[cn].a_mana = 9_000;
+
+            skill_parasite(gs, cn);
+
+            assert_eq!(gs.characters[cn].a_mana, 9_000);
+            assert!(active_spell_item(gs, co, SK_PARASITE).is_none());
+        });
+    }
+
+    #[test]
+    fn contagion_costs_mana_and_attaches_long_dot() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+            gs.characters[cn].skill[SK_CONTAGION][5] = 60;
+            gs.characters[cn].a_mana = 50_000;
+
+            skill_contagion(gs, cn);
+
+            assert_eq!(gs.characters[cn].a_mana, 30_000);
+            let item = active_spell_item(gs, co, SK_CONTAGION).expect("contagion attached");
+            assert_eq!(gs.items[item].active, (TICKS * 60 * 24) as u32);
+        });
+    }
+
+    #[test]
+    fn disarm_penalises_weapon_skill_for_45_seconds() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+
+            assert!(apply_disarm(gs, cn, co, 40));
+            let item = active_spell_item(gs, co, SK_DISARM).expect("disarm attached");
+            assert_eq!(gs.items[item].skill[SK_WEAPON][1], -60);
+            assert_eq!(gs.items[item].active, (TICKS * 45) as u32);
+
+            // The penalty is clamped to 3..=150.
+            assert!(apply_disarm(gs, cn, co, 1));
+            let item = active_spell_item(gs, co, SK_DISARM).unwrap();
+            assert_eq!(gs.items[item].skill[SK_WEAPON][1], -3);
+            assert!(apply_disarm(gs, cn, co, 500));
+            let item = active_spell_item(gs, co, SK_DISARM).unwrap();
+            assert_eq!(gs.items[item].skill[SK_WEAPON][1], -150);
+        });
+    }
+
+    #[test]
+    fn disarm_spares_immortal_targets() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+            gs.characters[co].flags |= CharacterFlags::Immortal.bits();
+
+            assert!(!apply_disarm(gs, cn, co, 40));
+            assert!(active_spell_item(gs, co, SK_DISARM).is_none());
+        });
+    }
+
+    #[test]
+    fn deliver_death_requires_an_adjacent_target() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+            gs.map[11 + 10 * SERVER_MAPX as usize].ch = 0;
+            place_attacker(gs, cn, co, 2, 0);
+            gs.characters[cn].a_end = 100_000;
+
+            skill_deliver_death(gs, cn);
+
+            assert_eq!(gs.characters[cn].a_end, 100_000);
+            assert!(active_spell_item(gs, cn, SK_DELIVER_DEATH).is_none());
+        });
+    }
+
+    #[test]
+    fn deliver_death_requires_endurance() {
+        with_test_gs(|gs| {
+            let (cn, _co) = caster_and_target(gs);
+            gs.characters[cn].a_end = 74_999;
+
+            skill_deliver_death(gs, cn);
+
+            assert_eq!(gs.characters[cn].a_end, 74_999);
+            assert!(active_spell_item(gs, cn, SK_DELIVER_DEATH).is_none());
+        });
+    }
+
+    #[test]
+    fn deliver_death_is_blocked_while_recharging() {
+        with_test_gs(|gs| {
+            let (cn, _co) = caster_and_target(gs);
+            gs.characters[cn].a_end = 100_000;
+            add_skill_cooldown(gs, cn, TICKS, SK_DELIVER_DEATH as u16, b"Cooldown");
+
+            skill_deliver_death(gs, cn);
+
+            assert_eq!(gs.characters[cn].a_end, 100_000);
+        });
+    }
+
+    #[test]
+    fn blade_dance_requires_endurance() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.item_templates[1].used = USE_ACTIVE;
+            gs.characters[cn].a_end = 99_999;
+
+            skill_blade_dance(gs, cn);
+
+            assert_eq!(gs.characters[cn].a_end, 99_999);
+            assert!(active_spell_item(gs, cn, SK_BLADE_DANCE).is_none());
+        });
+    }
+
+    #[test]
+    fn blade_dance_spends_endurance_and_starts_cooldown() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.item_templates[1].used = USE_ACTIVE;
+            gs.characters[cn].a_end = 250_000;
+
+            skill_blade_dance(gs, cn);
+            assert_eq!(gs.characters[cn].a_end, 150_000);
+            let cooldown = active_spell_item(gs, cn, SK_BLADE_DANCE).expect("cooldown added");
+            assert_eq!(gs.items[cooldown].active, (TICKS * 30) as u32);
+
+            skill_blade_dance(gs, cn);
+            assert_eq!(gs.characters[cn].a_end, 150_000);
         });
     }
 }

@@ -746,9 +746,30 @@ pub(crate) fn remove_active_spell_temp(gs: &mut GameState, cn: usize, skill_temp
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::driver::skill::tests::attach_marker;
+    use crate::driver::skill::tests::{active_spell_item, attach_marker, place_attacker};
     use crate::test_helpers::{add_test_player, with_test_gs};
-    use core::skills::{SK_REVENANT_CONDUIT2, SK_SPECTRAL_PACT2};
+    use core::constants::{DX_LEFTUP, SERVER_MAPX, TICKS, USE_ACTIVE, USE_EMPTY};
+    use core::skills::{
+        SK_BLESS, SK_REVENANT_CONDUIT2, SK_SEEING_RED2, SK_SPECTRAL_PACT2, SK_STUN,
+    };
+
+    /// Create a standalone spell item at `item_idx` that is not yet attached to anyone.
+    fn spell_item(gs: &mut GameState, item_idx: usize, temp: u16, power: u32) {
+        gs.items[item_idx] = core::types::Item::default();
+        gs.items[item_idx].used = USE_ACTIVE;
+        gs.items[item_idx].temp = temp;
+        gs.items[item_idx].power = power;
+        gs.items[item_idx].active = 100;
+        gs.items[item_idx].duration = 100;
+    }
+
+    fn character_at(x: i16, y: i16, dir: u8) -> Character {
+        let mut ch = Character::default();
+        ch.x = x;
+        ch.y = y;
+        ch.dir = dir;
+        ch
+    }
 
     #[test]
     fn has_active_spell_temp_detects_present_marker() {
@@ -769,6 +790,368 @@ mod tests {
 
             gs.talent_runtime[cn].spell_penetration_percent = 25;
             assert_eq!(effective_resist(gs, cn, 100), 80);
+        });
+    }
+
+    #[test]
+    fn spellcost_deducts_mana_or_rejects_when_short() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].a_mana = 30_000;
+
+            assert_eq!(spellcost(gs, cn, 25), 0);
+            assert_eq!(gs.characters[cn].a_mana, 5_000);
+
+            assert_eq!(spellcost(gs, cn, 25), -1);
+            assert_eq!(gs.characters[cn].a_mana, 5_000);
+        });
+    }
+
+    #[test]
+    fn spellcost_concentration_reduces_cost_down_to_one() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].a_mana = 100_000;
+            gs.characters[cn].skill[SK_CONCEN][0] = 1;
+            gs.characters[cn].skill[SK_CONCEN][5] = 150;
+
+            assert_eq!(spellcost(gs, cn, 30), 0);
+            assert_eq!(gs.characters[cn].a_mana, 85_000);
+
+            gs.characters[cn].skill[SK_CONCEN][5] = 1000;
+            assert_eq!(spellcost(gs, cn, 30), 0);
+            assert_eq!(gs.characters[cn].a_mana, 84_000);
+        });
+    }
+
+    #[test]
+    fn spellcost_endurance_deducts_endurance_or_rejects_when_short() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].a_end = 12_000;
+
+            assert_eq!(spellcost_endurance(gs, cn, 10), 0);
+            assert_eq!(gs.characters[cn].a_end, 2_000);
+
+            assert_eq!(spellcost_endurance(gs, cn, 10), -1);
+            assert_eq!(gs.characters[cn].a_end, 2_000);
+        });
+    }
+
+    #[test]
+    fn spell_immunity_subtracts_half_immunity_with_floor_of_one() {
+        with_test_gs(|gs| {
+            assert_eq!(spell_immunity(gs, 50, 40), 30);
+            assert_eq!(spell_immunity(gs, 20, 40), 1);
+            assert_eq!(spell_immunity(gs, 10, 0), 10);
+        });
+    }
+
+    #[test]
+    fn spell_race_mod_applies_kindred_and_moon_modifiers() {
+        with_test_gs(|gs| {
+            gs.globals.newmoon = 0;
+            gs.globals.fullmoon = 0;
+            assert_eq!(spell_race_mod(gs, 100, 0), 100);
+            assert_eq!(spell_race_mod(gs, 100, KIN_TEMPLAR as i32), 90);
+            assert_eq!(spell_race_mod(gs, 100, KIN_MERCENARY as i32), 105);
+            assert_eq!(spell_race_mod(gs, 100, KIN_SORCERER as i32), 110);
+
+            gs.globals.newmoon = 1;
+            assert_eq!(spell_race_mod(gs, 100, 0), 85);
+
+            gs.globals.newmoon = 0;
+            gs.globals.fullmoon = 1;
+            // 1.15 is not exactly representable, so the truncated result may land on 114.
+            assert!((114..=115).contains(&spell_race_mod(gs, 100, 0)));
+        });
+    }
+
+    #[test]
+    fn chance_base_always_fails_against_overwhelming_power() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            for _ in 0..50 {
+                assert_eq!(chance_base(gs, cn, 10, 20, 16), -1);
+            }
+        });
+    }
+
+    #[test]
+    fn chance_base_usually_succeeds_against_weak_power() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let successes = (0..100)
+                .filter(|_| chance_base(gs, cn, 100, 12, 10) == 0)
+                .count();
+            assert!(successes > 50, "only {successes} of 100 rolls succeeded");
+        });
+    }
+
+    #[test]
+    fn add_spell_replaces_same_temp_in_place() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            attach_marker(gs, cn, 3, 500, 77);
+            spell_item(gs, 501, 77, 10);
+
+            assert_eq!(add_spell(gs, cn, 501), 1);
+
+            assert_eq!(gs.characters[cn].spell[3], 501);
+            assert_eq!(gs.items[500].used, USE_EMPTY);
+            assert_eq!(gs.items[501].carried, cn as u16);
+        });
+    }
+
+    #[test]
+    fn add_spell_rejects_weaker_duplicate_of_long_running_spell() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            attach_marker(gs, cn, 0, 500, 77);
+            gs.items[500].active = TICKS as u32 * 60 + 1;
+            spell_item(gs, 501, 77, 10);
+
+            assert_eq!(add_spell(gs, cn, 501), 0);
+
+            assert_eq!(gs.characters[cn].spell[0], 500);
+            assert_eq!(gs.items[500].used, USE_ACTIVE);
+            assert_eq!(gs.items[501].used, USE_EMPTY);
+
+            spell_item(gs, 502, 77, 50);
+            assert_eq!(add_spell(gs, cn, 502), 1);
+            assert_eq!(gs.characters[cn].spell[0], 502);
+        });
+    }
+
+    #[test]
+    fn add_spell_evicts_weakest_spell_only_when_new_spell_is_stronger() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            for slot in 0..20 {
+                attach_marker(gs, cn, slot, 500 + slot, 1000 + slot as u16);
+                gs.items[500 + slot].power = 30 + slot as u32;
+            }
+            gs.items[505].power = 5;
+
+            spell_item(gs, 600, 2000, 20);
+            assert_eq!(add_spell(gs, cn, 600), 1);
+            assert_eq!(gs.characters[cn].spell[5], 600);
+            assert_eq!(gs.items[505].used, USE_EMPTY);
+
+            spell_item(gs, 601, 2001, 1);
+            assert_eq!(add_spell(gs, cn, 601), 0);
+            assert_eq!(gs.items[601].used, USE_EMPTY);
+            assert!(gs.characters[cn].spell.iter().all(|&s| s != 601));
+        });
+    }
+
+    #[test]
+    fn add_spell_is_neutralised_on_nomagic_tiles() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let m = 10 + 10 * SERVER_MAPX as usize;
+            gs.map[m].flags |= CharacterFlags::NoMagic.bits();
+            spell_item(gs, 500, 77, 10);
+
+            assert_eq!(add_spell(gs, cn, 500), 0);
+            assert!(active_spell_item(gs, cn, 77).is_none());
+        });
+    }
+
+    #[test]
+    fn add_spell_blocks_crowd_control_while_seeing_red_is_active() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            attach_marker(gs, cn, 0, 500, SK_SEEING_RED2 as u16);
+            spell_item(gs, 501, SK_STUN as u16, 10);
+
+            assert_eq!(add_spell(gs, cn, 501), 0);
+            assert_eq!(gs.items[501].used, USE_EMPTY);
+            assert!(active_spell_item(gs, cn, SK_STUN).is_none());
+
+            spell_item(gs, 502, SK_BLESS as u16, 10);
+            assert_eq!(add_spell(gs, cn, 502), 1);
+        });
+    }
+
+    #[test]
+    fn add_exhaust_marks_the_character_exhausted() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.item_templates[1].used = USE_ACTIVE;
+            assert!(!is_exhausted(gs, cn));
+
+            add_exhaust(gs, cn, 10);
+
+            assert!(is_exhausted(gs, cn));
+            let in_ = active_spell_item(gs, cn, SK_BLAST).expect("exhaustion marker");
+            assert_eq!(gs.items[in_].active, 10);
+            assert_eq!(gs.items[in_].power, 255);
+        });
+    }
+
+    #[test]
+    fn spell_from_item_copies_bonuses_and_defaults_sprite_and_temp() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.item_templates[1].used = USE_ACTIVE;
+            spell_item(gs, 500, 0, 12);
+            gs.items[500].armor[1] = 4;
+            gs.items[500].attrib[2][1] = 3;
+            gs.items[500].duration = 77;
+
+            spell_from_item(gs, cn, 500);
+
+            let in_ = active_spell_item(gs, cn, 101).expect("default temp 101");
+            assert_eq!(gs.items[in_].sprite[1], 93);
+            assert_eq!(gs.items[in_].armor[1], 4);
+            assert_eq!(gs.items[in_].attrib[2][1], 3);
+            assert_eq!(gs.items[in_].active, 77);
+            assert_eq!(gs.items[in_].power, 12);
+        });
+    }
+
+    #[test]
+    fn spell_from_item_uses_item_data_for_sprite_and_temp() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.item_templates[1].used = USE_ACTIVE;
+            spell_item(gs, 500, 0, 12);
+            gs.items[500].data[0] = 321;
+            gs.items[500].data[1] = 222;
+
+            spell_from_item(gs, cn, 500);
+
+            let in_ = active_spell_item(gs, cn, 222).expect("temp from data[1]");
+            assert_eq!(gs.items[in_].sprite[1], 321);
+        });
+    }
+
+    #[test]
+    fn spell_from_item_does_nothing_for_nomagic_characters() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.item_templates[1].used = USE_ACTIVE;
+            gs.characters[cn].flags |= CharacterFlags::NoMagic.bits();
+            spell_item(gs, 500, 0, 12);
+
+            spell_from_item(gs, cn, 500);
+
+            assert!(gs.characters[cn].spell.iter().all(|&s| s == 0));
+        });
+    }
+
+    #[test]
+    fn unbuffed_skill_power_strips_spell_attribute_bonuses() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            for a in 0..5 {
+                gs.characters[cn].attrib[a][5] = 65;
+            }
+            gs.characters[cn].skill[SK_BLESS][5] = 69;
+            assert_eq!(unbuffed_skill_power(gs, cn, SK_BLESS), 69);
+
+            attach_marker(gs, cn, 0, 500, 77);
+            for a in 0..5 {
+                gs.items[500].attrib[a][1] = 15;
+            }
+
+            // Three attributes lose 15 each: 195/5 - 150/5 = 9 skill points.
+            assert_eq!(unbuffed_skill_power(gs, cn, SK_BLESS), 60);
+        });
+    }
+
+    #[test]
+    fn spellpower_sums_base_attributes() {
+        let mut ch = Character::default();
+        for (a, value) in [10u16, 20, 30, 40, 50].into_iter().enumerate() {
+            ch.attrib[a][0] = value;
+            ch.attrib[a][5] = 999;
+        }
+        assert_eq!(spellpower(&ch), 150);
+    }
+
+    #[test]
+    fn remove_spells_clears_every_slot() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            attach_marker(gs, cn, 0, 500, 77);
+            attach_marker(gs, cn, 7, 501, 78);
+
+            remove_spells(gs, cn);
+
+            assert!(gs.characters[cn].spell.iter().all(|&s| s == 0));
+            assert_eq!(gs.items[500].used, USE_EMPTY);
+            assert_eq!(gs.items[501].used, USE_EMPTY);
+        });
+    }
+
+    #[test]
+    fn remove_active_spell_temp_keeps_other_spells() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            attach_marker(gs, cn, 0, 500, 77);
+            attach_marker(gs, cn, 1, 501, 78);
+
+            assert!(remove_active_spell_temp(gs, cn, 77));
+            assert!(!remove_active_spell_temp(gs, cn, 77));
+
+            assert_eq!(gs.characters[cn].spell[0], 0);
+            assert_eq!(gs.items[500].used, USE_EMPTY);
+            assert_eq!(gs.characters[cn].spell[1], 501);
+        });
+    }
+
+    #[test]
+    fn skill_cooldown_round_trip() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.item_templates[1].used = USE_ACTIVE;
+            assert!(!skill_on_cooldown(gs, cn, 77));
+
+            add_skill_cooldown(gs, cn, 50, 77, b"Test Cooldown");
+
+            assert!(skill_on_cooldown(gs, cn, 77));
+            let in_ = active_spell_item(gs, cn, 77).expect("cooldown marker");
+            assert_eq!(gs.items[in_].active, 50);
+            assert_eq!(gs.items[in_].get_name(), "Test Cooldown");
+        });
+    }
+
+    #[test]
+    fn is_facing_and_is_back_check_the_cardinal_tile() {
+        let target = character_at(11, 10, 0);
+        let facing_right = character_at(10, 10, DX_RIGHT);
+        let facing_left = character_at(10, 10, DX_LEFT);
+        let facing_up = character_at(11, 11, DX_UP);
+        let facing_down = character_at(11, 9, DX_DOWN);
+
+        assert!(is_facing(&facing_right, &target));
+        assert!(!is_back(&facing_right, &target));
+        assert!(is_back(&facing_left, &target));
+        assert!(!is_facing(&facing_left, &target));
+        assert!(is_facing(&facing_up, &target));
+        assert!(is_facing(&facing_down, &target));
+
+        let diagonal = character_at(12, 11, DX_LEFTUP);
+        assert!(!is_facing(&diagonal, &target));
+        assert!(!is_back(&diagonal, &target));
+    }
+
+    #[test]
+    fn player_or_ghost_accepts_players_and_own_companion_only() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            place_attacker(gs, cn, 2, 1, 0);
+            let player = gs.characters[cn];
+            let mut npc = gs.characters[2];
+
+            assert!(!player_or_ghost(&player, cn, &npc));
+            assert!(player_or_ghost(&player, cn, &player));
+
+            npc.data[63] = cn as i32;
+            assert!(player_or_ghost(&player, cn, &npc));
+            assert!(!player_or_ghost(&npc, 2, &player));
         });
     }
 }

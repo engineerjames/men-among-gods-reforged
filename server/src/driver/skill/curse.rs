@@ -287,3 +287,122 @@ pub(super) fn apply_curse_effect_after_focus(
         0,
     );
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::driver::skill::tests::{active_spell_item, caster_and_target};
+    use crate::test_helpers::with_test_gs;
+
+    #[test]
+    fn spell_curse_lowers_every_attribute_by_a_third_of_power() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+
+            assert!(spell_curse(gs, cn, co, 30));
+
+            let in_ = active_spell_item(gs, co, SK_CURSE).expect("curse");
+            assert!(gs.items[in_].attrib.iter().all(|a| a[1] == -10));
+            assert_eq!(gs.items[in_].power, 30);
+            assert_eq!(gs.items[in_].active, (TICKS * 60 * 2) as u32);
+        });
+    }
+
+    #[test]
+    fn spell_curse_power_is_reduced_by_target_immunity() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+            gs.characters[co].skill[SK_IMMUN][5] = 20;
+
+            assert!(spell_curse(gs, cn, co, 30));
+
+            let in_ = active_spell_item(gs, co, SK_CURSE).expect("curse");
+            assert_eq!(gs.items[in_].power, 20);
+            assert!(gs.items[in_].attrib.iter().all(|a| a[1] == -6));
+        });
+    }
+
+    #[test]
+    fn spell_curse_skips_immortal_targets() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+            gs.characters[co].flags |= CharacterFlags::Immortal.bits();
+
+            assert!(!spell_curse(gs, cn, co, 30));
+            assert!(active_spell_item(gs, co, SK_CURSE).is_none());
+        });
+    }
+
+    #[test]
+    fn skill_curse_refuses_to_target_the_caster() {
+        with_test_gs(|gs| {
+            let (cn, _co) = caster_and_target(gs);
+            gs.characters[cn].skill_target1 = cn as u16;
+            gs.characters[cn].skill[SK_CURSE][5] = 50;
+            gs.characters[cn].a_mana = 100_000;
+
+            skill_curse(gs, cn);
+
+            assert_eq!(gs.characters[cn].a_mana, 100_000);
+            assert!(active_spell_item(gs, cn, SK_CURSE).is_none());
+        });
+    }
+
+    #[test]
+    fn skill_curse_is_refused_while_exhausted() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+            gs.characters[cn].skill[SK_CURSE][5] = 50;
+            gs.characters[cn].a_mana = 100_000;
+            add_exhaust(gs, cn, 10);
+
+            skill_curse(gs, cn);
+
+            assert_eq!(gs.characters[cn].a_mana, 100_000);
+            assert!(active_spell_item(gs, co, SK_CURSE).is_none());
+        });
+    }
+
+    #[test]
+    fn cast_curse_effect_fails_against_overwhelming_resistance() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+            gs.characters[cn].skill[SK_CURSE][5] = 10;
+            gs.characters[co].skill[SK_RESIST][5] = 100;
+
+            for _ in 0..20 {
+                cast_curse_effect(gs, cn, co, SK_CURSE);
+            }
+
+            assert!(active_spell_item(gs, co, SK_CURSE).is_none());
+        });
+    }
+
+    #[test]
+    fn apply_curse_effect_after_focus_curses_the_primary_target() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+            gs.characters[cn].skill[SK_CURSE][0] = 10;
+            gs.characters[cn].skill[SK_CURSE][5] = 30;
+
+            apply_curse_effect_after_focus(gs, cn, co, SK_CURSE);
+
+            assert!(active_spell_item(gs, co, SK_CURSE).is_some());
+            assert!(active_spell_item(gs, cn, SK_CURSE).is_none());
+        });
+    }
+
+    #[test]
+    fn apply_curse_effect_after_focus_spares_immortal_targets() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+            gs.characters[cn].skill[SK_CURSE][0] = 10;
+            gs.characters[cn].skill[SK_CURSE][5] = 30;
+            gs.characters[co].flags |= CharacterFlags::Immortal.bits();
+
+            apply_curse_effect_after_focus(gs, cn, co, SK_CURSE);
+
+            assert!(active_spell_item(gs, co, SK_CURSE).is_none());
+        });
+    }
+}

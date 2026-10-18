@@ -10,8 +10,8 @@ use crate::helpers;
 use core::constants::{CharacterFlags, ItemFlags, TICKS};
 use core::skills::{
     SK_CONTAGION, SK_CURSE, SK_DISARM, SK_GASH, SK_GUNPOWDER_FLASH, SK_INNER_STRENGTH,
-    SK_RAINS_OF_RENEWAL, SK_RESIST, SK_SEEING_RED, SK_STUN, SK_SUNS_BLESSING, SK_SUNS_BLESSING2,
-    SK_THUNDEROUS_FURY, SK_WARCRY, SK_WARCRY2, SK_WEAPON,
+    SK_INNER_STRENGTH2, SK_RAINS_OF_RENEWAL, SK_RESIST, SK_SEEING_RED, SK_SEEING_RED2, SK_STUN,
+    SK_SUNS_BLESSING, SK_SUNS_BLESSING2, SK_THUNDEROUS_FURY, SK_WARCRY, SK_WARCRY2, SK_WEAPON,
 };
 use core::types::FontColor;
 
@@ -161,8 +161,9 @@ pub fn skill_warcry(gs: &mut GameState, cn: usize) {
 
     let mut hit = 0;
     let mut miss = 0;
-    for x in xf..xt {
-        for y in yf..yt {
+    // Inclusive bounds so the radius is 10 tiles in every direction.
+    for x in xf..=xt {
+        for y in yf..=yt {
             let m = (x + y * core::constants::SERVER_MAPX) as usize;
             let co = gs.map[m].ch as usize;
             if co != 0 {
@@ -229,11 +230,12 @@ pub(crate) fn is_seeing_red_blocked_temp(temp: u16) -> bool {
 ///
 /// # Returns
 ///
-/// * `true` if a Seeing Red marker is present in `character.spell[]`.
+/// * `true` if a Seeing Red buff (not just its cooldown marker) is present in
+///   `character.spell[]`.
 pub(crate) fn has_active_seeing_red(gs: &GameState, cn: usize) -> bool {
     for n in 0..20 {
         let in_ = gs.characters[cn].spell[n] as usize;
-        if in_ != 0 && gs.items[in_].temp == SK_SEEING_RED as u16 {
+        if in_ != 0 && gs.items[in_].temp == SK_SEEING_RED2 as u16 {
             return true;
         }
     }
@@ -480,7 +482,7 @@ pub fn skill_seeing_red(gs: &mut GameState, cn: usize) {
     item.sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
     item.duration = duration as u32;
     item.active = duration as u32;
-    item.temp = SK_SEEING_RED as u16;
+    item.temp = SK_SEEING_RED2 as u16;
     item.power = power.max(1) as u32;
     item.weapon[1] = weapon;
 
@@ -546,8 +548,9 @@ pub fn skill_thunderous_fury(gs: &mut GameState, cn: usize) {
 
     let mut hit = 0;
     let mut miss = 0;
-    for x in xf..xt {
-        for y in yf..yt {
+    // Inclusive bounds so the radius is 10 tiles in every direction.
+    for x in xf..=xt {
+        for y in yf..=yt {
             let m = (x + y * core::constants::SERVER_MAPX) as usize;
             let co = gs.map[m].ch as usize;
             if co == 0 || co == cn {
@@ -632,7 +635,7 @@ pub fn skill_inner_strength(gs: &mut GameState, cn: usize) {
     item.sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
     item.duration = buff_duration as u32;
     item.active = buff_duration as u32;
-    item.temp = SK_INNER_STRENGTH as u16;
+    item.temp = SK_INNER_STRENGTH2 as u16;
     item.power = power.max(1) as u32;
     item.skill[SK_WEAPON][1] = buff_amount;
 
@@ -659,8 +662,9 @@ pub fn skill_inner_strength(gs: &mut GameState, cn: usize) {
 
     let mut hit = 0;
     let mut miss = 0;
-    for x in xf..xt {
-        for y in yf..yt {
+    // Inclusive bounds so the radius is 10 tiles in every direction.
+    for x in xf..=xt {
+        for y in yf..=yt {
             let m = (x + y * core::constants::SERVER_MAPX) as usize;
             let co = gs.map[m].ch as usize;
             if co == 0 || co == cn {
@@ -693,4 +697,342 @@ pub fn skill_inner_strength(gs: &mut GameState, cn: usize) {
         SK_INNER_STRENGTH as u16,
         b"Inner Strength Cooldown",
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::driver::skill::common::is_exhausted;
+    use crate::driver::skill::tests::{active_spell_item, caster_and_target, place_attacker};
+    use crate::test_helpers::with_test_gs;
+    use core::skills::{SK_BLESS, SK_RAINS_OF_RENEWAL};
+
+    #[test]
+    fn seeing_red_blocks_only_crowd_control_temps() {
+        for temp in [
+            SK_STUN,
+            SK_WARCRY2,
+            SK_CURSE,
+            SK_CONTAGION,
+            SK_GUNPOWDER_FLASH,
+            SK_DISARM,
+        ] {
+            assert!(is_seeing_red_blocked_temp(temp as u16), "temp {temp}");
+        }
+        for temp in [SK_WARCRY, SK_SEEING_RED, SK_SEEING_RED2, SK_BLESS] {
+            assert!(!is_seeing_red_blocked_temp(temp as u16), "temp {temp}");
+        }
+    }
+
+    #[test]
+    fn warcry_stuns_and_weakens_the_target() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+
+            assert!(warcry(gs, cn, co, 40));
+
+            let stun = active_spell_item(gs, co, SK_WARCRY2).expect("war-stun");
+            assert_eq!(gs.items[stun].power, 40);
+            assert_eq!(gs.items[stun].active, TICKS as u32 * 3);
+
+            let weaken = active_spell_item(gs, co, SK_WARCRY).expect("warcry");
+            assert_eq!(gs.items[weaken].power, 20);
+            assert!(gs.items[weaken].attrib.iter().all(|a| a[1] == -15));
+        });
+    }
+
+    #[test]
+    fn warcry_spares_resistant_immortal_and_friendly_targets() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+
+            gs.characters[co].skill[SK_RESIST][5] = 100;
+            assert!(!warcry(gs, cn, co, 40));
+            gs.characters[co].skill[SK_RESIST][5] = 0;
+
+            gs.characters[co].flags |= CharacterFlags::Immortal.bits();
+            assert!(!warcry(gs, cn, co, 40));
+            gs.characters[co].flags &= !CharacterFlags::Immortal.bits();
+
+            gs.characters[cn].data[3] = co as i32;
+            assert!(!warcry(gs, cn, co, 40));
+            gs.characters[cn].data[3] = 0;
+
+            gs.characters[co].alignment = 10000;
+            assert!(!warcry(gs, cn, co, 40));
+
+            assert!(active_spell_item(gs, co, SK_WARCRY2).is_none());
+        });
+    }
+
+    #[test]
+    fn skill_warcry_requires_endurance() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+            gs.characters[cn].skill[SK_WARCRY][5] = 40;
+            gs.characters[cn].a_end = 149_000;
+
+            skill_warcry(gs, cn);
+
+            assert_eq!(gs.characters[cn].a_end, 149_000);
+            assert!(active_spell_item(gs, co, SK_WARCRY2).is_none());
+        });
+    }
+
+    #[test]
+    fn skill_warcry_spends_endurance_and_hits_nearby_enemies() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+            place_attacker(gs, cn, 3, 0, 5);
+            gs.characters[cn].skill[SK_WARCRY][5] = 40;
+            gs.characters[cn].a_end = 200_000;
+
+            skill_warcry(gs, cn);
+
+            assert_eq!(gs.characters[cn].a_end, 50_000);
+            assert!(active_spell_item(gs, co, SK_WARCRY2).is_some());
+            assert!(active_spell_item(gs, 3, SK_WARCRY2).is_some());
+            assert!(active_spell_item(gs, cn, SK_WARCRY2).is_none());
+        });
+    }
+
+    #[test]
+    fn rains_of_renewal_applies_a_buff_that_blocks_recasting() {
+        with_test_gs(|gs| {
+            let (cn, _co) = caster_and_target(gs);
+            gs.characters[cn].skill[SK_RAINS_OF_RENEWAL][5] = 0;
+            gs.characters[cn].a_end = 49_000;
+
+            skill_rains_of_renewal(gs, cn);
+            assert_eq!(gs.characters[cn].a_end, 49_000);
+            assert!(active_spell_item(gs, cn, SK_RAINS_OF_RENEWAL).is_none());
+
+            gs.characters[cn].a_end = 120_000;
+            skill_rains_of_renewal(gs, cn);
+            let in_ = active_spell_item(gs, cn, SK_RAINS_OF_RENEWAL).expect("rains");
+            assert_eq!(gs.items[in_].power, 1);
+            assert_eq!(gs.items[in_].active, (TICKS * 60) as u32);
+            assert_eq!(gs.characters[cn].a_end, 70_000);
+
+            skill_rains_of_renewal(gs, cn);
+            assert_eq!(gs.characters[cn].a_end, 70_000);
+            assert_eq!(active_spell_item(gs, cn, SK_RAINS_OF_RENEWAL), Some(in_));
+        });
+    }
+
+    #[test]
+    fn suns_blessing_grants_bonuses_and_a_separate_cooldown() {
+        with_test_gs(|gs| {
+            let (cn, _co) = caster_and_target(gs);
+            gs.characters[cn].skill[SK_SUNS_BLESSING][5] = 40;
+
+            skill_suns_blessing(gs, cn);
+
+            let buff = active_spell_item(gs, cn, SK_SUNS_BLESSING2).expect("buff");
+            assert!(gs.items[buff].attrib.iter().all(|a| a[1] == 18));
+            assert_eq!(gs.items[buff].armor[1], 18);
+            assert_eq!(gs.items[buff].weapon[1], 18);
+            assert_eq!(gs.items[buff].active, (TICKS * 180) as u32);
+
+            let cooldown = active_spell_item(gs, cn, SK_SUNS_BLESSING).expect("cooldown");
+            assert_eq!(gs.items[cooldown].active, (TICKS * 55) as u32);
+
+            skill_suns_blessing(gs, cn);
+            assert_eq!(active_spell_item(gs, cn, SK_SUNS_BLESSING2), Some(buff));
+        });
+    }
+
+    #[test]
+    fn suns_blessing_bonus_is_capped() {
+        with_test_gs(|gs| {
+            let (cn, _co) = caster_and_target(gs);
+            gs.characters[cn].skill[SK_SUNS_BLESSING][5] = 1000;
+
+            skill_suns_blessing(gs, cn);
+
+            let buff = active_spell_item(gs, cn, SK_SUNS_BLESSING2).expect("buff");
+            assert_eq!(gs.items[buff].armor[1], 90);
+        });
+    }
+
+    #[test]
+    fn gash_requires_an_adjacent_target() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+            place_attacker(gs, cn, co, 2, 0);
+            gs.characters[cn].a_hp = 100_000;
+
+            skill_gash(gs, cn);
+
+            assert_eq!(gs.characters[cn].a_hp, 100_000);
+            assert!(active_spell_item(gs, cn, SK_GASH).is_none());
+        });
+    }
+
+    #[test]
+    fn gash_is_refused_when_too_wounded_or_recharging() {
+        with_test_gs(|gs| {
+            let (cn, _co) = caster_and_target(gs);
+            gs.characters[cn].a_hp = 1;
+
+            skill_gash(gs, cn);
+            assert_eq!(gs.characters[cn].a_hp, 1);
+            assert!(active_spell_item(gs, cn, SK_GASH).is_none());
+
+            gs.characters[cn].a_hp = 100_000;
+            add_skill_cooldown(gs, cn, 10, SK_GASH as u16, b"Gash Cooldown");
+            skill_gash(gs, cn);
+            assert_eq!(gs.characters[cn].a_hp, 100_000);
+        });
+    }
+
+    #[test]
+    fn endurance_skills_do_nothing_without_enough_endurance() {
+        with_test_gs(|gs| {
+            let (cn, _co) = caster_and_target(gs);
+            gs.characters[cn].a_end = 74_000;
+
+            skill_seeing_red(gs, cn);
+            skill_thunderous_fury(gs, cn);
+            skill_inner_strength(gs, cn);
+
+            assert_eq!(gs.characters[cn].a_end, 74_000);
+            assert!(gs.characters[cn].spell.iter().all(|&s| s == 0));
+            assert!(!is_exhausted(gs, cn));
+        });
+    }
+
+    #[test]
+    fn seeing_red_spends_endurance_and_starts_cooldown() {
+        with_test_gs(|gs| {
+            let (cn, _co) = caster_and_target(gs);
+            gs.characters[cn].skill[SK_SEEING_RED][5] = 50;
+            gs.characters[cn].weapon = 10;
+            gs.characters[cn].a_end = 100_000;
+
+            skill_seeing_red(gs, cn);
+
+            assert_eq!(gs.characters[cn].a_end, 25_000);
+            assert!(has_active_seeing_red(gs, cn));
+            assert!(skill_on_cooldown(gs, cn, SK_SEEING_RED as u16));
+
+            // The cooldown marker must not replace the buff item.
+            let buff = active_spell_item(gs, cn, SK_SEEING_RED2).expect("buff");
+            assert_eq!(gs.items[buff].weapon[1], 30);
+            assert_eq!(gs.items[buff].active, (TICKS * 25) as u32);
+            let cooldown = active_spell_item(gs, cn, SK_SEEING_RED).expect("cooldown");
+            assert_ne!(cooldown, buff);
+            assert_eq!(gs.items[cooldown].active, (TICKS * 60) as u32);
+
+            gs.characters[cn].a_end = 100_000;
+            skill_seeing_red(gs, cn);
+            assert_eq!(gs.characters[cn].a_end, 100_000);
+        });
+    }
+
+    #[test]
+    fn thunderous_fury_spends_endurance_and_starts_cooldown() {
+        with_test_gs(|gs| {
+            let (cn, _co) = caster_and_target(gs);
+            // Nobody else on the map, so no damage is dealt.
+            gs.characters[2].used = core::constants::USE_EMPTY;
+            gs.map[11 + 10 * core::constants::SERVER_MAPX as usize].ch = 0;
+            gs.characters[cn].a_end = 300_000;
+
+            skill_thunderous_fury(gs, cn);
+
+            assert_eq!(gs.characters[cn].a_end, 50_000);
+            let in_ = active_spell_item(gs, cn, SK_THUNDEROUS_FURY).expect("cooldown");
+            assert_eq!(gs.items[in_].active, (TICKS * 30) as u32);
+        });
+    }
+
+    #[test]
+    fn inner_strength_spends_endurance_and_shakes_nearby_foes() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+            gs.characters[cn].skill[SK_INNER_STRENGTH][5] = 50;
+            gs.characters[cn].a_end = 300_000;
+
+            skill_inner_strength(gs, cn);
+
+            assert_eq!(gs.characters[cn].a_end, 100_000);
+            assert!(active_spell_item(gs, co, SK_WARCRY2).is_some());
+            assert!(skill_on_cooldown(gs, cn, SK_INNER_STRENGTH as u16));
+
+            // The cooldown marker must not replace the buff item.
+            let buff = active_spell_item(gs, cn, SK_INNER_STRENGTH2).expect("buff");
+            assert_eq!(gs.items[buff].skill[SK_WEAPON][1], 36);
+            assert_eq!(gs.items[buff].active, (TICKS * 90) as u32);
+            let cooldown = active_spell_item(gs, cn, SK_INNER_STRENGTH).expect("cooldown");
+            assert_ne!(cooldown, buff);
+            assert_eq!(gs.items[cooldown].active, (TICKS * 30) as u32);
+        });
+    }
+
+    #[test]
+    fn seeing_red_cooldown_alone_does_not_block_debuffs() {
+        with_test_gs(|gs| {
+            let (cn, _co) = caster_and_target(gs);
+            add_skill_cooldown(gs, cn, TICKS * 60, SK_SEEING_RED as u16, b"Cooldown");
+
+            assert!(!has_active_seeing_red(gs, cn));
+        });
+    }
+
+    /// Place NPCs exactly 10 tiles from `cn` in each direction, plus two just
+    /// outside that radius. Returns `(inside, outside)` character indices.
+    fn ring_of_foes(gs: &mut GameState, cn: usize) -> ([usize; 4], [usize; 2]) {
+        gs.characters[cn].x = 50;
+        gs.characters[cn].y = 50;
+        let inside = [3, 4, 5, 6];
+        for (co, (dx, dy)) in inside
+            .into_iter()
+            .zip([(10, 0), (0, 10), (-10, 0), (0, -10)])
+        {
+            place_attacker(gs, cn, co, dx, dy);
+        }
+        let outside = [7, 8];
+        place_attacker(gs, cn, outside[0], 11, 0);
+        place_attacker(gs, cn, outside[1], 0, 11);
+        (inside, outside)
+    }
+
+    #[test]
+    fn skill_warcry_reaches_ten_tiles_in_every_direction() {
+        with_test_gs(|gs| {
+            let (cn, _co) = caster_and_target(gs);
+            let (inside, outside) = ring_of_foes(gs, cn);
+            gs.characters[cn].skill[SK_WARCRY][5] = 50;
+            gs.characters[cn].a_end = 200_000;
+
+            skill_warcry(gs, cn);
+
+            for co in inside {
+                assert!(active_spell_item(gs, co, SK_WARCRY2).is_some(), "foe {co}");
+            }
+            for co in outside {
+                assert!(active_spell_item(gs, co, SK_WARCRY2).is_none(), "foe {co}");
+            }
+        });
+    }
+
+    #[test]
+    fn inner_strength_reaches_ten_tiles_in_every_direction() {
+        with_test_gs(|gs| {
+            let (cn, _co) = caster_and_target(gs);
+            let (inside, outside) = ring_of_foes(gs, cn);
+            gs.characters[cn].skill[SK_INNER_STRENGTH][5] = 50;
+            gs.characters[cn].a_end = 300_000;
+
+            skill_inner_strength(gs, cn);
+
+            for co in inside {
+                assert!(active_spell_item(gs, co, SK_WARCRY2).is_some(), "foe {co}");
+            }
+            for co in outside {
+                assert!(active_spell_item(gs, co, SK_WARCRY2).is_none(), "foe {co}");
+            }
+        });
+    }
 }

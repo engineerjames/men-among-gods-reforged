@@ -120,8 +120,8 @@ fn spell_meta(skill_nr: i16, sprite: i16) -> Option<SpellEffectMeta> {
         | skills::SK_RAINS_OF_RENEWAL
         | skills::SK_SUNS_BLESSING2
         | skills::SK_GUNPOWDER_FLASH2
-        | skills::SK_SEEING_RED
-        | skills::SK_INNER_STRENGTH
+        | skills::SK_SEEING_RED2
+        | skills::SK_INNER_STRENGTH2
         | skills::SK_REVENANT_CONDUIT2
         | skills::SK_SPECTRAL_PACT2
         | skills::SK_GASH
@@ -376,8 +376,8 @@ fn debug_fake_state() -> ([i32; 20], [i8; 20], [i16; 20], [i16; 20]) {
         (skills::SK_LIGHT, 12),
         (skills::SK_MSHIELD, 10),
         (skills::SK_RAINS_OF_RENEWAL, 9),
-        (skills::SK_SEEING_RED, 7),
-        (skills::SK_INNER_STRENGTH, 5),
+        (skills::SK_SEEING_RED2, 7),
+        (skills::SK_INNER_STRENGTH2, 5),
         (skills::SK_BLADE_DANCE, 3),
         (skills::SK_SOUL_REFLECTION, 1),
         // Negative
@@ -845,8 +845,8 @@ mod tests {
         let cases = [
             (skills::SK_RAINS_OF_RENEWAL as i16, "Rains of Renewal"),
             (skills::SK_SUNS_BLESSING2 as i16, "Sun's Blessing"),
-            (skills::SK_SEEING_RED as i16, "Seeing Red"),
-            (skills::SK_INNER_STRENGTH as i16, "Inner Strength"),
+            (skills::SK_SEEING_RED2 as i16, "Seeing Red"),
+            (skills::SK_INNER_STRENGTH2 as i16, "Inner Strength"),
         ];
         for (temp, name) in cases {
             let meta = spell_meta(temp, 1)
