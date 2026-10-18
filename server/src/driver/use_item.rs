@@ -6519,10 +6519,11 @@ pub fn use_soulstone(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // Check if the item is another soulstone (driver 68)
     let in2_driver = gs.items[in2].driver;
     if in2_driver == 68 {
-        // Absorb the second soulstone into the first
-
-        let exp_gain = helpers::random_mod(gs.items[in2].data[1].saturating_add(1));
-        gs.items[item_idx].data[1] += exp_gain;
+        // Absorb the smaller stone into the larger one so click order can never
+        // leave the result below the better of the two input stones.
+        let (a, b) = (gs.items[item_idx].data[1], gs.items[in2].data[1]);
+        let exp_gain = helpers::random_mod(a.min(b).saturating_add(1));
+        gs.items[item_idx].data[1] = a.max(b).saturating_add(exp_gain);
         let rank = core::ranks::points2rank(gs.items[item_idx].data[1]);
         gs.items[item_idx].data[0] = rank;
 
@@ -9152,6 +9153,32 @@ mod tests {
             );
             assert_eq!(gs.characters[cn].citem, 0);
             assert_eq!(gs.items[cursor_soulstone_idx].used, USE_EMPTY);
+        });
+    }
+
+    #[test]
+    fn combining_small_stone_with_big_cursor_stone_never_loses_exp() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let (small, big) = (1, 2);
+            for _ in 0..50 {
+                for item_idx in [small, big] {
+                    gs.items[item_idx] = core::types::Item::default();
+                    gs.items[item_idx].used = USE_ACTIVE;
+                    gs.items[item_idx].driver = 68;
+                    gs.items[item_idx].carried = cn as u16;
+                }
+                gs.items[small].data[1] = 100;
+                gs.items[big].data[1] = 1_000_000;
+                gs.characters[cn].item[0] = small as u32;
+                gs.characters[cn].citem = big as u32;
+
+                assert!(use_soulstone(gs, cn, small));
+
+                let exp = gs.items[small].data[1];
+                assert!((1_000_000..=1_000_100).contains(&exp), "exp {exp}");
+                assert_eq!(gs.items[small].data[0], core::ranks::points2rank(exp));
+            }
         });
     }
 
