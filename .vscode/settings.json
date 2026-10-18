@@ -9,5 +9,6 @@
         "CARGO_TARGET_DIR": "target/analyzer"
     },
     "chat.defaultToCopilotHarness": false,
-    "chat.editor.preferCopilotHarness": false
+    "chat.editor.preferCopilotHarness": false,
+    "chat.tools.terminal.outputLocation": "terminal"
 }

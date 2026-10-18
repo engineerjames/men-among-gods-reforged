@@ -45,7 +45,7 @@ completion tracking (see `SV_SETCOMPLETIONDATA` / opcode 77 in
 [core/src/server_commands.rs](core/src/server_commands.rs)):
 
 - `future3[0]` -- pentagram solve count for this character. Incremented
-  (saturating) in `solved_pentagram` ([server/src/driver/use_item.rs](server/src/driver/use_item.rs))
+  (saturating) in `solved_pentagram` ([server/src/driver/use_item/pentagram.rs](server/src/driver/use_item/pentagram.rs))
   only for the character whose activation tipped the threshold.
 - `future3[1]` -- hand-authored quest completion bitset (one bit per entry in
   `server::quest_completion::QUEST_DEFS`). Set in the quest-item turn-in
