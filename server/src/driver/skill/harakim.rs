@@ -209,9 +209,7 @@ pub fn skill_lava_blast(gs: &mut GameState, cn: usize) {
     let mut power = i32::from(gs.characters[cn].skill[SK_LAVA_BLAST][5]);
     power = spell_immunity(gs, power, i32::from(gs.characters[co].skill[SK_IMMUN][5]));
     power = spell_race_mod(gs, power, gs.characters[cn].kindred);
-    let cost_dam = (power * 3) / 2;
-
-    let mut cost = cost_dam / 8 + 8;
+    let mut cost = ((power * 3) / 2) / 8 + 8;
     if (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0
         && ((gs.characters[cn].kindred as u32) & (KIN_HARAKIM | KIN_ARCHHARAKIM) != 0)
     {
@@ -221,8 +219,8 @@ pub fn skill_lava_blast(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    // Talent buff: triple the damage dealt while the mana cost stays the same.
-    let mut dam = cost_dam * 3;
+    // Direct hit matches Blast (`compute_blast_damage`); the burn is the extra.
+    let mut dam = power * 2;
 
     if chance_base(
         gs,

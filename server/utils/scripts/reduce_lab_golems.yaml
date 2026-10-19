@@ -13,3 +13,12 @@
   cap-skill: [hand=90, weapon=90]
 - {<<: *golems, area: "15,611,126,703"}
 - {<<: *golems, area: "112,703,126,708"}
+
+# Extra Lab 7-only debuff, applied after the shared reduction above. Bonuses are set outright;
+# attribute caps must be below 65 to have an effect (BRAVE, WILL and INT may also be capped).
+- chars: true
+  name: golem
+  area: 16,529,81,591
+  set-armor-bonus: 45
+  set-weapon-bonus: 45
+  cap-attrib: [STREN=55, AGIL=55]

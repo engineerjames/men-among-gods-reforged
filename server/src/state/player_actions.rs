@@ -478,10 +478,12 @@ impl GameState {
     /// Sets or clears the follow target for the character `cn`. When called
     /// with an empty `name` it reports the current follow target. Visibility
     /// and sanity checks are performed when resolving the target name.
+    /// Following the character who is already being followed toggles
+    /// following off.
     ///
     /// # Arguments
     /// * `cn` - Character setting follow
-    /// * `name` - Name of player to follow (empty to clear/report)
+    /// * `name` - Name of player to follow (empty to report)
     pub(crate) fn do_follow(&mut self, cn: usize, name: &str) {
         if name.is_empty() {
             let co = self.characters[cn].data[10] as usize;
@@ -858,12 +860,18 @@ impl GameState {
     ///
     /// Grants or revokes permission for `co` to access `cn`'s grave/corpse
     /// items. Updates the appropriate CHD_ALLOW data field and informs the
-    /// player.
+    /// player. Allowing the character who is already allowed toggles the
+    /// permission off.
     ///
     /// # Arguments
     /// * `cn` - Owner character id
     /// * `co` - Character id to allow (0 to revoke)
     pub(crate) fn do_allow(&mut self, cn: usize, co: usize) {
+        let co = if co != 0 && self.characters[cn].data[core::constants::CHD_ALLOW] == co as i32 {
+            0
+        } else {
+            co
+        };
         self.characters[cn].data[core::constants::CHD_ALLOW] = co as i32;
         if co != 0 {
             let name = self.characters[co].get_name().to_owned();
