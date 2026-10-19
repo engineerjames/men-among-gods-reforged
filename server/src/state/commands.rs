@@ -1149,8 +1149,14 @@ impl GameState {
             }
             Some("allow") if f_p => {
                 log::debug!("Processing allow command for {}", cn);
-                let co = self.resolve_allow_target(cn, arg_get(1));
-                self.do_allow(cn, co);
+                match self.resolve_allow_target(cn, arg_get(1)) {
+                    Some(co) => self.do_allow(cn, co),
+                    None => self.do_character_log(
+                        cn,
+                        core::types::FontColor::Red,
+                        &format!("Sorry, I cannot find {}.\n", arg_get(1)),
+                    ),
+                }
                 return;
             }
             Some("announce") if f_gius => {
@@ -2362,6 +2368,22 @@ mod tests {
                 gs.characters[cn].data[core::constants::CHD_ALLOW],
                 target as i32
             );
+        });
+    }
+
+    #[test]
+    fn allow_command_reports_unknown_name_and_keeps_current_allow() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.characters[cn].data[core::constants::CHD_ALLOW] = 42;
+
+            gs.do_command(cn, "allow Nobodyhere");
+
+            assert_eq!(gs.characters[cn].data[core::constants::CHD_ALLOW], 42);
+            let text = logged_text(gs, nr);
+            assert!(text.contains("Sorry, I cannot find Nobodyhere."));
+            assert!(!text.contains("Nobody may now access your grave."));
         });
     }
 

@@ -1361,7 +1361,10 @@ mod tests {
             seed_character(gs, 2, CharacterFlags::Player.bits(), 0);
             seed_character(gs, 3, 0, 0);
 
-            assert!(gs.may_attack_msg(1, 2, false), "direct god attack keeps override");
+            assert!(
+                gs.may_attack_msg(1, 2, false),
+                "direct god attack keeps override"
+            );
             assert!(!gs.may_aoe_attack(1, 2), "god splash must spare players");
             assert!(gs.may_aoe_attack(1, 3), "god splash still hits NPCs");
             assert!(!gs.may_aoe_attack(2, 1), "player splash must spare gods");

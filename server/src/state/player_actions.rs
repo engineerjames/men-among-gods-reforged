@@ -903,16 +903,21 @@ impl GameState {
     ///
     /// # Returns
     ///
-    /// * Character id to allow, or `0` to revoke/no-match.
-    pub(crate) fn resolve_allow_target(&mut self, cn: usize, target: &str) -> usize {
+    /// * `Some(co)` - Character id to allow, or `Some(0)` to revoke when no
+    ///   target was given.
+    /// * `None` - A name was given but no matching character was found.
+    pub(crate) fn resolve_allow_target(&mut self, cn: usize, target: &str) -> Option<usize> {
         let target = target.trim();
         if target.is_empty() {
-            return 0;
+            return Some(0);
         }
         if target.chars().next().is_some_and(|ch| ch.is_ascii_digit()) {
-            return target.parse::<usize>().unwrap_or(0);
+            return Some(target.parse::<usize>().unwrap_or(0));
         }
-        self.do_lookup_char_self(target, cn).max(0) as usize
+        match self.do_lookup_char_self(target, cn) {
+            co if co > 0 => Some(co as usize),
+            _ => None,
+        }
     }
 
     /// Port of `do_mark(cn, co, msg)` from `svr_do.cpp`.
