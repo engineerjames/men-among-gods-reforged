@@ -516,7 +516,8 @@ impl GameState {
             );
             return;
         }
-        if co == cn {
+        // Following yourself, or repeating the current target, stops following.
+        if co == cn || self.characters[cn].data[10] == co as i32 {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
@@ -1017,7 +1018,7 @@ impl GameState {
         self.do_character_log(
             cn,
             core::types::FontColor::Green,
-            "#allow <player>        to access your grave.\n",
+            "#allow <player>        toggle access to your grave.\n",
         );
         self.do_character_log(
             cn,
@@ -1032,7 +1033,7 @@ impl GameState {
         self.do_character_log(
             cn,
             core::types::FontColor::Green,
-            "#follow <player>|self  you'll follow player.\n",
+            "#follow <player>|self  toggle following player.\n",
         );
         self.do_character_log(
             cn,
