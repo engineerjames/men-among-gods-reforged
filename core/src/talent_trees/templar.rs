@@ -159,7 +159,7 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: SEEING_RED,
             name: "Seeing Red",
-            description: "Learn Seeing Red, a self-buff that roughly doubles your damage and blocks new stun, curse and disarm effects.",
+            description: "Learn Seeing Red, a self-buff that adds three times your weapon value to your weapon and blocks new stun, curse and disarm effects.",
             cost: 1,
             prereqs: &[FIRST_SERGEANT_MEDITATE],
             effect: TalentEffect::GrantSkill {

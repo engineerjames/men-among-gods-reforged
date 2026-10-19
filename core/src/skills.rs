@@ -44,19 +44,21 @@ pub const SK_WARCRY: usize = 35;
 pub const SK_WARCRY2: usize = SK_WARCRY + 100;
 
 // ---- Mercenary talent-granted skills (reserved slots 37..=42) ----
-/// Parasite: short-duration DoT that returns a portion of damage to the caster.
+/// Parasite: 24-second DoT that heals the caster for 25% of the damage dealt, also
+/// infests enemies adjacent to the caster, and spreads briefly when a host dies.
 pub const SK_PARASITE: usize = 37;
-/// Gunpowder Flash: slows enemy attack cadence and briefly quickens the caster.
+/// Gunpowder Flash: slows the target's (and adjacent attackers') action speed for 30 seconds
+/// and quickens the caster's attacks and movement for the same duration.
 pub const SK_GUNPOWDER_FLASH: usize = 38;
 /// Gunpowder Flash caster-buff temp identifier (mirrors the [`SK_WARCRY2`] pattern).
 pub const SK_GUNPOWDER_FLASH2: usize = SK_GUNPOWDER_FLASH + 100;
-/// Deliver Death: instant-kill execute on low-HP targets, long cooldown that resets on a successful kill.
+/// Deliver Death: weapon-based execute strike that hits far harder on low-HP targets; scales with skill; long cooldown.
 pub const SK_DELIVER_DEATH: usize = 39;
 /// Disarm: passive on-hit proc that lowers the target's weapon skill (and adjacent attackers' at high skill).
 pub const SK_DISARM: usize = 40;
 /// Contagion: upgraded Curse with longer duration and a DoT that spreads on the target's death.
 pub const SK_CONTAGION: usize = 41;
-/// Blade Dance: passive amplifier that doubles Surround Hit secondary damage.
+/// Blade Dance: passive amplifier that multiplies Surround Hit secondary damage by 6x.
 pub const SK_BLADE_DANCE: usize = 42;
 
 // ---- Templar talent-granted skills (reserved slots 43..=48) ----
@@ -70,8 +72,8 @@ pub const SK_SUNS_BLESSING: usize = 45;
 /// Sun's Blessing companion temp identifier for the attached buff item
 /// (mirrors the [`SK_WARCRY`] / [`SK_WARCRY2`] pattern).
 pub const SK_SUNS_BLESSING2: usize = SK_SUNS_BLESSING + 100;
-/// Seeing Red: self buff that doubles outgoing damage and blocks new
-/// stun/slow/curse/disarm debuffs for the duration.
+/// Seeing Red: self buff that adds 3x the caster's weapon value (max +127) to
+/// their weapon and blocks new stun/slow/curse/disarm debuffs for the duration.
 pub const SK_SEEING_RED: usize = 46;
 /// Seeing Red companion temp identifier for the attached buff item, kept
 /// separate from the cooldown marker (mirrors the [`SK_SUNS_BLESSING2`] pattern).
@@ -733,7 +735,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
         37,
         SkillCategory::Magic,
         "Parasite",
-        "Spell: Short DoT; returns damage as health (Cost: 20 Mana).",
+        "Spell: DoT that heals you for 25% of its damage; spreads on death (Cost: 10 Mana).",
         2,
         1,
         4,
@@ -742,7 +744,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
         38,
         SkillCategory::Magic,
         "Gunpowder Flash",
-        "Spell: Slow attackers' attacks, quicken yourself (Cost: 15 Mana).",
+        "Spell: Slow attackers' attacks, quicken yourself (Cost: 7 Mana).",
         2,
         1,
         4,
@@ -751,7 +753,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
         39,
         SkillCategory::General,
         "Deliver Death",
-        "Execute low-health target; cooldown resets on kill.",
+        "Execute strike; massive damage to low-health targets.",
         0,
         3,
         4,
@@ -769,7 +771,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
         41,
         SkillCategory::Magic,
         "Contagion",
-        "Spell: Upgraded Curse; spreads if target dies (Cost: 40 Mana).",
+        "Spell: Upgraded Curse; spreads if target dies (Cost: 20 Mana).",
         0,
         2,
         1,
@@ -778,7 +780,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
         42,
         SkillCategory::General,
         "Blade Dance",
-        "Passive: Surround Hit secondary strikes deal double damage.",
+        "Passive: Surround Hit secondary strikes deal 6x damage.",
         0,
         3,
         4,
@@ -815,7 +817,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
         46,
         SkillCategory::General,
         "Seeing Red",
-        "Self buff: Double outgoing damage; immune to new debuffs.",
+        "Self buff: Adds 3x weapon value; immune to new debuffs.",
         0,
         0,
         4,
