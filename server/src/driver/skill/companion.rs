@@ -677,7 +677,7 @@ pub fn skill_spellcaster_kindred_spirit(gs: &mut GameState, cn: usize) {
 }
 
 /// Active self-buff: Spectral Pact. Attaches a spell item that redirects a
-/// percentage of incoming damage from the caster to their ghost companion(s)
+/// percentage of the caster's post-armor damage to their ghost companion(s)
 /// (handled in `do_hurt`).
 ///
 /// # Arguments
@@ -693,9 +693,9 @@ pub fn skill_spectral_pact(gs: &mut GameState, cn: usize) {
         return;
     }
     let power = i32::from(gs.characters[cn].skill[SK_SPECTRAL_PACT][5]);
-    // 30% at low skill rising to a 75% cap at modified skill 100, so the
+    // 30% at low skill rising to a 75% cap at modified skill 150, so the
     // caster always keeps a share of every hit.
-    let redirect_pct = (30 + (power * 45) / 100).clamp(30, 75);
+    let redirect_pct = (30 + (power * 45) / 150).clamp(30, 75);
     let duration = TICKS * 180;
 
     let in_opt = God::create_item(gs, 1);
@@ -988,7 +988,7 @@ mod tests {
             skill_spectral_pact(gs, cn);
 
             let in_ = active_spell_item(gs, cn, SK_SPECTRAL_PACT2).expect("pact");
-            assert_eq!(gs.items[in_].power, 52);
+            assert_eq!(gs.items[in_].power, 45);
             assert_eq!(gs.items[in_].active, (TICKS * 180) as u32);
             assert_eq!(gs.characters[cn].a_mana, 30_000);
 
@@ -1002,13 +1002,16 @@ mod tests {
     fn spectral_pact_redirect_is_capped_below_full_damage() {
         with_test_gs(|gs| {
             let cn = owner(gs);
-            gs.characters[cn].skill[SK_SPECTRAL_PACT][5] = 250;
-            gs.characters[cn].a_mana = 50_000;
+            gs.characters[cn].a_mana = 100_000;
 
-            skill_spectral_pact(gs, cn);
+            for (skill, expected) in [(100, 60), (149, 74), (150, 75), (250, 75)] {
+                gs.characters[cn].skill[SK_SPECTRAL_PACT][5] = skill;
+                skill_spectral_pact(gs, cn);
 
-            let in_ = active_spell_item(gs, cn, SK_SPECTRAL_PACT2).expect("pact");
-            assert_eq!(gs.items[in_].power, 75);
+                let in_ = active_spell_item(gs, cn, SK_SPECTRAL_PACT2).expect("pact");
+                assert_eq!(gs.items[in_].power, expected, "skill {skill}");
+                remove_active_spell_temp(gs, cn, SK_SPECTRAL_PACT2 as u16);
+            }
         });
     }
 
