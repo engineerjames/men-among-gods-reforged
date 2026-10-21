@@ -478,10 +478,12 @@ impl GameState {
     /// Sets or clears the follow target for the character `cn`. When called
     /// with an empty `name` it reports the current follow target. Visibility
     /// and sanity checks are performed when resolving the target name.
+    /// Following the character who is already being followed toggles
+    /// following off.
     ///
     /// # Arguments
     /// * `cn` - Character setting follow
-    /// * `name` - Name of player to follow (empty to clear/report)
+    /// * `name` - Name of player to follow (empty to report)
     pub(crate) fn do_follow(&mut self, cn: usize, name: &str) {
         if name.is_empty() {
             let co = self.characters[cn].data[10] as usize;
@@ -514,7 +516,8 @@ impl GameState {
             );
             return;
         }
-        if co == cn {
+        // Following yourself, or repeating the current target, stops following.
+        if co == cn || self.characters[cn].data[10] == co as i32 {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
@@ -858,12 +861,18 @@ impl GameState {
     ///
     /// Grants or revokes permission for `co` to access `cn`'s grave/corpse
     /// items. Updates the appropriate CHD_ALLOW data field and informs the
-    /// player.
+    /// player. Allowing the character who is already allowed toggles the
+    /// permission off.
     ///
     /// # Arguments
     /// * `cn` - Owner character id
     /// * `co` - Character id to allow (0 to revoke)
     pub(crate) fn do_allow(&mut self, cn: usize, co: usize) {
+        let co = if co != 0 && self.characters[cn].data[core::constants::CHD_ALLOW] == co as i32 {
+            0
+        } else {
+            co
+        };
         self.characters[cn].data[core::constants::CHD_ALLOW] = co as i32;
         if co != 0 {
             let name = self.characters[co].get_name().to_owned();
@@ -894,16 +903,21 @@ impl GameState {
     ///
     /// # Returns
     ///
-    /// * Character id to allow, or `0` to revoke/no-match.
-    pub(crate) fn resolve_allow_target(&mut self, cn: usize, target: &str) -> usize {
+    /// * `Some(co)` - Character id to allow, or `Some(0)` to revoke when no
+    ///   target was given.
+    /// * `None` - A name was given but no matching character was found.
+    pub(crate) fn resolve_allow_target(&mut self, cn: usize, target: &str) -> Option<usize> {
         let target = target.trim();
         if target.is_empty() {
-            return 0;
+            return Some(0);
         }
         if target.chars().next().is_some_and(|ch| ch.is_ascii_digit()) {
-            return target.parse::<usize>().unwrap_or(0);
+            return Some(target.parse::<usize>().unwrap_or(0));
         }
-        self.do_lookup_char_self(target, cn).max(0) as usize
+        match self.do_lookup_char_self(target, cn) {
+            co if co > 0 => Some(co as usize),
+            _ => None,
+        }
     }
 
     /// Port of `do_mark(cn, co, msg)` from `svr_do.cpp`.
@@ -1009,7 +1023,7 @@ impl GameState {
         self.do_character_log(
             cn,
             core::types::FontColor::Green,
-            "#allow <player>        to access your grave.\n",
+            "#allow <player>        toggle access to your grave.\n",
         );
         self.do_character_log(
             cn,
@@ -1024,7 +1038,7 @@ impl GameState {
         self.do_character_log(
             cn,
             core::types::FontColor::Green,
-            "#follow <player>|self  you'll follow player.\n",
+            "#follow <player>|self  toggle following player.\n",
         );
         self.do_character_log(
             cn,

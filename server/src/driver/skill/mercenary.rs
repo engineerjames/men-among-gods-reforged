@@ -362,9 +362,25 @@ pub fn skill_gunpowder_flash(gs: &mut GameState, cn: usize) {
     }
 }
 
+/// Percent multiplier applied to weapon-based Mercenary/Seyan'Du strikes so
+/// they scale with the skill used: 50% at skill 0, 100% at modified skill
+/// 100, capped at 150% from modified skill 200.
+///
+/// # Arguments
+///
+/// * `power` - Modified skill value of the ability being used.
+///
+/// # Returns
+///
+/// * Damage multiplier in percent.
+fn weapon_skill_scale_pct(power: i32) -> i32 {
+    (50 + power / 2).clamp(50, 150)
+}
+
 /// Active melee finisher: a devastating blow against a low-health adjacent
 /// enemy. Deals massively amplified weapon damage when the target is below
-/// 25% HP, otherwise deals modestly increased damage. Long cooldown.
+/// 25% HP, otherwise deals modestly increased damage, scaled by the Deliver
+/// Death skill (see [`weapon_skill_scale_pct`]). Long cooldown.
 ///
 /// # Arguments
 ///
@@ -394,11 +410,13 @@ pub fn skill_deliver_death(gs: &mut GameState, cn: usize) {
     let weapon = i32::from(gs.characters[cn].weapon).max(1);
     let max_hp = i32::from(gs.characters[co].hp[5]).max(1);
     let cur_hp_pct = gs.characters[co].a_hp / max_hp; // 0..1000
-    let dam = if cur_hp_pct < 250 {
+    let base_dam = if cur_hp_pct < 250 {
         weapon * 15 + helpers::random_mod_i32(weapon * 6)
     } else {
         weapon * 6 + helpers::random_mod_i32(weapon * 3)
     };
+    let power = i32::from(gs.characters[cn].skill[SK_DELIVER_DEATH][5]);
+    let dam = base_dam * weapon_skill_scale_pct(power) / 100;
 
     let applied = gs.do_hurt(cn, co, dam, 0);
     if applied < 1 {
@@ -563,7 +581,7 @@ pub fn skill_contagion(gs: &mut GameState, cn: usize) {
         co,
         power,
         SK_CONTAGION as u16,
-        TICKS * 60 * 24,
+        TICKS * 60,
         b"Contagion",
     ) {
         gs.do_character_log(
@@ -597,8 +615,9 @@ pub fn skill_contagion(gs: &mut GameState, cn: usize) {
 }
 
 /// Active melee skill: a sweeping flurry of strikes that hits every adjacent
-/// hostile target for double the standard Surround Hit damage. Costs
-/// endurance and goes on a short cooldown afterwards.
+/// hostile target for 6x the standard Surround Hit damage, scaled by the
+/// Blade Dance skill (see [`weapon_skill_scale_pct`]). Costs endurance and
+/// goes on a short cooldown afterwards.
 ///
 /// # Arguments
 ///
@@ -619,6 +638,7 @@ pub fn skill_blade_dance(gs: &mut GameState, cn: usize) {
     let caster_y = i32::from(gs.characters[cn].y);
     let attacker_is_player = (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0;
     let aoe_base = if attacker_is_player { 4 } else { 1 };
+    let scale_pct = weapon_skill_scale_pct(i32::from(gs.characters[cn].skill[SK_BLADE_DANCE][5]));
 
     let mut hits = 0;
     for co in helpers::skill_aoe_targets(gs, Some(cn), caster_x, caster_y, aoe_base) {
@@ -629,8 +649,9 @@ pub fn skill_blade_dance(gs: &mut GameState, cn: usize) {
             continue;
         }
         let base_dam = weapon + helpers::random_mod_i32(weapon.max(1));
-        // Mirror Surround Hit's reduction (3/4 of base) then 6x it for Blade Dance.
-        let sdam = (base_dam - base_dam / 4) * 6;
+        // Mirror Surround Hit's reduction (3/4 of base) then 6x it for Blade
+        // Dance, scaled by skill.
+        let sdam = (base_dam - base_dam / 4) * 6 * scale_pct / 100;
         gs.remember_pvp(cn, co);
         let applied = gs.do_hurt(cn, co, sdam, 0);
         if applied > 0 {
@@ -702,7 +723,7 @@ mod tests {
                 co,
                 60,
                 SK_CONTAGION as u16,
-                TICKS * 60 * 24,
+                TICKS * 60,
                 b"Contagion",
             ));
             apply_curse_effect_after_focus(gs, cn, co, SK_CONTAGION);
@@ -733,7 +754,7 @@ mod tests {
                 co,
                 1,
                 SK_CONTAGION as u16,
-                TICKS * 60 * 24,
+                TICKS * 60,
                 b"Contagion",
             ));
             cast_curse_effect(gs, cn, co, SK_CONTAGION);
@@ -763,7 +784,7 @@ mod tests {
                 primary,
                 60,
                 SK_CONTAGION as u16,
-                TICKS * 60 * 24,
+                TICKS * 60,
                 b"Contagion",
             ));
             apply_curse_effect_after_focus(gs, cn, primary, SK_CONTAGION);
@@ -965,7 +986,7 @@ mod tests {
 
             assert_eq!(gs.characters[cn].a_mana, 30_000);
             let item = active_spell_item(gs, co, SK_CONTAGION).expect("contagion attached");
-            assert_eq!(gs.items[item].active, (TICKS * 60 * 24) as u32);
+            assert_eq!(gs.items[item].active, (TICKS * 60) as u32);
         });
     }
 
@@ -1039,6 +1060,14 @@ mod tests {
 
             assert_eq!(gs.characters[cn].a_end, 100_000);
         });
+    }
+
+    #[test]
+    fn weapon_skill_scale_ramps_from_half_to_one_and_a_half() {
+        assert_eq!(weapon_skill_scale_pct(0), 50);
+        assert_eq!(weapon_skill_scale_pct(100), 100);
+        assert_eq!(weapon_skill_scale_pct(200), 150);
+        assert_eq!(weapon_skill_scale_pct(400), 150);
     }
 
     #[test]

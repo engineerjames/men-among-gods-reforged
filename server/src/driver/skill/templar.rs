@@ -251,6 +251,9 @@ pub(crate) fn has_active_seeing_red(gs: &GameState, cn: usize) -> bool {
 /// * `gs` - Game state.
 /// * `cn` - Caster character index.
 pub fn skill_rains_of_renewal(gs: &mut GameState, cn: usize) {
+    // The heal-over-time item itself carries the `SK_RAINS_OF_RENEWAL` temp,
+    // so it doubles as the cooldown marker: recasting is blocked until the
+    // current rains run out.
     if skill_on_cooldown(gs, cn, SK_RAINS_OF_RENEWAL as u16) {
         return;
     }
@@ -459,8 +462,8 @@ pub fn skill_seeing_red(gs: &mut GameState, cn: usize) {
     gs.characters[cn].a_end -= 75 * 1000;
 
     let power = i32::from(gs.characters[cn].skill[SK_SEEING_RED][5]);
-    // Roughly doubles outgoing damage per unit weapon by mirroring 3x the
-    // caster's current weapon value as a flat weapon[1] bonus, i8-capped.
+    // Flat weapon[1] bonus of 3x the caster's current weapon value, i8-capped
+    // at 127 (reached at weapon value 43).
     let weapon = (i32::from(gs.characters[cn].weapon) * 3).clamp(3, 127) as i8;
     let duration = TICKS * (15 + (power / 5).clamp(0, 75));
     let cooldown_len = TICKS * 60;
@@ -565,7 +568,8 @@ pub fn skill_thunderous_fury(gs: &mut GameState, cn: usize) {
                     &format!("{}'s thunderous fury crashes over you!\n", name),
                 );
                 let dam = blast_base + helpers::random_mod_i32(blast_base);
-                let _ = gs.do_hurt(cn, co, dam, 0);
+                // Spell-type damage (like Blast) so armor does not swallow it.
+                let _ = gs.do_hurt(cn, co, dam, 1);
                 let tx = i32::from(gs.characters[co].x);
                 let ty = i32::from(gs.characters[co].y);
                 EffectManager::fx_add_effect(gs, 5, 0, tx, ty, 0);

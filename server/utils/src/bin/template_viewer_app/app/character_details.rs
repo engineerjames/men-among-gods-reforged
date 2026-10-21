@@ -442,7 +442,10 @@ mod tests {
         let mut after = before;
         after.attrib[0][0] = 21;
         refresh_points_tot(&before, &mut after);
-        assert_eq!(after.points_tot, server::points::calculate_points_tot(&after));
+        assert_eq!(
+            after.points_tot,
+            server::points::calculate_points_tot(&after)
+        );
     }
 
     #[test]

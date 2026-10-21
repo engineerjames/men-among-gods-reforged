@@ -758,7 +758,7 @@ impl GameState {
             let is_contagion = dot_temp == skills::SK_CONTAGION as u16;
             let (duration, spell_name, spread_message) = if is_contagion {
                 (
-                    core::constants::TICKS * 60 * 8,
+                    core::constants::TICKS * 30,
                     &b"Contagion"[..],
                     "The contagion spreads to you!\n",
                 )
@@ -811,7 +811,7 @@ impl GameState {
     }
 
     /// On-death helper for Ice Stun. If the dying character carries an active
-    /// Ice Stun marker, it has a 25% chance to damage enemies in the adjacent
+    /// Ice Stun marker, it has a 75% chance to damage enemies in the adjacent
     /// 3x3 area. The marker stores the original caster in `data[0]` so attack
     /// legality and kill credit remain tied to the source of the stun.
     ///

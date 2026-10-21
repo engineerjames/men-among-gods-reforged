@@ -153,7 +153,7 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: PARASITE,
             name: "Parasite",
-            description: "Infest the enemy with parasites, dealing damage over time.",
+            description: "Infest the enemy and any foes beside you with parasites that deal damage over time, heal you for part of it, and spread when a host dies.",
             cost: 1,
             prereqs: &[],
             effect: TalentEffect::GrantSkill {

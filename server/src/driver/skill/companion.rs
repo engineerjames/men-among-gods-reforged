@@ -658,7 +658,9 @@ pub fn skill_spectral_pact(gs: &mut GameState, cn: usize) {
         return;
     }
     let power = i32::from(gs.characters[cn].skill[SK_SPECTRAL_PACT][5]);
-    let redirect_pct = ((10 + (power * 40) / 100) * 3).clamp(30, 150);
+    // 30% at low skill rising to a 75% cap at modified skill 100, so the
+    // caster always keeps a share of every hit.
+    let redirect_pct = (30 + (power * 45) / 100).clamp(30, 75);
     let duration = TICKS * 180;
 
     let in_opt = God::create_item(gs, 1);
@@ -915,13 +917,27 @@ mod tests {
             skill_spectral_pact(gs, cn);
 
             let in_ = active_spell_item(gs, cn, SK_SPECTRAL_PACT2).expect("pact");
-            assert_eq!(gs.items[in_].power, 90);
+            assert_eq!(gs.items[in_].power, 52);
             assert_eq!(gs.items[in_].active, (TICKS * 180) as u32);
             assert_eq!(gs.characters[cn].a_mana, 30_000);
 
             skill_spectral_pact(gs, cn);
             assert_eq!(gs.characters[cn].a_mana, 30_000);
             assert_eq!(active_spell_item(gs, cn, SK_SPECTRAL_PACT2), Some(in_));
+        });
+    }
+
+    #[test]
+    fn spectral_pact_redirect_is_capped_below_full_damage() {
+        with_test_gs(|gs| {
+            let cn = owner(gs);
+            gs.characters[cn].skill[SK_SPECTRAL_PACT][5] = 250;
+            gs.characters[cn].a_mana = 50_000;
+
+            skill_spectral_pact(gs, cn);
+
+            let in_ = active_spell_item(gs, cn, SK_SPECTRAL_PACT2).expect("pact");
+            assert_eq!(gs.items[in_].power, 75);
         });
     }
 
