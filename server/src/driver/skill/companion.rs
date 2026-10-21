@@ -462,6 +462,36 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
     EffectManager::fx_add_effect(gs, 7, 0, cn_x, cn_y, 0);
 }
 
+/// Counts the live Ghost Companions `owner_id` has across both companion slots.
+///
+/// # Arguments
+///
+/// * `gs` - Game state.
+/// * `owner_id` - Character id whose companions are counted.
+///
+/// # Returns
+///
+/// * Number of companion slots (0–2) pointing to a distinct live, owned companion.
+pub(crate) fn owned_live_companion_count(gs: &GameState, owner_id: usize) -> i32 {
+    let mut count = 0;
+    let mut seen = 0usize;
+    for slot in [CHD_COMPANION, CHD_COMPANION2] {
+        let cc = gs.characters[owner_id].data[slot] as usize;
+        if cc == 0 || cc == seen || !Character::is_sane_character(cc) {
+            continue;
+        }
+        if gs.characters[cc].data[63] == owner_id as i32
+            && gs.characters[cc].temp == CT_COMPANION as u16
+            && gs.characters[cc].used != USE_EMPTY
+            && (gs.characters[cc].flags & CharacterFlags::Body.bits()) == 0
+        {
+            count += 1;
+            seen = cc;
+        }
+    }
+    count
+}
+
 /// Returns whether `owner_id` still has a live Ghost Companion in either slot.
 ///
 /// # Arguments
@@ -473,20 +503,25 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
 ///
 /// * `true` if either companion slot points to a live, owned companion.
 fn owner_has_live_companion(gs: &GameState, owner_id: usize) -> bool {
-    for slot in [CHD_COMPANION, CHD_COMPANION2] {
-        let cc = gs.characters[owner_id].data[slot] as usize;
-        if cc == 0 || !Character::is_sane_character(cc) {
-            continue;
-        }
-        if gs.characters[cc].data[63] == owner_id as i32
-            && gs.characters[cc].temp == CT_COMPANION as u16
-            && gs.characters[cc].used != USE_EMPTY
-            && (gs.characters[cc].flags & CharacterFlags::Body.bits()) == 0
-        {
-            return true;
-        }
-    }
-    false
+    owned_live_companion_count(gs, owner_id) > 0
+}
+
+/// Revenant Conduit's Ghost Companion boost, in percent, for a modified
+/// conduit skill of `power`.
+///
+/// Rises linearly from +30% at skill 0 to the +150% ceiling at skill 100, so
+/// every point of skill up to the raise cap still matters. The owner heal is
+/// derived from this value in `apply_revenant_conduit_heal` (one third of it).
+///
+/// # Arguments
+///
+/// * `power` - Caster's modified Revenant Conduit skill (`skill[n][5]`).
+///
+/// # Returns
+///
+/// * Boost percentage in `30..=150`.
+pub(crate) fn revenant_conduit_boost_pct(power: i32) -> i32 {
+    (30 + (power * 6) / 5).clamp(30, 150)
 }
 
 /// Clears Ghost-Companion-dependent Harakim buffs (Revenant Conduit,
@@ -529,7 +564,8 @@ pub(crate) fn clear_companion_dependent_buffs_if_none_left(gs: &mut GameState, o
 
 /// Active self-buff: Revenant Conduit. Spends mana up front and attaches a
 /// spell item that boosts the caster's effective Ghost Companion skill while
-/// draining endurance over time (the drain is processed in `state/stats.rs`).
+/// draining 1 endurance per second per live companion (the drain is processed
+/// in `state/stats.rs`).
 ///
 /// The boost applies both to companions summoned while the conduit is open
 /// (checked in `skill_ghost`) and to any companions the caster already has
@@ -559,8 +595,7 @@ pub fn skill_revenant_conduit(gs: &mut GameState, cn: usize) {
     }
 
     let power = i32::from(gs.characters[cn].skill[SK_REVENANT_CONDUIT][5]);
-    // +X% effective SK_GHOST per power tier, capped at +150%.
-    let boost_pct = (((power / 10) * 10) * 3).clamp(30, 150);
+    let boost_pct = revenant_conduit_boost_pct(power);
     let duration = TICKS * 360;
 
     let in_opt = God::create_item(gs, 1);
@@ -856,13 +891,13 @@ mod tests {
             skill_revenant_conduit(gs, cn);
 
             let in_ = active_spell_item(gs, cn, SK_REVENANT_CONDUIT2).expect("conduit");
-            assert_eq!(gs.items[in_].power, 60);
+            assert_eq!(gs.items[in_].power, 54);
             assert_eq!(gs.items[in_].active, (TICKS * 360) as u32);
             assert_eq!(gs.characters[cn].a_mana, 33_000);
             // Endurance is only checked here; the drain happens over time.
             assert_eq!(gs.characters[cn].a_end, 30_000);
-            // 110 * 160% = 176 -> base 64 -> attributes 192.
-            assert_eq!(gs.characters[cc].attrib[0][0], 192);
+            // 110 * 154% = 169 -> base 61 -> attributes 183.
+            assert_eq!(gs.characters[cc].attrib[0][0], 183);
 
             skill_revenant_conduit(gs, cn);
 
@@ -879,7 +914,7 @@ mod tests {
             gs.characters[cn].a_end = 30_000;
             gs.characters[cn].a_mana = 100_000;
 
-            gs.characters[cn].skill[SK_REVENANT_CONDUIT][5] = 5;
+            gs.characters[cn].skill[SK_REVENANT_CONDUIT][5] = 0;
             skill_revenant_conduit(gs, cn);
             let in_ = active_spell_item(gs, cn, SK_REVENANT_CONDUIT2).expect("conduit");
             assert_eq!(gs.items[in_].power, 30);
@@ -889,6 +924,42 @@ mod tests {
             skill_revenant_conduit(gs, cn);
             let in_ = active_spell_item(gs, cn, SK_REVENANT_CONDUIT2).expect("conduit");
             assert_eq!(gs.items[in_].power, 150);
+        });
+    }
+
+    #[test]
+    fn revenant_conduit_boost_scales_linearly_to_skill_100() {
+        assert_eq!(revenant_conduit_boost_pct(0), 30);
+        assert_eq!(revenant_conduit_boost_pct(5), 36);
+        assert_eq!(revenant_conduit_boost_pct(50), 90);
+        assert_eq!(revenant_conduit_boost_pct(99), 148);
+        assert_eq!(revenant_conduit_boost_pct(100), 150);
+        assert_eq!(revenant_conduit_boost_pct(105), 150);
+    }
+
+    #[test]
+    fn owned_live_companion_count_counts_both_slots_once() {
+        with_test_gs(|gs| {
+            let cn = owner(gs);
+            assert_eq!(owned_live_companion_count(gs, cn), 0);
+
+            let cc = add_companion(gs, cn);
+            assert_eq!(owned_live_companion_count(gs, cn), 1);
+
+            // The same companion referenced from both slots counts once.
+            gs.characters[cn].data[CHD_COMPANION2] = cc as i32;
+            assert_eq!(owned_live_companion_count(gs, cn), 1);
+
+            let cc2 = 3;
+            gs.characters[cc2] = core::types::Character::default();
+            gs.characters[cc2].used = USE_ACTIVE;
+            gs.characters[cc2].temp = CT_COMPANION as u16;
+            gs.characters[cc2].data[63] = cn as i32;
+            gs.characters[cn].data[CHD_COMPANION2] = cc2 as i32;
+            assert_eq!(owned_live_companion_count(gs, cn), 2);
+
+            gs.characters[cc2].flags |= CharacterFlags::Body.bits();
+            assert_eq!(owned_live_companion_count(gs, cn), 1);
         });
     }
 

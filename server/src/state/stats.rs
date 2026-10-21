@@ -23,8 +23,8 @@ impl GameState {
     /// Heals a ghost companion's owner from damage dealt while Revenant Conduit is active.
     ///
     /// The conduit marker stores the ghost-skill boost percentage. Its healing
-    /// percentage is one third of that value, scaling from 10% to 50% across
-    /// the existing +30% to +150% conduit tiers.
+    /// percentage is one third of that value, scaling from 10% to 50% as the
+    /// boost rises from +30% to +150% over conduit skill 0–100.
     ///
     /// # Arguments
     ///
@@ -1003,15 +1003,18 @@ impl GameState {
                 }
 
                 // Revenant Conduit endurance drain. Ticks once per second
-                // while the spell is active; if the caster runs out of
-                // endurance the marker expires early.
+                // while the spell is active, costing 1 endurance per live
+                // companion (at least 1) so a second companion is not free
+                // lifesteal; if the caster runs out of endurance the marker
+                // expires early.
                 if item_temp == skills::SK_REVENANT_CONDUIT2 as u16 {
                     let item = &self.items[spell_item as usize];
                     let duration = item.duration as i32;
                     let active_i = active as i32;
                     let elapsed = duration - active_i;
                     if elapsed > 0 && elapsed % core::constants::TICKS == 0 {
-                        let drain = 1000;
+                        let companions = driver::skill::owned_live_companion_count(self, cn);
+                        let drain = 1000 * companions.max(1);
                         self.characters[cn].a_end -= drain;
                         if self.characters[cn].a_end <= 0 {
                             self.characters[cn].a_end = 0;
@@ -2103,6 +2106,46 @@ mod tests {
             assert_eq!(gs.characters[owner].spell[0], 0);
             assert_eq!(gs.items[10].used, core::constants::USE_EMPTY);
         });
+    }
+
+    /// Runs one conduit drain tick for an owner with `companions` live ghost
+    /// companions and returns the owner's endurance afterwards.
+    fn endurance_after_conduit_tick(companions: usize) -> i32 {
+        with_test_gs(move |gs| {
+            let (owner, _nr) = add_test_player(gs);
+            add_revenant_conduit_marker(gs, owner, 30);
+            gs.items[10].duration = (core::constants::TICKS * 2) as u32;
+            gs.items[10].active = (core::constants::TICKS + 1) as u32;
+            gs.characters[owner].end[5] = 100;
+            gs.characters[owner].a_end = 50_000;
+
+            let slots = [
+                core::constants::CHD_COMPANION,
+                core::constants::CHD_COMPANION2,
+            ];
+            for (n, slot) in slots.into_iter().take(companions).enumerate() {
+                let cc = owner + 1 + n;
+                gs.characters[cc] = core::types::Character::default();
+                gs.characters[cc].used = USE_ACTIVE;
+                gs.characters[cc].temp = core::constants::CT_COMPANION as u16;
+                gs.characters[cc].data[63] = owner as i32;
+                gs.characters[owner].data[slot] = cc as i32;
+            }
+
+            gs.do_regenerate(owner);
+            gs.characters[owner].a_end
+        })
+    }
+
+    #[test]
+    fn revenant_conduit_drain_scales_with_companion_count() {
+        let none = endurance_after_conduit_tick(0);
+        let one = endurance_after_conduit_tick(1);
+        let two = endurance_after_conduit_tick(2);
+
+        // With no companion the conduit still drains 1 endurance per second.
+        assert_eq!(none, one);
+        assert_eq!(one - two, 1000);
     }
 
     fn set_legacy_weapon_bonuses(skill: &mut [[i16; 3]; skills::MAX_SKILLS], modifier_idx: usize) {
