@@ -29,6 +29,9 @@ const HARAKIM_ELEMENT_EARTH: u32 = 3;
 const ELEMENT_SWITCH_DAMAGE_PERCENT: i32 = 20;
 /// Duration, in ticks, that Element Switching remembers the last cast element.
 const ELEMENT_SWITCH_MEMORY_TICKS: i32 = TICKS * 60;
+/// Duration, in ticks, of Lava Blast's burn. Matches the 6 s Blast exhaust so
+/// back-to-back casts do not stack overlapping burn time.
+const LAVA_BURN_TICKS: i32 = TICKS * 6;
 
 /// Returns whether an elemental cast can use the Harakim Element Switching modifier.
 ///
@@ -181,7 +184,7 @@ fn apply_lava_blast_dot(gs: &mut GameState, caster: usize, co: usize, power: i32
         item.name = name_bytes;
         item.flags |= ItemFlags::IF_SPELL.bits();
         item.sprite[1] = 89;
-        item.duration = (TICKS * 15) as u32;
+        item.duration = LAVA_BURN_TICKS as u32;
         item.active = item.duration;
         item.temp = SK_LAVA_BLAST as u16;
         item.power = power.max(1) as u32;
@@ -220,19 +223,8 @@ pub fn skill_lava_blast(gs: &mut GameState, cn: usize) {
     }
 
     // Direct hit matches Blast (`compute_blast_damage`); the burn is the extra.
+    // Like Blast, there is no resist roll: the cast always lands.
     let mut dam = power * 2;
-
-    if chance_base(
-        gs,
-        cn,
-        i32::from(gs.characters[cn].skill[SK_LAVA_BLAST][5]),
-        12,
-        effective_resist(gs, cn, i32::from(gs.characters[co].skill[SK_RESIST][5])),
-    ) != 0
-    {
-        return;
-    }
-
     dam = apply_harakim_element_damage_bonus(gs, cn, HARAKIM_ELEMENT_LAVA, dam);
 
     let tmp = gs.do_hurt(cn, co, dam, 1);
@@ -1093,7 +1085,7 @@ mod tests {
     }
 
     #[test]
-    fn lava_blast_dot_records_caster_and_burns_for_15_seconds() {
+    fn lava_blast_dot_records_caster_and_burns_for_6_seconds() {
         with_test_gs(|gs| {
             let (cn, co) = caster_and_target(gs);
 
@@ -1102,7 +1094,7 @@ mod tests {
             let item = active_spell_item(gs, co, SK_LAVA_BLAST).expect("lava burn attached");
             assert_eq!(gs.items[item].data[0] as usize, cn);
             assert_eq!(gs.items[item].power, 1);
-            assert_eq!(gs.items[item].active, (TICKS * 15) as u32);
+            assert_eq!(gs.items[item].active, (TICKS * 6) as u32);
         });
     }
 

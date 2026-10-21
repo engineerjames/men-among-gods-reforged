@@ -155,8 +155,8 @@ pub(crate) fn compute_blast_damage(gs: &mut GameState, cn: usize, co: usize) -> 
     (power, dam)
 }
 
-/// Rolls the resist/sense chance and applies Blast damage (with AoE splash)
-/// to `co` for a precomputed `power`/`dam` pair.
+/// Applies Blast damage (with AoE splash) to `co` for a precomputed
+/// `power`/`dam` pair. There is no resist roll; the cast always lands.
 ///
 /// Shared by the direct Blast cast (`skill_blast`, after its mana/cooldown
 /// gate) and the Seyan'Du Free Blast rune proc (no gate). Does not check
@@ -164,7 +164,7 @@ pub(crate) fn compute_blast_damage(gs: &mut GameState, cn: usize, co: usize) -> 
 ///
 /// # Arguments
 ///
-/// * `gs` - Active game state used for the resist roll, damage, and effects.
+/// * `gs` - Active game state used for damage and effects.
 /// * `cn` - Caster character index.
 /// * `co` - Primary target character index.
 /// * `power` - Effective Blast power from [`compute_blast_damage`], used only for the cast log line.
