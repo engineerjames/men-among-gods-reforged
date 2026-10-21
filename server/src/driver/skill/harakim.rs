@@ -1,6 +1,6 @@
 use super::common::{
-    add_exhaust, add_spell, chance_base, effective_resist, is_exhausted, spell_immunity,
-    spell_race_mod, spellcost,
+    add_exhaust, add_spell, chance_base, effective_resist, is_exhausted, skill_knee_300,
+    spell_immunity, spell_race_mod, spellcost,
 };
 use super::stun::spell_stun;
 use super::{hostile_cast_preflight, resolve_offensive_target};
@@ -838,6 +838,21 @@ pub fn skill_anguish_earth(gs: &mut GameState, cn: usize) {
     add_exhaust(gs, cn, TICKS * 4);
 }
 
+/// Armor and weapon value removed by Anguish (Ice) for a modified skill of
+/// `power`: 30 at modified skill 300, half slope beyond, with a floor of 2 and a
+/// hard limit of 45 (the item modifiers are `i8`).
+///
+/// # Arguments
+///
+/// * `power` - Caster's modified Anguish (Ice) skill (`skill[n][5]`).
+///
+/// # Returns
+///
+/// * The (positive) drop in `2..=45`.
+pub(crate) fn anguish_ice_drop(power: i32) -> i8 {
+    skill_knee_300(power, 0, 30).clamp(2, 45) as i8
+}
+
 /// Active hostile cast: Anguish (Ice). Attaches a debuff that shreds the
 /// target's armor and weapon values for the duration.
 pub fn skill_anguish_ice(gs: &mut GameState, cn: usize) {
@@ -845,8 +860,9 @@ pub fn skill_anguish_ice(gs: &mut GameState, cn: usize) {
         return;
     };
     let power = i32::from(gs.characters[cn].skill[SK_ANGUISH_ICE][5]);
-    let armor_drop = -((power / 8).clamp(2, 30) as i8);
-    let weapon_drop = -((power / 8).clamp(2, 30) as i8);
+    let drop = anguish_ice_drop(power);
+    let armor_drop = -drop;
+    let weapon_drop = -drop;
     attach_anguish(
         gs,
         cn,
@@ -1114,11 +1130,21 @@ mod tests {
             }
 
             let item = active_spell_item(gs, co, SK_ANGUISH_ICE).expect("anguish attached");
-            assert_eq!(gs.items[item].armor[1], -10);
-            assert_eq!(gs.items[item].weapon[1], -10);
+            assert_eq!(gs.items[item].armor[1], -8);
+            assert_eq!(gs.items[item].weapon[1], -8);
             assert_eq!(gs.items[item].active, (TICKS * 20) as u32);
             assert_eq!(gs.items[item].data[0] as usize, cn);
         });
+    }
+
+    #[test]
+    fn anguish_ice_drop_scales_to_skill_300_then_half_slope() {
+        assert_eq!(anguish_ice_drop(0), 2);
+        assert_eq!(anguish_ice_drop(105), 10);
+        assert_eq!(anguish_ice_drop(300), 30);
+        assert_eq!(anguish_ice_drop(350), 32);
+        assert_eq!(anguish_ice_drop(600), 45);
+        assert_eq!(anguish_ice_drop(2000), 45);
     }
 
     #[test]

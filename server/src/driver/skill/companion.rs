@@ -1,6 +1,6 @@
 use super::common::{
     add_exhaust, add_spell, has_active_spell_temp, is_exhausted, remove_active_spell_temp,
-    spell_race_mod, spellcost,
+    skill_knee_300, spell_race_mod, spellcost,
 };
 use crate::chlog;
 use crate::effect::EffectManager;
@@ -509,9 +509,10 @@ fn owner_has_live_companion(gs: &GameState, owner_id: usize) -> bool {
 /// Revenant Conduit's Ghost Companion boost, in percent, for a modified
 /// conduit skill of `power`.
 ///
-/// Rises linearly from +30% at skill 0 to the +150% ceiling at skill 100, so
-/// every point of skill up to the raise cap still matters. The owner heal is
-/// derived from this value in `apply_revenant_conduit_heal` (one third of it).
+/// Rises linearly from +30% at skill 0 to +150% at modified skill 300, then
+/// keeps growing at half that slope (see [`skill_knee_300`]). The companion's
+/// stats are still capped by its template maximums. The owner heal is derived
+/// from this value in `apply_revenant_conduit_heal` (one third of it).
 ///
 /// # Arguments
 ///
@@ -519,9 +520,31 @@ fn owner_has_live_companion(gs: &GameState, owner_id: usize) -> bool {
 ///
 /// # Returns
 ///
-/// * Boost percentage in `30..=150`.
+/// * Boost percentage, at least 30.
 pub(crate) fn revenant_conduit_boost_pct(power: i32) -> i32 {
-    (30 + (power * 6) / 5).clamp(30, 150)
+    skill_knee_300(power, 30, 150)
+}
+
+/// Hard limit on Spectral Pact's redirect, so the caster always keeps a
+/// share of every hit however much skill they stack.
+const SPECTRAL_PACT_MAX_REDIRECT_PCT: i32 = 90;
+
+/// Spectral Pact's redirect, in percent of the caster's post-armor damage,
+/// for a modified pact skill of `power`.
+///
+/// Rises linearly from 30% at skill 0 to 75% at modified skill 300, then at
+/// half that slope (see [`skill_knee_300`]) up to
+/// [`SPECTRAL_PACT_MAX_REDIRECT_PCT`] at skill 500.
+///
+/// # Arguments
+///
+/// * `power` - Caster's modified Spectral Pact skill (`skill[n][5]`).
+///
+/// # Returns
+///
+/// * Redirect percentage in `30..=90`.
+pub(crate) fn spectral_pact_redirect_pct(power: i32) -> i32 {
+    skill_knee_300(power, 30, 75).min(SPECTRAL_PACT_MAX_REDIRECT_PCT)
 }
 
 /// Clears Ghost-Companion-dependent Harakim buffs (Revenant Conduit,
@@ -693,9 +716,7 @@ pub fn skill_spectral_pact(gs: &mut GameState, cn: usize) {
         return;
     }
     let power = i32::from(gs.characters[cn].skill[SK_SPECTRAL_PACT][5]);
-    // 30% at low skill rising to a 75% cap at modified skill 150, so the
-    // caster always keeps a share of every hit.
-    let redirect_pct = (30 + (power * 45) / 150).clamp(30, 75);
+    let redirect_pct = spectral_pact_redirect_pct(power);
     let duration = TICKS * 180;
 
     let in_opt = God::create_item(gs, 1);
@@ -884,20 +905,20 @@ mod tests {
             let cn = owner(gs);
             let cc = add_companion(gs, cn);
             gs.characters[cn].skill[SK_GHOST][5] = 110;
-            gs.characters[cn].skill[SK_REVENANT_CONDUIT][5] = 20;
+            gs.characters[cn].skill[SK_REVENANT_CONDUIT][5] = 150;
             gs.characters[cn].a_end = 30_000;
             gs.characters[cn].a_mana = 50_000;
 
             skill_revenant_conduit(gs, cn);
 
             let in_ = active_spell_item(gs, cn, SK_REVENANT_CONDUIT2).expect("conduit");
-            assert_eq!(gs.items[in_].power, 54);
+            assert_eq!(gs.items[in_].power, 90);
             assert_eq!(gs.items[in_].active, (TICKS * 360) as u32);
             assert_eq!(gs.characters[cn].a_mana, 33_000);
             // Endurance is only checked here; the drain happens over time.
             assert_eq!(gs.characters[cn].a_end, 30_000);
-            // 110 * 154% = 169 -> base 61 -> attributes 183.
-            assert_eq!(gs.characters[cc].attrib[0][0], 183);
+            // 110 * 190% = 209 -> base 76 -> attributes 228.
+            assert_eq!(gs.characters[cc].attrib[0][0], 228);
 
             skill_revenant_conduit(gs, cn);
 
@@ -908,7 +929,7 @@ mod tests {
     }
 
     #[test]
-    fn revenant_conduit_boost_is_clamped() {
+    fn revenant_conduit_boost_has_floor_and_knee() {
         with_test_gs(|gs| {
             let cn = owner(gs);
             gs.characters[cn].a_end = 30_000;
@@ -920,7 +941,7 @@ mod tests {
             assert_eq!(gs.items[in_].power, 30);
             skill_revenant_conduit(gs, cn);
 
-            gs.characters[cn].skill[SK_REVENANT_CONDUIT][5] = 200;
+            gs.characters[cn].skill[SK_REVENANT_CONDUIT][5] = 300;
             skill_revenant_conduit(gs, cn);
             let in_ = active_spell_item(gs, cn, SK_REVENANT_CONDUIT2).expect("conduit");
             assert_eq!(gs.items[in_].power, 150);
@@ -928,13 +949,13 @@ mod tests {
     }
 
     #[test]
-    fn revenant_conduit_boost_scales_linearly_to_skill_100() {
+    fn revenant_conduit_boost_scales_to_skill_300_then_half_slope() {
         assert_eq!(revenant_conduit_boost_pct(0), 30);
-        assert_eq!(revenant_conduit_boost_pct(5), 36);
-        assert_eq!(revenant_conduit_boost_pct(50), 90);
-        assert_eq!(revenant_conduit_boost_pct(99), 148);
-        assert_eq!(revenant_conduit_boost_pct(100), 150);
-        assert_eq!(revenant_conduit_boost_pct(105), 150);
+        assert_eq!(revenant_conduit_boost_pct(105), 72);
+        assert_eq!(revenant_conduit_boost_pct(150), 90);
+        assert_eq!(revenant_conduit_boost_pct(300), 150);
+        assert_eq!(revenant_conduit_boost_pct(350), 160);
+        assert_eq!(revenant_conduit_boost_pct(450), 180);
     }
 
     #[test]
@@ -988,7 +1009,7 @@ mod tests {
             skill_spectral_pact(gs, cn);
 
             let in_ = active_spell_item(gs, cn, SK_SPECTRAL_PACT2).expect("pact");
-            assert_eq!(gs.items[in_].power, 45);
+            assert_eq!(gs.items[in_].power, 37);
             assert_eq!(gs.items[in_].active, (TICKS * 180) as u32);
             assert_eq!(gs.characters[cn].a_mana, 30_000);
 
@@ -1004,7 +1025,7 @@ mod tests {
             let cn = owner(gs);
             gs.characters[cn].a_mana = 100_000;
 
-            for (skill, expected) in [(100, 60), (149, 74), (150, 75), (250, 75)] {
+            for (skill, expected) in [(150, 52), (300, 75), (350, 78), (500, 90), (800, 90)] {
                 gs.characters[cn].skill[SK_SPECTRAL_PACT][5] = skill;
                 skill_spectral_pact(gs, cn);
 

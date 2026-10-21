@@ -1,6 +1,6 @@
 use super::common::{
-    add_skill_cooldown, add_spell, effective_resist, skill_on_cooldown, spell_immunity,
-    spell_race_mod, spellcost,
+    add_skill_cooldown, add_spell, effective_resist, skill_knee_300, skill_on_cooldown,
+    spell_immunity, spell_race_mod, spellcost,
 };
 use super::curse::cast_curse_effect;
 use super::{hostile_cast_preflight, resolve_offensive_target};
@@ -364,7 +364,8 @@ pub fn skill_gunpowder_flash(gs: &mut GameState, cn: usize) {
 
 /// Percent multiplier applied to weapon-based Mercenary/Seyan'Du strikes so
 /// they scale with the skill used: 50% at skill 0, 100% at modified skill
-/// 100, capped at 150% from modified skill 200.
+/// 150 and 150% at modified skill 300, then half slope beyond (see
+/// [`skill_knee_300`]).
 ///
 /// # Arguments
 ///
@@ -374,7 +375,7 @@ pub fn skill_gunpowder_flash(gs: &mut GameState, cn: usize) {
 ///
 /// * Damage multiplier in percent.
 fn weapon_skill_scale_pct(power: i32) -> i32 {
-    (50 + power / 2).clamp(50, 150)
+    skill_knee_300(power, 50, 150)
 }
 
 /// Active melee finisher: a devastating blow against a low-health adjacent
@@ -474,7 +475,8 @@ fn apply_disarm(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
         log::error!("god_create_item failed in apply_disarm");
         return false;
     };
-    let weapon_penalty = -(((power / 2) * 3).clamp(3, 150)) as i16;
+    // 150 at modified skill 300, half slope beyond; Weapon Skill floors at 1.
+    let weapon_penalty = -(skill_knee_300(power, 0, 150).max(3)) as i16;
 
     let item = &mut gs.items[in_idx];
     let mut name_bytes = [0u8; 40];
@@ -997,16 +999,18 @@ mod tests {
 
             assert!(apply_disarm(gs, cn, co, 40));
             let item = active_spell_item(gs, co, SK_DISARM).expect("disarm attached");
-            assert_eq!(gs.items[item].skill[SK_WEAPON][1], -60);
+            assert_eq!(gs.items[item].skill[SK_WEAPON][1], -20);
             assert_eq!(gs.items[item].active, (TICKS * 45) as u32);
 
-            // The penalty is clamped to 3..=150.
-            assert!(apply_disarm(gs, cn, co, 1));
-            let item = active_spell_item(gs, co, SK_DISARM).unwrap();
-            assert_eq!(gs.items[item].skill[SK_WEAPON][1], -3);
-            assert!(apply_disarm(gs, cn, co, 500));
-            let item = active_spell_item(gs, co, SK_DISARM).unwrap();
-            assert_eq!(gs.items[item].skill[SK_WEAPON][1], -150);
+            // Floor of 3, 150 at skill 300, half slope beyond.
+            for (power, expected) in [(1, -3), (300, -150), (500, -200)] {
+                assert!(apply_disarm(gs, cn, co, power));
+                let item = active_spell_item(gs, co, SK_DISARM).unwrap();
+                assert_eq!(
+                    gs.items[item].skill[SK_WEAPON][1], expected,
+                    "power {power}"
+                );
+            }
         });
     }
 
@@ -1063,11 +1067,11 @@ mod tests {
     }
 
     #[test]
-    fn weapon_skill_scale_ramps_from_half_to_one_and_a_half() {
+    fn weapon_skill_scale_reaches_one_and_a_half_at_skill_300() {
         assert_eq!(weapon_skill_scale_pct(0), 50);
-        assert_eq!(weapon_skill_scale_pct(100), 100);
-        assert_eq!(weapon_skill_scale_pct(200), 150);
-        assert_eq!(weapon_skill_scale_pct(400), 150);
+        assert_eq!(weapon_skill_scale_pct(150), 100);
+        assert_eq!(weapon_skill_scale_pct(300), 150);
+        assert_eq!(weapon_skill_scale_pct(450), 175);
     }
 
     #[test]
