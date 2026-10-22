@@ -322,9 +322,8 @@ pub(crate) fn gash_bonus_pct(power: i32) -> i32 {
     skill_knee_300(power, 0, 600).max(30)
 }
 
-/// Sun's Blessing's attribute, armor and weapon bonus for an unbuffed skill of
-/// `power`: +90 at skill 300, half slope beyond, limited to 120 because the
-/// armor and weapon modifiers are `i8`.
+/// Sun's Blessing's attribute bonus for an unbuffed skill of `power`: +90 at
+/// skill 300, half slope beyond, limited to 120.
 ///
 /// # Arguments
 ///
@@ -335,6 +334,19 @@ pub(crate) fn gash_bonus_pct(power: i32) -> i32 {
 /// * Bonus in `6..=120`.
 pub(crate) fn suns_blessing_bonus(power: i32) -> i16 {
     skill_knee_300(power, 6, 90).min(120) as i16
+}
+
+/// Sun's Blessing's armor and weapon value bonus: half the attribute bonus.
+///
+/// # Arguments
+///
+/// * `power` - Caster's unbuffed Sun's Blessing skill.
+///
+/// # Returns
+///
+/// * Bonus in `3..=60`.
+pub(crate) fn suns_blessing_gear_bonus(power: i32) -> i8 {
+    (suns_blessing_bonus(power) / 2) as i8
 }
 
 /// Inner Strength's Weapon Skill bonus for a modified skill of `power`: +150 at
@@ -411,9 +423,8 @@ pub fn skill_gash(gs: &mut GameState, cn: usize) {
     add_skill_cooldown(gs, cn, TICKS * 10, SK_GASH as u16, b"Gash Cooldown");
 }
 
-/// Active self-buff: Sun's Blessing. No resource cost. Long cooldown set
-/// slightly shorter than the buff duration so the player can recast as the
-/// effect is expiring without stacking.
+/// Active self-buff: Sun's Blessing. No resource cost. The buff is shorter
+/// than the cooldown, so it cannot be kept up permanently.
 ///
 /// # Arguments
 ///
@@ -425,7 +436,8 @@ pub fn skill_suns_blessing(gs: &mut GameState, cn: usize) {
     }
     let power = unbuffed_skill_power(gs, cn, SK_SUNS_BLESSING);
     let bonus = suns_blessing_bonus(power);
-    let buff_duration = TICKS * 180;
+    let gear_bonus = suns_blessing_gear_bonus(power);
+    let buff_duration = TICKS * 45;
     let cooldown_len = TICKS * 55;
 
     let in_opt = God::create_item(gs, 1);
@@ -450,8 +462,8 @@ pub fn skill_suns_blessing(gs: &mut GameState, cn: usize) {
     for n in 0..5 {
         item.attrib[n][1] = bonus;
     }
-    item.armor[1] = bonus as i8;
-    item.weapon[1] = bonus as i8;
+    item.armor[1] = gear_bonus;
+    item.weapon[1] = gear_bonus;
 
     if add_spell(gs, cn, in_idx) == 0 {
         gs.do_character_log(
@@ -877,9 +889,9 @@ mod tests {
 
             let buff = active_spell_item(gs, cn, SK_SUNS_BLESSING2).expect("buff");
             assert!(gs.items[buff].attrib.iter().all(|a| a[1] == 17));
-            assert_eq!(gs.items[buff].armor[1], 17);
-            assert_eq!(gs.items[buff].weapon[1], 17);
-            assert_eq!(gs.items[buff].active, (TICKS * 180) as u32);
+            assert_eq!(gs.items[buff].armor[1], 8);
+            assert_eq!(gs.items[buff].weapon[1], 8);
+            assert_eq!(gs.items[buff].active, (TICKS * 45) as u32);
 
             let cooldown = active_spell_item(gs, cn, SK_SUNS_BLESSING).expect("cooldown");
             assert_eq!(gs.items[cooldown].active, (TICKS * 55) as u32);
@@ -898,7 +910,9 @@ mod tests {
             skill_suns_blessing(gs, cn);
 
             let buff = active_spell_item(gs, cn, SK_SUNS_BLESSING2).expect("buff");
-            assert_eq!(gs.items[buff].armor[1], 120);
+            assert!(gs.items[buff].attrib.iter().all(|a| a[1] == 120));
+            assert_eq!(gs.items[buff].armor[1], 60);
+            assert_eq!(gs.items[buff].weapon[1], 60);
         });
     }
 
@@ -913,6 +927,9 @@ mod tests {
         assert_eq!(suns_blessing_bonus(300), 90);
         assert_eq!(suns_blessing_bonus(450), 111);
         assert_eq!(suns_blessing_bonus(2000), 120);
+        assert_eq!(suns_blessing_gear_bonus(0), 3);
+        assert_eq!(suns_blessing_gear_bonus(300), 45);
+        assert_eq!(suns_blessing_gear_bonus(2000), 60);
 
         assert_eq!(inner_strength_bonus(0), 6);
         assert_eq!(inner_strength_bonus(300), 150);

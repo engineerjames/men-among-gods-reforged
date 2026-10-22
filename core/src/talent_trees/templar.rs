@@ -148,7 +148,7 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: DIVINE_BLESSING,
             name: "Sun's Blessing",
-            description: "Learn Sun's Blessing, a long self-buff that raises every attribute plus your armor and weapon value.",
+            description: "Learn Sun's Blessing, a self-buff that raises every attribute plus your armor and weapon value.",
             cost: 1,
             prereqs: &[FIRST_SERGEANT_MEDITATE],
             effect: TalentEffect::GrantSkill {

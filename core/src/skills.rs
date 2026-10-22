@@ -66,8 +66,8 @@ pub const SK_BLADE_DANCE: usize = 42;
 pub const SK_RAINS_OF_RENEWAL: usize = 43;
 /// Gash: reckless melee swing that costs 5% current HP and deals amplified weapon damage.
 pub const SK_GASH: usize = 44;
-/// Sun's Blessing: self buff that raises every stat plus armor and weapon value;
-/// long cooldown that re-arms as the buff is expiring.
+/// Sun's Blessing: self buff that raises every stat, plus armor and weapon value
+/// by half as much; the buff is shorter than its cooldown.
 pub const SK_SUNS_BLESSING: usize = 45;
 /// Sun's Blessing companion temp identifier for the attached buff item
 /// (mirrors the [`SK_WARCRY`] / [`SK_WARCRY2`] pattern).
