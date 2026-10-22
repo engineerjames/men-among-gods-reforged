@@ -356,18 +356,20 @@ def base_speed(agil, stren, speed_mod=0, mode="normal"):
     return _scalar(idiv(np.asarray(agil) + np.asarray(stren), 50) + speed_mod + MODE_OFFSET[mode])
 
 
-def action_speed_row(base, attack_pct=0, flash_haste=False, flash_slow=0):
-    """`future3[2]`: the SPEEDTAB row that gates attacks and other actions."""
+def action_speed_row(base, attack_pct=0, flash_haste=0, flash_slow=0):
+    """`future3[2]`: the SPEEDTAB row that gates attacks and other actions.
+
+    ``flash_haste`` / ``flash_slow`` are Gunpowder Flash action-speed points."""
     base = np.asarray(base)
     calc = base + _round_half_away(base * attack_pct / 100).astype(np.int64)
-    calc = calc + (3 if flash_haste else 0) - np.asarray(flash_slow)
+    calc = calc + np.asarray(flash_haste) - np.asarray(flash_slow)
     return _scalar(np.clip(20 - calc, 0, 19))
 
 
-def movement_speed_row(base, move_pct=0, flash_haste=False):
-    """`speed`: the SPEEDTAB row that gates walking."""
+def movement_speed_row(base, move_pct=0, flash_haste=0):
+    """`speed`: the SPEEDTAB row that gates walking (``flash_haste`` in movement points)."""
     base = np.asarray(base)
-    calc = base + _round_half_away(base * move_pct / 100).astype(np.int64) + int(flash_haste)
+    calc = base + _round_half_away(base * move_pct / 100).astype(np.int64) + np.asarray(flash_haste)
     return _scalar(np.clip(20 - calc, 0, 19))
 
 

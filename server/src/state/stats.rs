@@ -242,7 +242,7 @@ impl GameState {
 
         // Calculate bonuses from active spells
         let mut flash_slow = 0i32;
-        let mut flash_haste = false;
+        let mut flash_haste = (0i32, 0i32);
         if !char_has_nomagic {
             for n in 0..20 {
                 let spell_idx = self.characters[cn].spell[n];
@@ -279,7 +279,8 @@ impl GameState {
                     flash_slow += driver::gunpowder_flash_slow_points(spell.power);
                 }
                 if spell.temp == skills::SK_GUNPOWDER_FLASH2 as u16 {
-                    flash_haste = true;
+                    let (action, movement) = driver::gunpowder_flash_haste_points(spell.power);
+                    flash_haste = (flash_haste.0.max(action), flash_haste.1.max(movement));
                 }
                 if spell.hp[0] < 0 {
                     self.characters[cn].flags |= CharacterFlags::NoHpReg.bits();
@@ -474,11 +475,11 @@ impl GameState {
         let movement_speed_calc = base_speed_calc
             + (base_speed_calc as f32 * (talent_bonuses.movement_speed_percent as f32 / 100.0))
                 .round() as i32
-            + i32::from(flash_haste);
+            + flash_haste.1;
         let action_speed_calc = base_speed_calc
             + (base_speed_calc as f32 * (talent_bonuses.attack_speed_percent as f32 / 100.0))
                 .round() as i32
-            + if flash_haste { 3 } else { 0 }
+            + flash_haste.0
             - flash_slow;
 
         self.characters[cn].speed = 20 - movement_speed_calc as i16;
@@ -2671,6 +2672,23 @@ mod tests {
 
             assert!(gs.characters[cn].speed < baseline_speed);
             assert!(gs.characters[cn].future3[2] < baseline_action_speed);
+        });
+    }
+
+    #[test]
+    fn gunpowder_flash_buff_grows_with_power() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            attach_test_spell(gs, cn, 5, skills::SK_GUNPOWDER_FLASH2, 1);
+            gs.really_update_char(cn);
+            let low_speed = gs.characters[cn].speed;
+            let low_action_speed = gs.characters[cn].future3[2];
+
+            gs.items[5].power = 300;
+            gs.really_update_char(cn);
+
+            assert!(gs.characters[cn].speed < low_speed);
+            assert!(gs.characters[cn].future3[2] < low_action_speed);
         });
     }
 }

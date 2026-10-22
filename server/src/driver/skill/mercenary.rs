@@ -185,6 +185,9 @@ pub fn skill_parasite(gs: &mut GameState, cn: usize) {
 
 /// Action-speed points a Gunpowder Flash victim loses at the given spell power.
 ///
+/// The slow is the low-level half of the spell: a flat 6 points from the
+/// start, growing only to 8 at modified skill 300 and half slope beyond.
+///
 /// # Arguments
 ///
 /// * `power` - The debuff item's `power`.
@@ -193,7 +196,26 @@ pub fn skill_parasite(gs: &mut GameState, cn: usize) {
 ///
 /// * Points subtracted from the victim's action-speed calc, between 6 and 20.
 pub(crate) fn gunpowder_flash_slow_points(power: u32) -> i32 {
-    (3 + power as i32 / 40).clamp(6, 20)
+    skill_knee_300(power.min(i32::MAX as u32) as i32, 6, 8).clamp(6, 20)
+}
+
+/// Speed points the Gunpowder Flash caster buff grants at the given power.
+///
+/// The haste is the high-level half of the spell: +3 action / +1 movement at
+/// the start, +6 / +3 at modified skill 300, half slope beyond. +6 is what a
+/// base-14 (normal mode, low AGI+STR) caster needs to reach `SPEEDTAB` row 0;
+/// casters with a higher base speed waste the excess.
+///
+/// # Arguments
+///
+/// * `power` - The buff item's `power` (caster's raw skill).
+///
+/// # Returns
+///
+/// * `(action, movement)` points added to the caster's speed calcs.
+pub(crate) fn gunpowder_flash_haste_points(power: u32) -> (i32, i32) {
+    let power = power.min(i32::MAX as u32) as i32;
+    (skill_knee_300(power, 3, 6), skill_knee_300(power, 1, 3))
 }
 
 /// Attaches the Gunpowder Flash slow to a single target.
@@ -897,8 +919,21 @@ mod tests {
     #[test]
     fn gunpowder_flash_slow_points_are_clamped() {
         assert_eq!(gunpowder_flash_slow_points(0), 6);
-        assert_eq!(gunpowder_flash_slow_points(400), 13);
-        assert_eq!(gunpowder_flash_slow_points(10_000), 20);
+        assert_eq!(gunpowder_flash_slow_points(149), 6);
+        assert_eq!(gunpowder_flash_slow_points(150), 7);
+        assert_eq!(gunpowder_flash_slow_points(300), 8);
+        assert_eq!(gunpowder_flash_slow_points(600), 9);
+        assert_eq!(gunpowder_flash_slow_points(100_000), 20);
+        assert_eq!(gunpowder_flash_slow_points(u32::MAX), 20);
+    }
+
+    #[test]
+    fn gunpowder_flash_haste_points_scale_past_the_slow() {
+        assert_eq!(gunpowder_flash_haste_points(0), (3, 1));
+        assert_eq!(gunpowder_flash_haste_points(1), (3, 1));
+        assert_eq!(gunpowder_flash_haste_points(150), (4, 2));
+        assert_eq!(gunpowder_flash_haste_points(300), (6, 3));
+        assert_eq!(gunpowder_flash_haste_points(500), (7, 3));
     }
 
     #[test]
