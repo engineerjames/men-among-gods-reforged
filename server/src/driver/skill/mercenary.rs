@@ -1,6 +1,6 @@
 use super::common::{
-    add_skill_cooldown, add_spell, effective_resist, skill_on_cooldown, spell_immunity,
-    spell_race_mod, spellcost,
+    add_skill_cooldown, add_spell, effective_resist, skill_knee_300, skill_on_cooldown,
+    spell_immunity, spell_race_mod, spellcost,
 };
 use super::curse::cast_curse_effect;
 use super::{hostile_cast_preflight, resolve_offensive_target};
@@ -185,6 +185,9 @@ pub fn skill_parasite(gs: &mut GameState, cn: usize) {
 
 /// Action-speed points a Gunpowder Flash victim loses at the given spell power.
 ///
+/// The slow is the low-level half of the spell: a flat 6 points from the
+/// start, growing only to 8 at modified skill 300 and half slope beyond.
+///
 /// # Arguments
 ///
 /// * `power` - The debuff item's `power`.
@@ -193,7 +196,26 @@ pub fn skill_parasite(gs: &mut GameState, cn: usize) {
 ///
 /// * Points subtracted from the victim's action-speed calc, between 6 and 20.
 pub(crate) fn gunpowder_flash_slow_points(power: u32) -> i32 {
-    (3 + power as i32 / 40).clamp(6, 20)
+    skill_knee_300(power.min(i32::MAX as u32) as i32, 6, 8).clamp(6, 20)
+}
+
+/// Speed points the Gunpowder Flash caster buff grants at the given power.
+///
+/// The haste is the high-level half of the spell: +3 action / +1 movement at
+/// the start, +6 / +3 at modified skill 300, half slope beyond. +6 is what a
+/// base-14 (normal mode, low AGI+STR) caster needs to reach `SPEEDTAB` row 0;
+/// casters with a higher base speed waste the excess.
+///
+/// # Arguments
+///
+/// * `power` - The buff item's `power` (caster's raw skill).
+///
+/// # Returns
+///
+/// * `(action, movement)` points added to the caster's speed calcs.
+pub(crate) fn gunpowder_flash_haste_points(power: u32) -> (i32, i32) {
+    let power = power.min(i32::MAX as u32) as i32;
+    (skill_knee_300(power, 3, 6), skill_knee_300(power, 1, 3))
 }
 
 /// Attaches the Gunpowder Flash slow to a single target.
@@ -364,7 +386,8 @@ pub fn skill_gunpowder_flash(gs: &mut GameState, cn: usize) {
 
 /// Percent multiplier applied to weapon-based Mercenary/Seyan'Du strikes so
 /// they scale with the skill used: 50% at skill 0, 100% at modified skill
-/// 100, capped at 150% from modified skill 200.
+/// 150 and 150% at modified skill 300, then half slope beyond (see
+/// [`skill_knee_300`]).
 ///
 /// # Arguments
 ///
@@ -374,7 +397,7 @@ pub fn skill_gunpowder_flash(gs: &mut GameState, cn: usize) {
 ///
 /// * Damage multiplier in percent.
 fn weapon_skill_scale_pct(power: i32) -> i32 {
-    (50 + power / 2).clamp(50, 150)
+    skill_knee_300(power, 50, 150)
 }
 
 /// Active melee finisher: a devastating blow against a low-health adjacent
@@ -474,7 +497,8 @@ fn apply_disarm(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
         log::error!("god_create_item failed in apply_disarm");
         return false;
     };
-    let weapon_penalty = -(((power / 2) * 3).clamp(3, 150)) as i16;
+    // 150 at modified skill 300, half slope beyond; Weapon Skill floors at 1.
+    let weapon_penalty = -(skill_knee_300(power, 0, 150).max(3)) as i16;
 
     let item = &mut gs.items[in_idx];
     let mut name_bytes = [0u8; 40];
@@ -895,8 +919,21 @@ mod tests {
     #[test]
     fn gunpowder_flash_slow_points_are_clamped() {
         assert_eq!(gunpowder_flash_slow_points(0), 6);
-        assert_eq!(gunpowder_flash_slow_points(400), 13);
-        assert_eq!(gunpowder_flash_slow_points(10_000), 20);
+        assert_eq!(gunpowder_flash_slow_points(149), 6);
+        assert_eq!(gunpowder_flash_slow_points(150), 7);
+        assert_eq!(gunpowder_flash_slow_points(300), 8);
+        assert_eq!(gunpowder_flash_slow_points(600), 9);
+        assert_eq!(gunpowder_flash_slow_points(100_000), 20);
+        assert_eq!(gunpowder_flash_slow_points(u32::MAX), 20);
+    }
+
+    #[test]
+    fn gunpowder_flash_haste_points_scale_past_the_slow() {
+        assert_eq!(gunpowder_flash_haste_points(0), (3, 1));
+        assert_eq!(gunpowder_flash_haste_points(1), (3, 1));
+        assert_eq!(gunpowder_flash_haste_points(150), (4, 2));
+        assert_eq!(gunpowder_flash_haste_points(300), (6, 3));
+        assert_eq!(gunpowder_flash_haste_points(500), (7, 3));
     }
 
     #[test]
@@ -997,16 +1034,18 @@ mod tests {
 
             assert!(apply_disarm(gs, cn, co, 40));
             let item = active_spell_item(gs, co, SK_DISARM).expect("disarm attached");
-            assert_eq!(gs.items[item].skill[SK_WEAPON][1], -60);
+            assert_eq!(gs.items[item].skill[SK_WEAPON][1], -20);
             assert_eq!(gs.items[item].active, (TICKS * 45) as u32);
 
-            // The penalty is clamped to 3..=150.
-            assert!(apply_disarm(gs, cn, co, 1));
-            let item = active_spell_item(gs, co, SK_DISARM).unwrap();
-            assert_eq!(gs.items[item].skill[SK_WEAPON][1], -3);
-            assert!(apply_disarm(gs, cn, co, 500));
-            let item = active_spell_item(gs, co, SK_DISARM).unwrap();
-            assert_eq!(gs.items[item].skill[SK_WEAPON][1], -150);
+            // Floor of 3, 150 at skill 300, half slope beyond.
+            for (power, expected) in [(1, -3), (300, -150), (500, -200)] {
+                assert!(apply_disarm(gs, cn, co, power));
+                let item = active_spell_item(gs, co, SK_DISARM).unwrap();
+                assert_eq!(
+                    gs.items[item].skill[SK_WEAPON][1], expected,
+                    "power {power}"
+                );
+            }
         });
     }
 
@@ -1063,11 +1102,11 @@ mod tests {
     }
 
     #[test]
-    fn weapon_skill_scale_ramps_from_half_to_one_and_a_half() {
+    fn weapon_skill_scale_reaches_one_and_a_half_at_skill_300() {
         assert_eq!(weapon_skill_scale_pct(0), 50);
-        assert_eq!(weapon_skill_scale_pct(100), 100);
-        assert_eq!(weapon_skill_scale_pct(200), 150);
-        assert_eq!(weapon_skill_scale_pct(400), 150);
+        assert_eq!(weapon_skill_scale_pct(150), 100);
+        assert_eq!(weapon_skill_scale_pct(300), 150);
+        assert_eq!(weapon_skill_scale_pct(450), 175);
     }
 
     #[test]

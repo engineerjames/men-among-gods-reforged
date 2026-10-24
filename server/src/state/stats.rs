@@ -19,12 +19,16 @@ use crate::{driver, helpers, points};
 /// Unrelated to `Global.cap`, which gates the player login queue.
 const MAX_ATTRIB_SKILL_VALUE: i32 = 500;
 
+/// High bit of `do_hurt`'s `type_hurt` marking a Spectral Pact share: the
+/// damage is already mitigated and scaled, and must not be redirected again.
+const PACT_REDIRECT_BIT: i32 = 0x4000_0000;
+
 impl GameState {
     /// Heals a ghost companion's owner from damage dealt while Revenant Conduit is active.
     ///
     /// The conduit marker stores the ghost-skill boost percentage. Its healing
-    /// percentage is one third of that value, scaling from 10% to 50% across
-    /// the existing +30% to +150% conduit tiers.
+    /// percentage is one third of that value, scaling from 10% to 50% as the
+    /// boost rises from +30% to +150% over conduit skill 0–100.
     ///
     /// # Arguments
     ///
@@ -238,7 +242,7 @@ impl GameState {
 
         // Calculate bonuses from active spells
         let mut flash_slow = 0i32;
-        let mut flash_haste = false;
+        let mut flash_haste = (0i32, 0i32);
         if !char_has_nomagic {
             for n in 0..20 {
                 let spell_idx = self.characters[cn].spell[n];
@@ -275,7 +279,8 @@ impl GameState {
                     flash_slow += driver::gunpowder_flash_slow_points(spell.power);
                 }
                 if spell.temp == skills::SK_GUNPOWDER_FLASH2 as u16 {
-                    flash_haste = true;
+                    let (action, movement) = driver::gunpowder_flash_haste_points(spell.power);
+                    flash_haste = (flash_haste.0.max(action), flash_haste.1.max(movement));
                 }
                 if spell.hp[0] < 0 {
                     self.characters[cn].flags |= CharacterFlags::NoHpReg.bits();
@@ -470,11 +475,11 @@ impl GameState {
         let movement_speed_calc = base_speed_calc
             + (base_speed_calc as f32 * (talent_bonuses.movement_speed_percent as f32 / 100.0))
                 .round() as i32
-            + i32::from(flash_haste);
+            + flash_haste.1;
         let action_speed_calc = base_speed_calc
             + (base_speed_calc as f32 * (talent_bonuses.attack_speed_percent as f32 / 100.0))
                 .round() as i32
-            + if flash_haste { 3 } else { 0 }
+            + flash_haste.0
             - flash_slow;
 
         self.characters[cn].speed = 20 - movement_speed_calc as i16;
@@ -1003,15 +1008,18 @@ impl GameState {
                 }
 
                 // Revenant Conduit endurance drain. Ticks once per second
-                // while the spell is active; if the caster runs out of
-                // endurance the marker expires early.
+                // while the spell is active, costing 1 endurance per live
+                // companion (at least 1) so a second companion is not free
+                // lifesteal; if the caster runs out of endurance the marker
+                // expires early.
                 if item_temp == skills::SK_REVENANT_CONDUIT2 as u16 {
                     let item = &self.items[spell_item as usize];
                     let duration = item.duration as i32;
                     let active_i = active as i32;
                     let elapsed = duration - active_i;
                     if elapsed > 0 && elapsed % core::constants::TICKS == 0 {
-                        let drain = 1000;
+                        let companions = driver::skill::owned_live_companion_count(self, cn);
+                        let drain = 1000 * companions.max(1);
                         self.characters[cn].a_end -= drain;
                         if self.characters[cn].a_end <= 0 {
                             self.characters[cn].a_end = 0;
@@ -1551,107 +1559,24 @@ impl GameState {
         Some((exp, rank))
     }
 
-    /// Port of `do_hurt(cn, co, dam, type)` from `svr_do.cpp`.
-    ///
-    /// Applies damage to a target character (`co`) inflicted by `cn`.
-    /// This routine handles armor degradation, magical shields, damage
-    /// scaling by type, experience awards for attackers, death handling,
-    /// possible god-saves, and reactive gethit damage.
+    /// Mitigation half of `do_hurt`: wears the victim's armor pieces, drains
+    /// any Magic Shield, then subtracts armor and scales the result by damage
+    /// type into thousandths of HP.
     ///
     /// # Arguments
-    /// * `cn` - Attacker character id
     /// * `co` - Target character id
-    /// * `dam` - Raw damage value (scaled internally)
-    /// * `type_hurt` - Damage type code (influences scaling/FX)
+    /// * `dam` - Raw damage value
+    /// * `type_hurt` - Damage type code (0 melee, 1/2 spell, 3 true damage)
     ///
     /// # Returns
-    /// Actual damage dealt in game units (after internal scaling/truncation)
-    pub(crate) fn do_hurt(&mut self, cn: usize, co: usize, dam: i32, type_hurt: i32) -> i32 {
-        // Spectral Pact: high bit of `type_hurt` is reserved as a recursion
-        // sentinel so a redirected hit on the companion does not itself
-        // trigger another redirect. Strip it before any of the existing
-        // comparisons run.
-        const PACT_REDIRECT_BIT: i32 = 0x4000_0000;
-        let is_pact_redirect = (type_hurt & PACT_REDIRECT_BIT) != 0;
-        let type_hurt = type_hurt & !PACT_REDIRECT_BIT;
-
-        // Quick sanity/body check
-        let is_body = (self.characters[co].flags & CharacterFlags::Body.bits()) != 0;
-        if is_body {
-            return 0;
-        }
-
-        // If the victim has an active Spectral Pact, divert a share of the
-        // incoming damage to each living ghost companion they own.
+    /// Post-armor damage in thousandths of HP (never negative).
+    fn mitigate_hurt(&mut self, co: usize, dam: i32, type_hurt: i32) -> i32 {
         let mut dam = dam;
-        if !is_pact_redirect && dam > 0 && co != cn {
-            let mut pact_pct: i32 = 0;
-            for n in 0..20 {
-                let in_ = self.characters[co].spell[n] as usize;
-                if in_ != 0 && self.items[in_].temp == skills::SK_SPECTRAL_PACT2 as u16 {
-                    pact_pct = self.items[in_].power as i32;
-                    break;
-                }
-            }
-            if pact_pct > 0 {
-                let mut companions: Vec<usize> = Vec::new();
-                for slot in [
-                    core::constants::CHD_COMPANION,
-                    core::constants::CHD_COMPANION2,
-                ] {
-                    let cc = self.characters[co].data[slot] as usize;
-                    if cc != 0
-                        && core::types::Character::is_sane_character(cc)
-                        && self.characters[cc].used == core::constants::USE_ACTIVE
-                        && (self.characters[cc].flags & CharacterFlags::Body.bits()) == 0
-                        && self.characters[cc].data[63] == co as i32
-                    {
-                        companions.push(cc);
-                    }
-                }
-                if !companions.is_empty() {
-                    let redirected_total = dam * pact_pct / 100;
-                    let per_companion = redirected_total / companions.len() as i32;
-                    if per_companion > 0 {
-                        let n_companions = companions.len() as i32;
-                        for cc in companions {
-                            // Recurse with sentinel set so we do not redirect
-                            // the redirected hit. Ignore the returned damage
-                            // figure; the headline number reported back to
-                            // the attacker still reflects only the portion
-                            // that landed on the original target.
-                            self.do_hurt(cn, cc, per_companion, type_hurt | PACT_REDIRECT_BIT);
-                        }
-                        dam -= per_companion * n_companions;
-                        if dam < 0 {
-                            dam = 0;
-                        }
-                    }
-                }
-            }
-        }
 
         // If a real player got hit, damage armour pieces
         let co_is_player = (self.characters[co].flags & CharacterFlags::Player.bits()) != 0;
         if co_is_player {
             driver::item_damage_armor(self, co, dam);
-        }
-
-        // Determine noexp conditions
-        let mut noexp = 0;
-        if cn != 0
-            && (self.characters[cn].flags & CharacterFlags::Player.bits()) == 0
-            && self.characters[cn].data[63] == co as i32
-        {
-            noexp = 1;
-        }
-        if (self.characters[co].flags & CharacterFlags::Player.bits()) != 0 {
-            noexp = 1;
-        }
-        if self.characters[co].temp == core::constants::CT_COMPANION as u16
-            && (self.characters[co].flags & CharacterFlags::Thrall.bits()) == 0
-        {
-            noexp = 1;
         }
 
         // Handle magical shields (SK_MSHIELD)
@@ -1728,10 +1653,145 @@ impl GameState {
             }
         }
 
+        dam
+    }
+
+    /// Spectral Pact: moves `item.power` percent of the victim's post-armor
+    /// damage onto their living ghost companions, split evenly.
+    ///
+    /// Each share is applied through `do_hurt` with [`PACT_REDIRECT_BIT`] set,
+    /// so it is neither mitigated again by the companion's armor nor
+    /// redirected a second time. The advertised percentage is therefore
+    /// exact: the owner keeps `100 - power` percent of what they would have
+    /// lost, and the companions lose the rest.
+    ///
+    /// # Arguments
+    /// * `cn` - Attacker character id
+    /// * `co` - Victim character id (the pact owner)
+    /// * `dam` - Post-armor damage in thousandths of HP
+    /// * `type_hurt` - Damage type code, passed through to the companion hits
+    ///
+    /// # Returns
+    /// Damage (thousandths of HP) left for the owner.
+    fn apply_spectral_pact_redirect(
+        &mut self,
+        cn: usize,
+        co: usize,
+        dam: i32,
+        type_hurt: i32,
+    ) -> i32 {
+        if dam <= 0 {
+            return dam;
+        }
+        let pact_pct = self.characters[co].spell[..20]
+            .iter()
+            .map(|&spell| spell as usize)
+            .find(|&item| item != 0 && self.items[item].temp == skills::SK_SPECTRAL_PACT2 as u16)
+            .map(|item| i64::from(self.items[item].power))
+            .unwrap_or(0);
+        if pact_pct <= 0 {
+            return dam;
+        }
+
+        let mut companions: Vec<usize> = Vec::new();
+        for slot in [
+            core::constants::CHD_COMPANION,
+            core::constants::CHD_COMPANION2,
+        ] {
+            let cc = self.characters[co].data[slot] as usize;
+            if cc != 0
+                && !companions.contains(&cc)
+                && core::types::Character::is_sane_character(cc)
+                && self.characters[cc].used == core::constants::USE_ACTIVE
+                && (self.characters[cc].flags & CharacterFlags::Body.bits()) == 0
+                && self.characters[cc].data[63] == co as i32
+            {
+                companions.push(cc);
+            }
+        }
+        if companions.is_empty() {
+            return dam;
+        }
+
+        let redirected_total = (i64::from(dam) * pact_pct / 100) as i32;
+        let per_companion = redirected_total / companions.len() as i32;
+        if per_companion <= 0 {
+            return dam;
+        }
+        let n_companions = companions.len() as i32;
+        for cc in companions {
+            // Ignore the returned damage figure; the headline number reported
+            // back to the attacker reflects only the owner's portion.
+            self.do_hurt(cn, cc, per_companion, type_hurt | PACT_REDIRECT_BIT);
+        }
+        (dam - per_companion * n_companions).max(0)
+    }
+
+    /// Port of `do_hurt(cn, co, dam, type)` from `svr_do.cpp`.
+    ///
+    /// Applies damage to a target character (`co`) inflicted by `cn`.
+    /// This routine handles armor degradation, magical shields, damage
+    /// scaling by type, experience awards for attackers, death handling,
+    /// possible god-saves, and reactive gethit damage.
+    ///
+    /// # Arguments
+    /// * `cn` - Attacker character id
+    /// * `co` - Target character id
+    /// * `dam` - Raw damage value (scaled internally)
+    /// * `type_hurt` - Damage type code (influences scaling/FX)
+    ///
+    /// # Returns
+    /// Actual damage dealt in game units (after internal scaling/truncation)
+    pub(crate) fn do_hurt(&mut self, cn: usize, co: usize, dam: i32, type_hurt: i32) -> i32 {
+        // Spectral Pact: high bit of `type_hurt` is reserved as a recursion
+        // sentinel so a redirected hit on the companion does not itself
+        // trigger another redirect. Strip it before any of the existing
+        // comparisons run.
+        let is_pact_redirect = (type_hurt & PACT_REDIRECT_BIT) != 0;
+        let type_hurt = type_hurt & !PACT_REDIRECT_BIT;
+
+        // Quick sanity/body check
+        let is_body = (self.characters[co].flags & CharacterFlags::Body.bits()) != 0;
+        if is_body {
+            return 0;
+        }
+
+        // A redirected Spectral Pact share is already mitigated by the owner's
+        // armor and scaled to thousandths of HP, so the companion's own armor
+        // and shields do not apply to it a second time.
+        let mut dam = if is_pact_redirect {
+            dam
+        } else {
+            self.mitigate_hurt(co, dam, type_hurt)
+        };
+
+        // Determine noexp conditions
+        let mut noexp = 0;
+        if cn != 0
+            && (self.characters[cn].flags & CharacterFlags::Player.bits()) == 0
+            && self.characters[cn].data[63] == co as i32
+        {
+            noexp = 1;
+        }
+        if (self.characters[co].flags & CharacterFlags::Player.bits()) != 0 {
+            noexp = 1;
+        }
+        if self.characters[co].temp == core::constants::CT_COMPANION as u16
+            && (self.characters[co].flags & CharacterFlags::Thrall.bits()) == 0
+        {
+            noexp = 1;
+        }
+
         // Immortal characters take no damage
         let is_immortal = (self.characters[co].flags & CharacterFlags::Immortal.bits()) != 0;
         if is_immortal {
             dam = 0;
+        }
+
+        // Spectral Pact moves a share of what the victim would actually lose
+        // onto their companions.
+        if !is_pact_redirect && co != cn {
+            dam = self.apply_spectral_pact_redirect(cn, co, dam, type_hurt);
         }
 
         // Notifications for visible hits
@@ -2105,6 +2165,145 @@ mod tests {
         });
     }
 
+    /// Runs one conduit drain tick for an owner with `companions` live ghost
+    /// companions and returns the owner's endurance afterwards.
+    fn endurance_after_conduit_tick(companions: usize) -> i32 {
+        with_test_gs(move |gs| {
+            let (owner, _nr) = add_test_player(gs);
+            add_revenant_conduit_marker(gs, owner, 30);
+            gs.items[10].duration = (core::constants::TICKS * 2) as u32;
+            gs.items[10].active = (core::constants::TICKS + 1) as u32;
+            gs.characters[owner].end[5] = 100;
+            gs.characters[owner].a_end = 50_000;
+
+            let slots = [
+                core::constants::CHD_COMPANION,
+                core::constants::CHD_COMPANION2,
+            ];
+            for (n, slot) in slots.into_iter().take(companions).enumerate() {
+                let cc = owner + 1 + n;
+                gs.characters[cc] = core::types::Character::default();
+                gs.characters[cc].used = USE_ACTIVE;
+                gs.characters[cc].temp = core::constants::CT_COMPANION as u16;
+                gs.characters[cc].data[63] = owner as i32;
+                gs.characters[owner].data[slot] = cc as i32;
+            }
+
+            gs.do_regenerate(owner);
+            gs.characters[owner].a_end
+        })
+    }
+
+    #[test]
+    fn revenant_conduit_drain_scales_with_companion_count() {
+        let none = endurance_after_conduit_tick(0);
+        let one = endurance_after_conduit_tick(1);
+        let two = endurance_after_conduit_tick(2);
+
+        // With no companion the conduit still drains 1 endurance per second.
+        assert_eq!(none, one);
+        assert_eq!(one - two, 1000);
+    }
+
+    /// Owner with armor 20 and a Spectral Pact of `pact_pct`, plus `companions`
+    /// armor-30 ghost companions and an NPC attacker. Returns
+    /// `(attacker, owner, companion ids)`.
+    fn spectral_pact_setup(
+        gs: &mut GameState,
+        pact_pct: u32,
+        companions: usize,
+    ) -> (usize, usize, Vec<usize>) {
+        let (owner, _nr) = add_test_player(gs);
+        gs.characters[owner].armor = 20;
+        gs.characters[owner].a_hp = 1_000_000;
+
+        let attacker = 10;
+        gs.characters[attacker] = core::types::Character::default();
+        gs.characters[attacker].used = USE_ACTIVE;
+
+        let item_idx = 20;
+        gs.items[item_idx] = core::types::Item::default();
+        gs.items[item_idx].used = USE_ACTIVE;
+        gs.items[item_idx].active = 100;
+        gs.items[item_idx].temp = skills::SK_SPECTRAL_PACT2 as u16;
+        gs.items[item_idx].power = pact_pct;
+        gs.characters[owner].spell[0] = item_idx as u32;
+
+        let slots = [
+            core::constants::CHD_COMPANION,
+            core::constants::CHD_COMPANION2,
+        ];
+        let ids: Vec<usize> = slots
+            .into_iter()
+            .take(companions)
+            .enumerate()
+            .map(|(n, slot)| {
+                let cc = 11 + n;
+                gs.characters[cc] = core::types::Character::default();
+                gs.characters[cc].used = USE_ACTIVE;
+                gs.characters[cc].temp = core::constants::CT_COMPANION as u16;
+                gs.characters[cc].data[63] = owner as i32;
+                gs.characters[cc].armor = 30;
+                gs.characters[cc].a_hp = 1_000_000;
+                gs.characters[owner].data[slot] = cc as i32;
+                cc
+            })
+            .collect();
+        (attacker, owner, ids)
+    }
+
+    #[test]
+    fn spectral_pact_redirects_share_of_post_armor_damage() {
+        with_test_gs(|gs| {
+            let (attacker, owner, ids) = spectral_pact_setup(gs, 75, 1);
+
+            // Melee 100 raw against armor 20: 80 * 250 = 20,000 post-armor.
+            // 75% of that moves to the companion; its own armor 30 does not
+            // apply to the share.
+            gs.do_hurt(attacker, owner, 100, 0);
+
+            assert_eq!(gs.characters[owner].a_hp, 1_000_000 - 5_000);
+            assert_eq!(gs.characters[ids[0]].a_hp, 1_000_000 - 15_000);
+        });
+    }
+
+    #[test]
+    fn spectral_pact_splits_share_evenly_between_two_companions() {
+        with_test_gs(|gs| {
+            let (attacker, owner, ids) = spectral_pact_setup(gs, 75, 2);
+
+            gs.do_hurt(attacker, owner, 100, 0);
+
+            assert_eq!(gs.characters[owner].a_hp, 1_000_000 - 5_000);
+            assert_eq!(gs.characters[ids[0]].a_hp, 1_000_000 - 7_500);
+            assert_eq!(gs.characters[ids[1]].a_hp, 1_000_000 - 7_500);
+        });
+    }
+
+    #[test]
+    fn spectral_pact_redirects_nothing_from_a_fully_armored_hit() {
+        with_test_gs(|gs| {
+            let (attacker, owner, ids) = spectral_pact_setup(gs, 75, 1);
+
+            // Raw 20 against armor 20 is fully absorbed before the split.
+            gs.do_hurt(attacker, owner, 20, 0);
+
+            assert_eq!(gs.characters[owner].a_hp, 1_000_000);
+            assert_eq!(gs.characters[ids[0]].a_hp, 1_000_000);
+        });
+    }
+
+    #[test]
+    fn spectral_pact_without_companions_leaves_damage_on_owner() {
+        with_test_gs(|gs| {
+            let (attacker, owner, _ids) = spectral_pact_setup(gs, 75, 0);
+
+            gs.do_hurt(attacker, owner, 100, 0);
+
+            assert_eq!(gs.characters[owner].a_hp, 1_000_000 - 20_000);
+        });
+    }
+
     fn set_legacy_weapon_bonuses(skill: &mut [[i16; 3]; skills::MAX_SKILLS], modifier_idx: usize) {
         skill[skills::SK_HAND][modifier_idx] = 10;
         skill[skills::SK_DAGGER][modifier_idx] = 10;
@@ -2473,6 +2672,23 @@ mod tests {
 
             assert!(gs.characters[cn].speed < baseline_speed);
             assert!(gs.characters[cn].future3[2] < baseline_action_speed);
+        });
+    }
+
+    #[test]
+    fn gunpowder_flash_buff_grows_with_power() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            attach_test_spell(gs, cn, 5, skills::SK_GUNPOWDER_FLASH2, 1);
+            gs.really_update_char(cn);
+            let low_speed = gs.characters[cn].speed;
+            let low_action_speed = gs.characters[cn].future3[2];
+
+            gs.items[5].power = 300;
+            gs.really_update_char(cn);
+
+            assert!(gs.characters[cn].speed < low_speed);
+            assert!(gs.characters[cn].future3[2] < low_action_speed);
         });
     }
 }

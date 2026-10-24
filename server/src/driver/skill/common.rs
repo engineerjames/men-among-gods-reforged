@@ -161,6 +161,36 @@ pub fn spell_immunity(_gs: &GameState, power: i32, immun: i32) -> i32 {
     if power <= immun { 1 } else { power - immun }
 }
 
+/// Modified skill at which ability curves reach their design value. Top-rank
+/// players sit around modified 275–300 in their main skills.
+pub(crate) const SKILL_KNEE: i32 = 300;
+
+/// Shared ability scaling curve: linear from `at_0` at skill 0 to `at_300` at
+/// [`SKILL_KNEE`], then continuing at half that slope so gear past the knee
+/// still pays off. Callers clamp the result when the effect must stay bounded.
+///
+/// # Arguments
+///
+/// * `power` - Modified skill value (negative values are treated as 0).
+/// * `at_0` - Value at skill 0.
+/// * `at_300` - Value at skill [`SKILL_KNEE`].
+///
+/// # Returns
+///
+/// * The scaled value, rounded toward `at_0`.
+pub(crate) fn skill_knee_300(power: i32, at_0: i32, at_300: i32) -> i32 {
+    let p = i64::from(power.max(0));
+    let knee = i64::from(SKILL_KNEE);
+    let (lo, hi) = (i64::from(at_0), i64::from(at_300));
+    let span = hi - lo;
+    let value = if p <= knee {
+        lo + span * p / knee
+    } else {
+        hi + span * (p - knee) / (2 * knee)
+    };
+    value.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
+}
+
 /// Reduces a target's effective resistance value by the caster's talent-derived
 /// spell penetration percent.
 ///
@@ -1154,5 +1184,17 @@ mod tests {
             assert!(player_or_ghost(&player, cn, &npc));
             assert!(!player_or_ghost(&npc, 2, &player));
         });
+    }
+
+    #[test]
+    fn skill_knee_300_is_linear_to_the_knee_then_half_slope() {
+        assert_eq!(skill_knee_300(-5, 30, 75), 30);
+        assert_eq!(skill_knee_300(0, 30, 75), 30);
+        assert_eq!(skill_knee_300(150, 30, 75), 52);
+        assert_eq!(skill_knee_300(300, 30, 75), 75);
+        assert_eq!(skill_knee_300(350, 30, 75), 78);
+        assert_eq!(skill_knee_300(450, 30, 75), 86);
+        assert_eq!(skill_knee_300(600, 0, 600), 900);
+        assert!(skill_knee_300(350, 50, 150) > skill_knee_300(300, 50, 150));
     }
 }
