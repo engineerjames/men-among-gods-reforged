@@ -22,8 +22,16 @@ import numpy as np
 #: Server ticks per second (`core::constants::TICKS`).
 TICKS = 36
 
-#: Modified skill values (`skill[n][5]`) plotted on every x-axis.
-SKILL_RANGE = np.arange(1, 201)
+#: Modified skill values (`skill[n][5]`) plotted on every x-axis. Top-rank
+#: players reach about 275-300 modified, and gear can push past that.
+SKILL_RANGE = np.arange(1, 351)
+
+#: Modified skill at which ability curves reach their design value
+#: (`driver::skill::common::SKILL_KNEE`).
+SKILL_KNEE = 300
+
+#: Typical endgame modified skill band, shaded on every skill axis.
+ENDGAME = (275, 300)
 
 #: Raise caps: 105 for most classes, 120 for Mercenary skills.
 RAISE_CAP = 105
@@ -47,6 +55,16 @@ def _scalar(x):
 # ---------------------------------------------------------------------------
 # Integer / random helpers
 # ---------------------------------------------------------------------------
+
+
+def knee_300(p, at_0, at_300):
+    """`skill_knee_300`: linear from ``at_0`` to ``at_300`` over modified skill
+    0..300, then half that slope. Truncates toward zero like the Rust i64 math."""
+    p = np.maximum(np.asarray(p, dtype=np.int64), 0)
+    span = int(at_300) - int(at_0)
+    below = at_0 + idiv(span * p, SKILL_KNEE)
+    above = at_300 + idiv(span * (p - SKILL_KNEE), 2 * SKILL_KNEE)
+    return _scalar(np.where(p <= SKILL_KNEE, below, above))
 
 
 def idiv(a, b):
@@ -338,18 +356,20 @@ def base_speed(agil, stren, speed_mod=0, mode="normal"):
     return _scalar(idiv(np.asarray(agil) + np.asarray(stren), 50) + speed_mod + MODE_OFFSET[mode])
 
 
-def action_speed_row(base, attack_pct=0, flash_haste=False, flash_slow=0):
-    """`future3[2]`: the SPEEDTAB row that gates attacks and other actions."""
+def action_speed_row(base, attack_pct=0, flash_haste=0, flash_slow=0):
+    """`future3[2]`: the SPEEDTAB row that gates attacks and other actions.
+
+    ``flash_haste`` / ``flash_slow`` are Gunpowder Flash action-speed points."""
     base = np.asarray(base)
     calc = base + _round_half_away(base * attack_pct / 100).astype(np.int64)
-    calc = calc + (3 if flash_haste else 0) - np.asarray(flash_slow)
+    calc = calc + np.asarray(flash_haste) - np.asarray(flash_slow)
     return _scalar(np.clip(20 - calc, 0, 19))
 
 
-def movement_speed_row(base, move_pct=0, flash_haste=False):
-    """`speed`: the SPEEDTAB row that gates walking."""
+def movement_speed_row(base, move_pct=0, flash_haste=0):
+    """`speed`: the SPEEDTAB row that gates walking (``flash_haste`` in movement points)."""
     base = np.asarray(base)
-    calc = base + _round_half_away(base * move_pct / 100).astype(np.int64) + int(flash_haste)
+    calc = base + _round_half_away(base * move_pct / 100).astype(np.int64) + np.asarray(flash_haste)
     return _scalar(np.clip(20 - calc, 0, 19))
 
 
@@ -392,10 +412,15 @@ def apply_style():
 
 
 def mark_caps(ax, extra=(), caps=CAPS, label=True):
-    """Dotted verticals at the raise caps plus any formula saturation points.
+    """Dotted verticals at the raise caps, the shaded endgame band, plus any
+    formula saturation points.
 
     ``extra`` is an iterable of ``x`` or ``(x, text)`` entries.
     """
+    ax.axvspan(*ENDGAME, color="tab:green", alpha=0.08, lw=0)
+    if label:
+        ax.text(ENDGAME[0], 0.02, " endgame", transform=ax.get_xaxis_transform(),
+                va="bottom", ha="left", fontsize=8, color="tab:green")
     for i, c in enumerate(caps):
         ax.axvline(c, color="grey", ls=":", lw=1)
         if label:

@@ -1,5 +1,6 @@
 use super::common::{
-    add_exhaust, is_exhausted, spell_immunity, spell_race_mod, spellcost, spellcost_endurance,
+    add_exhaust, is_exhausted, skill_knee_300, spell_immunity, spell_race_mod, spellcost,
+    spellcost_endurance,
 };
 use super::resolve_offensive_target;
 use crate::chlog;
@@ -147,7 +148,8 @@ pub(crate) fn compute_blast_damage(gs: &mut GameState, cn: usize, co: usize) -> 
     }
     if let Some(in_) = anguish_lava_item {
         let anguish_power = gs.items[in_].power as i32;
-        let mult_pct = (150 + anguish_power / 2).clamp(150, 200);
+        // 150% at skill 0, double at modified skill 300, half slope beyond.
+        let mult_pct = skill_knee_300(anguish_power, 150, 200);
         dam = dam * mult_pct / 100;
         gs.items[in_].active = 0;
     }
@@ -155,8 +157,8 @@ pub(crate) fn compute_blast_damage(gs: &mut GameState, cn: usize, co: usize) -> 
     (power, dam)
 }
 
-/// Rolls the resist/sense chance and applies Blast damage (with AoE splash)
-/// to `co` for a precomputed `power`/`dam` pair.
+/// Applies Blast damage (with AoE splash) to `co` for a precomputed
+/// `power`/`dam` pair. There is no resist roll; the cast always lands.
 ///
 /// Shared by the direct Blast cast (`skill_blast`, after its mana/cooldown
 /// gate) and the Seyan'Du Free Blast rune proc (no gate). Does not check
@@ -164,7 +166,7 @@ pub(crate) fn compute_blast_damage(gs: &mut GameState, cn: usize, co: usize) -> 
 ///
 /// # Arguments
 ///
-/// * `gs` - Active game state used for the resist roll, damage, and effects.
+/// * `gs` - Active game state used for damage and effects.
 /// * `cn` - Caster character index.
 /// * `co` - Primary target character index.
 /// * `power` - Effective Blast power from [`compute_blast_damage`], used only for the cast log line.
@@ -295,21 +297,23 @@ mod tests {
             gs.characters[cn].skill[SK_BLAST][5] = 50;
             attach_marker(gs, co, 0, 500, SK_ANGUISH_LAVA as u16);
 
-            // Marker power 25 -> 150% + 12% bonus.
-            assert_eq!(compute_blast_damage(gs, cn, co), (50, 162));
+            // Marker power 25 -> 150% + 4% bonus.
+            assert_eq!(compute_blast_damage(gs, cn, co), (50, 154));
             assert_eq!(gs.items[500].active, 0);
         });
     }
 
     #[test]
-    fn compute_blast_damage_caps_anguish_lava_bonus_at_double() {
+    fn compute_blast_damage_doubles_at_anguish_lava_300_then_half_slope() {
         with_test_gs(|gs| {
             let (cn, co) = caster_and_target(gs);
             gs.characters[cn].skill[SK_BLAST][5] = 50;
-            attach_marker(gs, co, 0, 500, SK_ANGUISH_LAVA as u16);
-            gs.items[500].power = 500;
+            for (marker_power, expected) in [(300, 200), (450, 212)] {
+                attach_marker(gs, co, 0, 500, SK_ANGUISH_LAVA as u16);
+                gs.items[500].power = marker_power;
 
-            assert_eq!(compute_blast_damage(gs, cn, co), (50, 200));
+                assert_eq!(compute_blast_damage(gs, cn, co), (50, expected));
+            }
         });
     }
 
