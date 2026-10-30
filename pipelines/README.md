@@ -37,9 +37,11 @@ bash pipelines/install_linux_deps.sh
 
 ## Local usage
 
-### Update product version before release
+### Product version
 
-Edit the `version` field in the root `Cargo.toml` `[workspace.package]` section, run verification tests, then commit the version bump before dispatching the GitHub release workflow.
+The GitHub release workflow stamps the dispatched tag (e.g. `v1.2.1` → `1.2.1`) into the root `Cargo.toml` `[workspace.package]` `version` before building, so the client window title, server/API startup logs, and macOS bundle all report the release version. The tag must be semver (optionally `v`-prefixed); the workflow fails otherwise.
+
+Committing the bump is optional but keeps local builds in sync. To do so, edit the `version` field in the root `Cargo.toml` `[workspace.package]` section, run verification tests, then commit.
 
 ```toml
 [workspace.package]
@@ -54,7 +56,6 @@ cargo clippy --workspace --all-targets -- -D warnings
 git add Cargo.toml && git commit -m "Bump version to 1.2.1"
 ```
 
-Use the bare semver version (`1.2.1`) as the Cargo product version; the GitHub release workflow will use this to create the release tag (`v1.2.1`) for packaging.
 Protocol compatibility values in `core::constants::VERSION` and `core::constants::MINVERSION` are intentionally separate from routine product release bumps.
 
 ### Build release binaries

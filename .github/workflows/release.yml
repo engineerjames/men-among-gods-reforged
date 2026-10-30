@@ -48,6 +48,21 @@ jobs:
         shell: bash
         run: cargo vcpkg -v build --manifest-path client/Cargo.toml
 
+      # All crates inherit [workspace.package].version, which binaries report via CARGO_PKG_VERSION.
+      - name: Stamp workspace version from release tag
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          VERSION="${RELEASE_TAG#v}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.+-]+)?$ ]]; then
+            echo "Release tag '$RELEASE_TAG' is not a valid semver version (expected e.g. v1.2.3)" >&2
+            exit 1
+          fi
+          VERSION="$VERSION" perl -0pi -e 's/(\[workspace\.package\][^\[]*?\nversion = )"[^"]*"/$1"$ENV{VERSION}"/ or die "workspace version not found\n"' Cargo.toml
+          grep -n '^version = ' Cargo.toml
+
       - name: Build (release)
         shell: bash
         run: bash pipelines/build_release.sh
