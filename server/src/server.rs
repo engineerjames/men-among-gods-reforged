@@ -361,6 +361,9 @@ pub struct Server {
     /// when using KeyDB backend).
     save_tick_counter: u32,
 
+    /// Ticks since the last public live-status publish.
+    live_status_tick_counter: u32,
+
     /// Background thread that logs how full the fixed-size data tables are.
     capacity_monitor: Option<crate::capacity_monitor::CapacityMonitor>,
 
@@ -413,6 +416,7 @@ impl Server {
             world_action_watcher: None,
             ban_action_watcher: None,
             save_tick_counter: 0,
+            live_status_tick_counter: 0,
             capacity_monitor: None,
             capacity_tick_counter: 0,
             tick_keydb_worker: None,
@@ -743,6 +747,7 @@ impl Server {
 
         // Background save scheduling (KeyDB only)
         core::measure!(self.maybe_enqueue_background_save(gs));
+        self.maybe_publish_live_status(gs);
         self.maybe_sample_capacity(gs);
 
         core::measure!(
@@ -1715,6 +1720,24 @@ impl Server {
             % background_saver::SAVE_CYCLE_COUNT;
 
         Self::enqueue_save_cycle(saver, cycle, gs);
+    }
+
+    /// Publish the public live-status snapshot (who list + in-game time)
+    /// every [`core::live_status_store::LIVE_STATUS_INTERVAL_TICKS`] ticks.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Reference to the unified game state (read-only).
+    fn maybe_publish_live_status(&mut self, gs: &GameState) {
+        let Some(saver) = &self.background_saver else {
+            return;
+        };
+        self.live_status_tick_counter += 1;
+        if self.live_status_tick_counter < core::live_status_store::LIVE_STATUS_INTERVAL_TICKS {
+            return;
+        }
+        self.live_status_tick_counter = 0;
+        saver.send(SaveJob::LiveStatus(crate::live_status::build(gs)));
     }
 
     /// Clone and enqueue the data for a single save-rotation cycle.

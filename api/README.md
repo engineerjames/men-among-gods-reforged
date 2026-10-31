@@ -242,6 +242,38 @@ Diagnostics "Network Test" action:
 Both endpoints are mounted under the existing `/diag` route group and are
 subject to the public per-IP rate limit middleware.
 
+## Public world information endpoints
+
+Read-only, unauthenticated JSON endpoints under `/world/*` intended for
+community tooling (e.g. a Discord bot). They share the public per-IP rate
+limiter.
+
+| Endpoint | Source | Freshness |
+|---|---|---|
+| `GET /world/time` | `game:live:status` | ~10 s |
+| `GET /world/online` | `game:live:status` | ~10 s |
+| `GET /world/top?limit=` | `game:char:*` scan, cached 60 s | up to ~12 min (saver rotation) |
+| `GET /world/richest?limit=` | `game:char:*` scan, cached 60 s | up to ~12 min (saver rotation) |
+
+The game server publishes a compact `LiveStatus` snapshot
+(`core::live_status_store`) to `game:live:status` every 360 ticks with a
+60 s TTL. If the key is missing the server is down or not yet publishing and
+`/world/time` + `/world/online` return `503 {"error":"server_offline"}`.
+
+- `/world/time` returns `mdtime`, `mdday`, `year`, `hour`, `minute`, `day`,
+    `month`, `moon` (`new|growing|full|dwindling`), `daylight` (0-255), a
+    preformatted `sentence` (`"It's 0:40 on the 8th of the 11th month of the
+    year 50."`) and `moon_description` (`"The Moon is growing."`).
+- `/world/online` lists players exactly as the in-game `#who` shows them to a
+    normal player: invisible / `NoWho` characters are omitted, and `area` is
+    `null` for gods and purple-kindred characters. Each entry carries `name`,
+    `points`, `rank` and a `roles` object (`god`, `creator`, `imp`, `staff`,
+    `usurp`, `purple`, `poh`, `poh_leader`).
+- `/world/top` and `/world/richest` include every player character (staff and
+    gods are not filtered; use `roles` to flag them). `limit` defaults to 10
+    and is clamped to `1..=100`. Gold values are in hundredths: `/100` is gold,
+    `%100` is silver. `richest` ranks by carried gold plus bank balance.
+
 # Integration with the game server and client applications
 The authentication service is designed to be integrated with both the game server and client applications. Over time this is hoped to be a tighter integration.
 

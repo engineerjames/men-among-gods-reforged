@@ -368,6 +368,7 @@ file backend has been removed.
 | `game:badwords` | bincode `Vec<String>` | 1 |
 | `game:motd` | UTF-8 string | 1 |
 | `game:meta:version` | integer | 1 |
+| `game:live:status` | bincode `LiveStatus` (who list + in-game time; republished every 360 ticks, TTL 60s) | 0–1 |
 | `game:map:patch_queue` | bincode `MapPatch` list (RPUSH) | dynamic |
 | `game:map:patch_request` | JSON `{request_id, requested_at}` (TTL 30s) | 0–1 |
 | `game:map:patch_status:{request_id}` | `applied:{unix_ts}` (TTL 300s) | 0..n |
