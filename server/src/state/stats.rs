@@ -535,7 +535,7 @@ impl GameState {
     /// Handles HP/endurance/mana regeneration and related per-tick updates.
     ///
     /// Responsibilities:
-    /// - Apply HP/END/MANA regeneration rules (including moon/mayhem effects)
+    /// - Apply HP/END/MANA regeneration rules (including moon effects)
     /// - Manage spell durations, shield behavior and active-item wear
     /// - Apply underwater damage and item tear/wear for active players
     /// - Clamp accumulated stats and set timers for low-resource states
@@ -554,12 +554,11 @@ impl GameState {
         let mut moonmult = 20;
 
         let is_player = self.characters[cn].flags & CharacterFlags::Player.bits() != 0;
-        let globs_flags = self.globals.flags;
         let newmoon = self.globals.newmoon != 0;
         let fullmoon = self.globals.fullmoon != 0;
 
-        if ((globs_flags & core::constants::GF_MAYHEM != 0) || newmoon) && is_player {
-            moonmult = 10; // Slower regen during mayhem or new moon
+        if newmoon && is_player {
+            moonmult = 10; // Slower regen during new moon
         }
         if fullmoon && is_player {
             moonmult = 40; // Faster regen during full moon

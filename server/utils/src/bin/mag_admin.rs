@@ -2523,11 +2523,7 @@ fn format_flags(bits: u64, names: &[&'static str]) -> String {
 
 fn format_global_flags(bits: i32) -> String {
     let labels = [
-        (constants::GF_LOOTING, "Looting"),
-        (constants::GF_MAYHEM, "Mayhem"),
-        (constants::GF_CLOSEENEMY, "CloseEnemy"),
         (constants::GF_CAP, "Cap"),
-        (constants::GF_SPEEDY, "Speedy"),
         (constants::GF_DIRTY, "Dirty"),
     ];
     let names: Vec<&'static str> = labels

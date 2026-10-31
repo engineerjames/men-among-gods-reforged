@@ -705,42 +705,8 @@ pub fn ago_string(dt: u128) -> String {
 /// * `gs` - Active game state used by this function.
 /// * `cn` - Character index used by this function.
 pub fn show_time(gs: &mut GameState, cn: usize) {
-    // Read time values from globals
-    let (mdtime, mdday, mdyear) = {
-        let g = &gs.globals;
-        (g.mdtime, g.mdday, g.mdyear)
-    };
-
-    let hour = mdtime / (60 * 60);
-    let minute = (mdtime / 60) % 60;
-    let day = (mdday % 28) + 1;
-    let month = (mdday / 28) + 1;
-    let year = mdyear;
-
-    fn ordinal_suffix(n: i32) -> &'static str {
-        let n_mod_100 = n % 100;
-        if (11..=13).contains(&n_mod_100) {
-            return "th";
-        }
-        match n % 10 {
-            1 => "st",
-            2 => "nd",
-            3 => "rd",
-            _ => "th",
-        }
-    }
-
-    let day_suf = ordinal_suffix(day);
-    let month_suf = ordinal_suffix(month);
-
-    gs.do_character_log(
-        cn,
-        core::types::FontColor::Yellow,
-        &format!(
-            "It's {}:{:02} on the {}{} of the {}{} month of the year {}.\n",
-            hour, minute, day, day_suf, month, month_suf, year
-        ),
-    );
+    let text = core::live_status_store::WorldTime::from_global(&gs.globals).sentence();
+    gs.do_character_log(cn, core::types::FontColor::Yellow, &format!("{text}\n"));
 }
 
 // WTF is this some kind of weird hash function?

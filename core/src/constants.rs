@@ -515,11 +515,9 @@ pub const USE_NONACTIVE: u8 = 2;
 // Global Flags (from data.h)
 // =============================================================================
 
-pub const GF_LOOTING: i32 = 1 << 0;
-pub const GF_MAYHEM: i32 = 1 << 1;
-pub const GF_CLOSEENEMY: i32 = 1 << 2;
+// Bits 0 (LOOTING), 1 (MAYHEM), 2 (CLOSEENEMY) and 4 (SPEEDY) were removed;
+// values are kept stable because `flags` is persisted.
 pub const GF_CAP: i32 = 1 << 3;
-pub const GF_SPEEDY: i32 = 1 << 4;
 pub const GF_DIRTY: i32 = 1 << 5;
 
 // =============================================================================

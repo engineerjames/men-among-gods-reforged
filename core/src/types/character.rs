@@ -312,6 +312,18 @@ impl Character {
         (self.flags & CharacterFlags::Player.bits()) != 0
     }
 
+    /// Available Black Stronghold (cityguard) points.
+    ///
+    /// Port of `stronghold_points(int cn)` from `talk.cpp`: kills below,
+    /// at and above own rank, plus candles, minus points already spent.
+    ///
+    /// # Returns
+    ///
+    /// * Total unspent stronghold points (may be negative).
+    pub fn stronghold_points(&self) -> i32 {
+        self.data[26] / 25 + self.data[27] + self.data[28] * 2 + self.data[43] * 25 - self.data[41]
+    }
+
     /// Check if character has profile flag set
     ///
     /// # Returns
