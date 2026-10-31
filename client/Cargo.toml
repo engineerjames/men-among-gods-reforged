@@ -49,7 +49,8 @@ rev = "2026.01.16"
 
 [package.metadata.vcpkg.target]
 x86_64-pc-windows-msvc    = { triplet = "x64-windows-static-md", dependencies = ["sdl2", "sdl2-image", "sdl2-mixer[mpg123]", "sdl2-gfx", "sdl2-ttf"] }
-x86_64-unknown-linux-gnu  = { triplet = "x64-linux",              dependencies = ["sdl2", "sdl2-image", "sdl2-mixer[mpg123]", "sdl2-gfx", "sdl2-ttf"] }
-aarch64-unknown-linux-gnu = { triplet = "arm64-linux",            dependencies = ["sdl2", "sdl2-image", "sdl2-mixer[mpg123]", "sdl2-gfx", "sdl2-ttf"] }
+# dbus[core] skips libsystemd, which fails to build against newer kernel headers.
+x86_64-unknown-linux-gnu  = { triplet = "x64-linux",              dependencies = ["sdl2", "sdl2-image", "sdl2-mixer[mpg123]", "sdl2-gfx", "sdl2-ttf", "dbus[core]"] }
+aarch64-unknown-linux-gnu = { triplet = "arm64-linux",            dependencies = ["sdl2", "sdl2-image", "sdl2-mixer[mpg123]", "sdl2-gfx", "sdl2-ttf", "dbus[core]"] }
 x86_64-apple-darwin       = { triplet = "x64-osx",                dependencies = ["sdl2", "sdl2-image", "sdl2-mixer[mpg123]", "sdl2-gfx", "sdl2-ttf"] }
 aarch64-apple-darwin      = { triplet = "arm64-osx",              dependencies = ["sdl2", "sdl2-image", "sdl2-mixer[mpg123]", "sdl2-gfx", "sdl2-ttf"] }
