@@ -394,8 +394,10 @@ sequenceDiagram
 ## Communication flow - Playing the game
 This is where the API and game server meet. Gameplay world state is persisted in KeyDB and loaded into memory by the game server at startup. Fresh environments are seeded ahead of time from a `.wsnap` world snapshot, so the server starts from KeyDB rather than a removed flat-file backend.
 
-When an account creates a character, the API writes the character metadata to KeyDB immediately. The game server establishes the runtime link the first time the player logs in with a one-time ticket: it loads the character record, creates or reuses the in-game character slot as needed, and then stores the active `server_id` back on the character record so the authentication service can enforce ownership and provide the character list to the client.
+When an account creates a character, the API writes the character metadata to KeyDB immediately. The game server establishes the runtime link the first time the player logs in with a one-time ticket: it loads the character record, creates or reuses the in-game character slot as needed, and then stores the active `server_id` back on the character record so the authentication service can enforce ownership and provide the character list to the client. The server also writes the reverse link `game:char_owner:{server_id} = character_id`.
 After that link exists, the game server also keeps the API-side `class`, `sex`, and `selection_sprite_id` fields synchronized with the live gameplay character so promoted and transformed characters render correctly on the selection screen.
+
+In-game character slots are recycled: once the server erases a player (inactivity expiry, invalid data, `#ERASEPLAYER`), the slot index can be reused by an NPC spawn or another player's new character. To keep a dangling `server_id` from attaching a login to the wrong entity, the server deletes the API `character:{id}` record (and its account-set / name-claim indexes) when it erases a slot, and at login it only reuses a linked slot that is non-empty, flagged as a player, and whose `game:char_owner` entry (when present) matches the ticket's `character_id`. A link that fails those checks is treated as deleted: the login is denied and the API record is removed so the character disappears from the selection screen.
 
 ### First Login Flow
 ```mermaid
@@ -431,6 +433,7 @@ sequenceDiagram
     GS->>DB: HGETALL character:{character_id}
     GS->>GS: Create in-game character slot if needed and set name/description
     GS->>DB: HSET character:{character_id} { server_id={cn}, class, sex, selection_sprite_id }
+    GS->>DB: SET game:char_owner:{cn} character_id
     GS-->>C: SV_LOGIN_OK + SV_TICK
 ```
 
@@ -462,7 +465,8 @@ sequenceDiagram
     GS->>DB: GET+DEL game_login_ticket:{ticket} (atomic consume)
     GS->>GS: Set player version/race from ticket metadata
     GS->>DB: HGETALL character:{character_id}
-    Note over GS: If character has a valid server_id, reuse that slot
+    GS->>DB: GET game:char_owner:{server_id}
+    Note over GS: Reuse the slot only if it is live, a player, and owned by character_id; otherwise deny and delete the API record
     GS-->>C: SV_LOGIN_OK + SV_TICK
 ```
 

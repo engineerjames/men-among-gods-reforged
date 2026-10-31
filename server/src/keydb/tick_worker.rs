@@ -32,6 +32,9 @@ pub struct LoginResolution {
     pub ticket: GameLoginTicketMetadata,
     /// API-side character record selected by the ticket.
     pub character: CharacterSummary,
+    /// API character id recorded as owner of `character.server_id`, when the
+    /// slot is linked and the reverse link exists (`None` for legacy records).
+    pub slot_owner: Option<u64>,
     /// Latest MOTD when available; `None` means the cached server value should be used.
     pub motd: Option<String>,
 }
@@ -175,6 +178,16 @@ pub enum TickKeyDbRequest {
         /// Gameplay character whose metadata should be mirrored.
         character: Box<core::types::Character>,
     },
+    /// Delete the API character record linked to an erased gameplay slot.
+    EraseCharacterSlot {
+        /// Internal server character slot that was erased.
+        server_id: u32,
+    },
+    /// Delete an API character record whose gameplay slot no longer belongs to it.
+    DeleteApiCharacter {
+        /// API-side character identifier.
+        character_id: u64,
+    },
     /// Persist or remove a durable ban record.
     BanWrite(BanWriteRequest),
     /// Load admin-managed data on the worker thread.
@@ -276,6 +289,38 @@ impl TickKeyDbClient {
         self.tx
             .send(TickKeyDbRequest::BanWrite(request.clone()))
             .map_err(|_| Box::new(request))
+    }
+
+    /// Queue deletion of the API character record linked to an erased slot.
+    ///
+    /// # Arguments
+    ///
+    /// * `server_id` - Internal gameplay slot that was erased.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` when the request was queued.
+    /// * `Err(TickKeyDbSendError)` when the worker has already stopped.
+    pub fn submit_erase_character_slot(&self, server_id: u32) -> Result<(), TickKeyDbSendError> {
+        self.tx
+            .send(TickKeyDbRequest::EraseCharacterSlot { server_id })
+            .map_err(|_| TickKeyDbSendError)
+    }
+
+    /// Queue deletion of an API character record by id.
+    ///
+    /// # Arguments
+    ///
+    /// * `character_id` - API-side character identifier.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` when the request was queued.
+    /// * `Err(TickKeyDbSendError)` when the worker has already stopped.
+    pub fn submit_delete_api_character(&self, character_id: u64) -> Result<(), TickKeyDbSendError> {
+        self.tx
+            .send(TickKeyDbRequest::DeleteApiCharacter { character_id })
+            .map_err(|_| TickKeyDbSendError)
     }
 
     /// Queue an admin data load.
@@ -522,6 +567,38 @@ fn worker_loop(rx: Receiver<TickKeyDbRequest>, tx: Sender<TickKeyDbEvent>) {
                     return;
                 }
             }
+            TickKeyDbRequest::EraseCharacterSlot { server_id } => {
+                let result = connection::erase_character_slot(server_id).map(|deleted| {
+                    if let Some(character_id) = deleted {
+                        log::info!(
+                            "Deleted API character {character_id} linked to erased slot {server_id}"
+                        );
+                    }
+                });
+                if tx
+                    .send(TickKeyDbEvent::WriteCompleted {
+                        operation: "erase character slot",
+                        result,
+                    })
+                    .is_err()
+                {
+                    log::info!("KeyDB tick worker: event receiver dropped");
+                    return;
+                }
+            }
+            TickKeyDbRequest::DeleteApiCharacter { character_id } => {
+                let result = connection::delete_api_character(character_id);
+                if tx
+                    .send(TickKeyDbEvent::WriteCompleted {
+                        operation: "delete api character",
+                        result,
+                    })
+                    .is_err()
+                {
+                    log::info!("KeyDB tick worker: event receiver dropped");
+                    return;
+                }
+            }
             TickKeyDbRequest::BanWrite(request) => {
                 let result = match &request.action {
                     BanWriteAction::Upsert(record) => {
@@ -690,6 +767,16 @@ fn resolve_login(request: &LoginRequest) -> Result<LoginResolution, LoginFailure
             message: format!("API character {} not found", ticket.character_id),
         })?;
 
+    let slot_owner = match character.server_id {
+        Some(server_id) => {
+            connection::load_character_slot_owner(server_id).map_err(|message| LoginFailure {
+                kind: LoginFailureKind::KeyDb,
+                message,
+            })?
+        }
+        None => None,
+    };
+
     let targets = [
         BanTarget::Account {
             account_id: ticket.account_id,
@@ -726,6 +813,7 @@ fn resolve_login(request: &LoginRequest) -> Result<LoginResolution, LoginFailure
     Ok(LoginResolution {
         ticket,
         character,
+        slot_owner,
         motd,
     })
 }

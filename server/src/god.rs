@@ -3230,6 +3230,7 @@ impl God {
 
             player::connection::plr_logout(gs, co, player_id, LogoutReason::Shutdown);
 
+            gs.erase_api_character_slot(co);
             gs.characters[co].used = core::constants::USE_EMPTY;
 
             chlog!(cn, "IMP: Erased player {} ({}).", co, name_str);

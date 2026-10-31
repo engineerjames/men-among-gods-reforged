@@ -361,6 +361,7 @@ file backend has been removed.
 | `game:item:{idx}` | bincode `Item` | 98,304 |
 | `game:titem:{idx}` | bincode `Item` | 4,548 |
 | `game:char:{idx}` | bincode `Character` | 8,192 |
+| `game:char_owner:{idx}` | API `character_id` owning player slot `idx` (reverse of `character:{id}.server_id`; written at first login, deleted when the slot is erased) | 0..8,192 |
 | `game:tchar:{idx}` | bincode `Character` | 4,548 |
 | `game:effect:{idx}` | bincode `Effect` | 4,096 |
 | `game:global` | bincode `Global` | 1 |

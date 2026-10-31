@@ -1400,6 +1400,7 @@ impl Server {
                 gs.characters[cn].get_name(),
                 total_exp,
             );
+            gs.erase_api_character_slot(cn);
             gs.characters[cn].used = core::constants::USE_EMPTY;
         }
     }
@@ -1440,6 +1441,7 @@ impl Server {
             );
             // Best-effort: destroy carried items and mark as unused
             God::destroy_items(gs, cn);
+            gs.erase_api_character_slot(cn);
             gs.characters[cn].used = core::constants::USE_EMPTY;
             return false;
         }
