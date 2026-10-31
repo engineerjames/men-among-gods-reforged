@@ -236,6 +236,12 @@ pub struct OnlinePlayer {
 pub struct LiveStatus {
     /// Unix timestamp (seconds) when the server built this snapshot.
     pub published_at: u64,
+    /// Server uptime in ticks (divide by [`crate::constants::TICKS`] for seconds).
+    pub uptime_ticks: i64,
+    /// Server-side count of visible online players ([`Global::players_online`]).
+    pub players_online: i32,
+    /// All-time peak concurrent players ([`Global::max_online`]).
+    pub max_online: i32,
     /// In-game clock and calendar.
     pub time: WorldTime,
     /// Players visible on the public who list, in slot order.
@@ -328,6 +334,9 @@ mod tests {
     fn live_status_roundtrip() {
         let status = LiveStatus {
             published_at: 1_700_000_000,
+            uptime_ticks: 36 * 3600,
+            players_online: 1,
+            max_online: 47,
             time: WorldTime::from_global(&Global {
                 mdtime: 12 * 3600 + 5 * 60,
                 mdday: 14,

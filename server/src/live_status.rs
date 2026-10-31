@@ -49,6 +49,9 @@ pub fn build(gs: &GameState) -> LiveStatus {
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0),
+        uptime_ticks: gs.globals.uptime,
+        players_online: gs.globals.players_online,
+        max_online: gs.globals.max_online,
         time: WorldTime::from_global(&gs.globals),
         online,
     }
