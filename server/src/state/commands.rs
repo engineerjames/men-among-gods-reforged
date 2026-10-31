@@ -1,4 +1,4 @@
-use core::constants::{CharacterFlags, GF_CLOSEENEMY, GF_LOOTING, GF_MAYHEM, GF_SPEEDY};
+use core::constants::CharacterFlags;
 use core::string_operations::c_string_to_str;
 use core::talent_trees::{TalentStatBonuses, talent_stat_bonuses};
 use core::types::FontColor;
@@ -145,7 +145,6 @@ const ALL_COMMANDS: &[&str] = &[
     "cap",
     "caution",
     "ccp",
-    "closenemey",
     "create",
     "createspecial",
     "creator",
@@ -201,12 +200,10 @@ const ALL_COMMANDS: &[&str] = &[
     "lookdepot",
     "lookequip",
     "lookinv",
-    "looting",
     "lower",
     "luck",
     "mailpass",
     "mark",
-    "mayhem",
     "me",
     "mirror",
     "name",
@@ -246,7 +243,6 @@ const ALL_COMMANDS: &[&str] = &[
     "slap",
     "soulstone",
     "sort",
-    "speedy",
     "spellignore",
     "sprite",
     "staff",
@@ -964,28 +960,8 @@ impl GameState {
             cn,
             core::types::FontColor::Blue,
             &format!(
-                "mayhem={}, looting={}, close={}, cap={}, speedy={}\n",
-                if (self.globals.flags & core::constants::GF_MAYHEM) != 0 {
-                    "yes"
-                } else {
-                    "no"
-                },
-                if (self.globals.flags & core::constants::GF_LOOTING) != 0 {
-                    "yes"
-                } else {
-                    "no"
-                },
-                if (self.globals.flags & core::constants::GF_CLOSEENEMY) != 0 {
-                    "yes"
-                } else {
-                    "no"
-                },
+                "cap={}\n",
                 if (self.globals.flags & core::constants::GF_CAP) != 0 {
-                    "yes"
-                } else {
-                    "no"
-                },
-                if (self.globals.flags & core::constants::GF_SPEEDY) != 0 {
                     "yes"
                 } else {
                     "no"
@@ -1215,11 +1191,6 @@ impl GameState {
                     arg_get(1),
                     CharacterFlags::ComputerControlledPlayer.bits(),
                 );
-                return;
-            }
-            Some("closenemey") if f_g => {
-                log::debug!("Processing closeenemy command for {}", cn);
-                God::set_gflag(self, cn, GF_CLOSEENEMY);
                 return;
             }
             Some("create") if f_g => {
@@ -1492,11 +1463,6 @@ impl GameState {
                 self.do_look_player_equipment(cn, parse_usize(arg_get(1)));
                 return;
             }
-            Some("looting") if f_g => {
-                log::debug!("Processing looting command for {}", cn);
-                God::set_gflag(self, cn, GF_LOOTING);
-                return;
-            }
             Some("lower") if f_g => {
                 log::debug!("Processing lower command for {}", cn);
                 God::lower_char(self, cn, arg_get(1), arg_get(2));
@@ -1525,11 +1491,6 @@ impl GameState {
             Some("listblack") if f_giu => {
                 log::debug!("Processing listblack command for {}", cn);
                 self.do_list_all_flags(cn, CharacterFlags::Black.bits());
-                return;
-            }
-            Some("mayhem") if f_g => {
-                log::debug!("Processing mayhem command for {}", cn);
-                God::set_gflag(self, cn, GF_MAYHEM);
                 return;
             }
             Some("mark") if f_giu => {
@@ -1764,11 +1725,6 @@ impl GameState {
             Some("soulstone") if f_g => {
                 log::debug!("Processing soulstone command for {}", cn);
                 self.do_make_soulstone(cn, parse_i32(arg_get(1)));
-                return;
-            }
-            Some("speedy") if f_g => {
-                log::debug!("Processing speedy command for {}", cn);
-                God::set_gflag(self, cn, GF_SPEEDY);
                 return;
             }
             Some("spellignore") if !f_m => {

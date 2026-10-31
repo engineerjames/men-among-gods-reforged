@@ -17,7 +17,7 @@ Each character (NPC and player alike) has 10 `text[]` slots. Their meaning is **
 | `text[6]` | **Stop keyword** — a magic word that, when spoken by a player, causes the NPC to drop all enemies and reset aggro (`npc_hear`). Compared case-insensitively. |
 | `text[7]` | **Stop response** — the NPC's acknowledgment reply after the stop keyword is used. |
 | `text[8]` | **Password warning** — said when a player enters the outer warning radius of a password-guarded territory, before the NPC turns hostile. |
-| `text[9]` | **Binary grave log** — not a string. Repurposed as a 40-entry ring buffer of raw `i32` item indices representing graves this NPC has already looted. Managed by `npc_already_searched_grave` / `npc_add_searched_grave`. |
+| `text[9]` | **Unused (legacy binary grave log)** — not a string. Historically a 40-entry ring buffer of raw `i32` item indices for graves the NPC had looted under the removed `GF_LOOTING` global flag. No longer read or written by the server. |
 
 ### Player usage
 

@@ -3491,38 +3491,6 @@ impl God {
         }
     }
 
-    /// Set a global server flag (admin operation).
-    ///
-    /// Modifies server-level flags used to enable or disable features.
-    ///
-    /// # Arguments
-    ///
-    /// * `gs` - Active game state used by this function.
-    /// * `cn` - Character index used by this function.
-    /// * `flag` - Value passed to `set_gflag`.
-    pub fn set_gflag(gs: &mut GameState, cn: usize, flag: i32) {
-        if !Character::is_sane_character(cn) {
-            return;
-        }
-
-        let flag_bit = 1i32 << flag;
-        if gs.globals.flags & flag_bit != 0 {
-            gs.globals.flags &= !flag_bit;
-            gs.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                &format!("Removed global flag {}\n", flag),
-            );
-        } else {
-            gs.globals.flags |= flag_bit;
-            gs.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                &format!("Added global flag {}\n", flag),
-            );
-        }
-    }
-
     /// Toggle the purple (privileged) status for a character.
     ///
     /// Grants or removes purple display/privileges from `co`.

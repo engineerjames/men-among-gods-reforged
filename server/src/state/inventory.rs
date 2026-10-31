@@ -8,51 +8,6 @@ use core::types::FontColor;
 use std::cmp::Ordering;
 
 impl GameState {
-    /// Port of `do_store_item(int cn)` from `svr_do.cpp`.
-    ///
-    /// Attempts to store the item currently on the character's cursor (`citem`)
-    /// into the first free inventory slot. Performs basic validation (invalid
-    /// cursor-encoded values are rejected) and marks the character for update
-    /// when the operation succeeds.
-    ///
-    /// # Returns
-    /// * `Ok(slot)` - Inventory slot index (0..39) where the item was placed
-    /// * `Err(-1)` - Failure (invalid `citem` or no free slot)
-    ///
-    /// # Arguments
-    /// * `cn` - Character id performing the store operation
-    pub(crate) fn do_store_item(&mut self, cn: usize) -> i32 {
-        let ch = &mut self.characters[cn];
-
-        // Check if citem has the high bit set (0x80000000), which indicates it's invalid
-        if (ch.citem & 0x80000000) != 0 {
-            return -1;
-        }
-
-        // Find first empty inventory slot
-        let mut slot = -1;
-        for n in 0..40 {
-            if ch.item[n] == 0 {
-                slot = n as i32;
-                break;
-            }
-        }
-
-        // If no empty slot found, return failure
-        if slot == -1 {
-            return -1;
-        }
-
-        // Store the carried item in the empty slot
-        ch.item[slot as usize] = ch.citem;
-        ch.citem = 0;
-
-        // Update character to sync with client
-        ch.set_do_update_flags();
-
-        slot
-    }
-
     /// Port of `do_sort(cn, order)` from `svr_do.cpp`.
     ///
     /// Sorts a character's inventory according to a custom order string. The
