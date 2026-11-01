@@ -8,6 +8,7 @@
 //! tile keeps a continuous projected position.
 
 use std::collections::HashMap;
+use std::ops::{Add, Neg, Sub};
 
 use mag_core::constants::{TILEX, TILEY};
 
@@ -20,11 +21,44 @@ use super::FLOOR_TILE_WIDTH;
 /// and shown without interpolation.
 const SNAP_DISTANCE_SUB: i32 = FLOOR_TILE_WIDTH * SUBPIXEL_UNIT;
 
+/// One `(2, ±1)` px step of the isometric pixel lattice, in [`SUBPIXEL_UNIT`] units.
+const LATTICE_UNIT: i32 = 4 * SUBPIXEL_UNIT;
+
 /// Projected world-space position in [`SUBPIXEL_UNIT`] units.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct WorldPos {
     x: i32,
     y: i32,
+}
+
+impl Add for WorldPos {
+    type Output = Self;
+    fn add(self, o: Self) -> Self {
+        Self {
+            x: self.x + o.x,
+            y: self.y + o.y,
+        }
+    }
+}
+
+impl Sub for WorldPos {
+    type Output = Self;
+    fn sub(self, o: Self) -> Self {
+        Self {
+            x: self.x - o.x,
+            y: self.y - o.y,
+        }
+    }
+}
+
+impl Neg for WorldPos {
+    type Output = Self;
+    fn neg(self) -> Self {
+        Self {
+            x: -self.x,
+            y: -self.y,
+        }
+    }
 }
 
 impl WorldPos {
@@ -92,6 +126,106 @@ impl WorldPos {
         Self {
             x: lerp_i32(self.x, target.x, alpha),
             y: lerp_i32(self.y, target.y, alpha),
+        }
+    }
+
+    /// Floors each axis to a whole pixel.
+    ///
+    /// # Returns
+    ///
+    /// * The position with both components multiples of [`SUBPIXEL_UNIT`].
+    fn floor_px(self) -> Self {
+        Self {
+            x: self.x.div_euclid(SUBPIXEL_UNIT) * SUBPIXEL_UNIT,
+            y: self.y.div_euclid(SUBPIXEL_UNIT) * SUBPIXEL_UNIT,
+        }
+    }
+
+    /// Rounds to the nearest point of the isometric pixel lattice spanned by
+    /// `(2, 1)` and `(2, -1)` px.
+    ///
+    /// Floor-diamond edges have slope ±1/2, so only shifts on this lattice
+    /// keep their rasterised staircase in phase; flooring x and y separately
+    /// on a diagonal walk makes edges flicker between two phases.
+    ///
+    /// # Returns
+    ///
+    /// * The nearest lattice point, in [`SUBPIXEL_UNIT`] units.
+    fn snap_lattice(self) -> Self {
+        let m = (self.x + 2 * self.y + LATTICE_UNIT / 2).div_euclid(LATTICE_UNIT);
+        let n = (self.x - 2 * self.y + LATTICE_UNIT / 2).div_euclid(LATTICE_UNIT);
+        Self {
+            x: 2 * (m + n) * SUBPIXEL_UNIT,
+            y: (m - n) * SUBPIXEL_UNIT,
+        }
+    }
+}
+
+/// An interpolated screen-space offset together with its change over the
+/// current tick, both in [`SUBPIXEL_UNIT`] units.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct Motion {
+    /// Offset for the frame being rendered.
+    off: WorldPos,
+    /// Offset change from the previous tick to the current one.
+    vel: WorldPos,
+}
+
+impl Add for Motion {
+    type Output = Self;
+    fn add(self, o: Self) -> Self {
+        Self {
+            off: self.off + o.off,
+            vel: self.vel + o.vel,
+        }
+    }
+}
+
+impl Neg for Motion {
+    type Output = Self;
+    fn neg(self) -> Self {
+        Self {
+            off: -self.off,
+            vel: -self.vel,
+        }
+    }
+}
+
+impl Motion {
+    /// Interpolates an object's offset from its tile anchor.
+    ///
+    /// # Arguments
+    ///
+    /// * `prev` - Projected position at the previous tick, if known.
+    /// * `target` - Projected position at the current tick.
+    /// * `anchor` - Tile anchor; also the motion origin when there is no history.
+    /// * `alpha` - Interpolation factor in `[0, 1]`.
+    ///
+    /// # Returns
+    ///
+    /// * The raw (unrounded) offset and its per-tick velocity.
+    fn of(prev: Option<WorldPos>, target: WorldPos, anchor: WorldPos, alpha: f32) -> Self {
+        let (pos, from) = match prev {
+            Some(prev) if prev.is_near(target) => (prev.lerp(target, alpha), prev),
+            _ => (target, anchor),
+        };
+        Self {
+            off: pos - anchor,
+            vel: target - from,
+        }
+    }
+
+    /// Rounds the offset to whole pixels: onto the isometric lattice when the
+    /// motion is diagonal in screen space, per axis otherwise.
+    ///
+    /// # Returns
+    ///
+    /// * The pixel-aligned offset.
+    fn quantise(self) -> WorldPos {
+        if self.vel.x != 0 && self.vel.y != 0 {
+            self.off.snap_lattice()
+        } else {
+            self.off.floor_px()
         }
     }
 }
@@ -204,46 +338,62 @@ impl WorldInterpolator {
     ///
     /// # Returns
     ///
-    /// * `(x, y)` in [`SUBPIXEL_UNIT`] units, equal to `-centre.obj_*off_sub`
-    ///   when no usable history exists.
+    /// * `(x, y)` in [`SUBPIXEL_UNIT`] units, rounded to whole pixels; equal
+    ///   to `-centre.obj_*off_sub` when no usable history exists.
     pub(super) fn camera_offset(&self, map: &GameMap) -> (i32, i32) {
+        let cam = self.camera_motion(map).quantise();
+        (cam.x, cam.y)
+    }
+
+    /// Returns the raw camera offset motion (the negated centre-object motion).
+    ///
+    /// # Arguments
+    ///
+    /// * `map` - Live map whose centre tile anchors the camera.
+    ///
+    /// # Returns
+    ///
+    /// * The unrounded camera offset and its per-tick velocity; zero without a centre tile.
+    fn camera_motion(&self, map: &GameMap) -> Motion {
         let Some(center) = map.tile_at_xy(TILEX / 2, TILEY / 2) else {
-            return (0, 0);
+            return Motion::default();
         };
         let anchor = WorldPos::anchor(center);
         let target = WorldPos::of_object(center);
-        let camera = match self.previous.camera {
-            Some(prev) if prev.is_near(target) => prev.lerp(target, self.alpha),
-            _ => target,
-        };
-        (anchor.x - camera.x, anchor.y - camera.y)
+        -Motion::of(self.previous.camera, target, anchor, self.alpha)
     }
 
     /// Returns the interpolated sub-tile offset for the character on a tile.
     ///
+    /// The camera and character offsets are rounded together so that two
+    /// sprites a constant sub-pixel distance apart never alternate pixels;
+    /// the result is `round(camera + character) - round(camera)`.
+    ///
     /// # Arguments
     ///
+    /// * `map` - Live map, used to derive the camera motion.
     /// * `tile` - Live tile holding the character.
     ///
     /// # Returns
     ///
     /// * `(x, y)` in [`SUBPIXEL_UNIT`] units relative to the tile's ground
-    ///   diamond; falls back to the tile's own offsets without history.
-    pub(super) fn character_offset(&self, tile: &CMapTile) -> (i32, i32) {
+    ///   diamond, rounded to whole pixels; falls back to the tile's own
+    ///   offsets without history.
+    pub(super) fn character_offset(&self, map: &GameMap, tile: &CMapTile) -> (i32, i32) {
+        let anchor = WorldPos::anchor(tile);
         let target = WorldPos::of_object(tile);
         let prev = if tile.ch_nr != 0 {
-            self.previous.characters.get(&(tile.ch_nr, tile.ch_id))
+            self.previous
+                .characters
+                .get(&(tile.ch_nr, tile.ch_id))
+                .copied()
         } else {
             None
         };
-        match prev {
-            Some(&prev) if prev.is_near(target) => {
-                let anchor = WorldPos::anchor(tile);
-                let pos = prev.lerp(target, self.alpha);
-                (pos.x - anchor.x, pos.y - anchor.y)
-            }
-            _ => (tile.obj_xoff_sub, tile.obj_yoff_sub),
-        }
+        let ch = Motion::of(prev, target, anchor, self.alpha);
+        let cam = self.camera_motion(map);
+        let off = (cam + ch).quantise() - cam.quantise();
+        (off.x, off.y)
     }
 }
 
@@ -270,18 +420,167 @@ mod tests {
     #[test]
     fn without_history_offsets_pass_through() {
         let mut map = map_with_origin(100, 100);
-        set_center_character(&mut map, 7, 5 * SUBPIXEL_UNIT, -3 * SUBPIXEL_UNIT);
+        set_center_character(&mut map, 7, 6 * SUBPIXEL_UNIT, -3 * SUBPIXEL_UNIT);
         let interp = WorldInterpolator::new();
 
         assert_eq!(
             interp.camera_offset(&map),
-            (-5 * SUBPIXEL_UNIT, 3 * SUBPIXEL_UNIT)
+            (-6 * SUBPIXEL_UNIT, 3 * SUBPIXEL_UNIT)
         );
         let tile = map.tile_at_xy(TILEX / 2, TILEY / 2).unwrap();
         assert_eq!(
-            interp.character_offset(tile),
-            (5 * SUBPIXEL_UNIT, -3 * SUBPIXEL_UNIT)
+            interp.character_offset(&map, tile),
+            (6 * SUBPIXEL_UNIT, -3 * SUBPIXEL_UNIT)
         );
+    }
+
+    fn alpha_sweep() -> impl Iterator<Item = f32> {
+        (0..=64).map(|i| i as f32 / 64.0)
+    }
+
+    #[test]
+    fn diagonal_walk_stays_on_isometric_lattice() {
+        let mut map = map_with_origin(100, 100);
+        let mut interp = WorldInterpolator::new();
+        set_center_character(&mut map, 7, 0, 0);
+        interp.record_tick(&map);
+        set_center_character(&mut map, 7, -16 * SUBPIXEL_UNIT, 8 * SUBPIXEL_UNIT);
+        interp.record_tick(&map);
+
+        for alpha in alpha_sweep() {
+            interp.set_alpha(alpha);
+            let (x, y) = interp.camera_offset(&map);
+            assert_eq!(x % SUBPIXEL_UNIT, 0, "alpha {alpha}");
+            assert_eq!(y % SUBPIXEL_UNIT, 0, "alpha {alpha}");
+            let (px, py) = (x / SUBPIXEL_UNIT, y / SUBPIXEL_UNIT);
+            assert_eq!(px % 2, 0, "alpha {alpha}: x {px} not even");
+            assert_eq!(px, -2 * py, "alpha {alpha}: ({px}, {py}) off the 2:1 line");
+        }
+        interp.set_alpha(1.0);
+        assert_eq!(
+            interp.camera_offset(&map),
+            (16 * SUBPIXEL_UNIT, -8 * SUBPIXEL_UNIT)
+        );
+    }
+
+    #[test]
+    fn horizontal_walk_keeps_single_pixel_steps() {
+        let mut map = map_with_origin(100, 100);
+        let mut interp = WorldInterpolator::new();
+        set_center_character(&mut map, 7, 0, 0);
+        interp.record_tick(&map);
+        set_center_character(&mut map, 7, -8 * SUBPIXEL_UNIT, 0);
+        interp.record_tick(&map);
+
+        let mut seen = std::collections::HashSet::new();
+        for alpha in alpha_sweep() {
+            interp.set_alpha(alpha);
+            let (x, y) = interp.camera_offset(&map);
+            assert_eq!(y, 0);
+            assert_eq!(x % SUBPIXEL_UNIT, 0);
+            seen.insert(x / SUBPIXEL_UNIT);
+        }
+        assert!((0..=8).all(|px| seen.contains(&px)), "{seen:?}");
+    }
+
+    #[test]
+    fn own_character_cancels_camera_during_diagonal_walk() {
+        let mut map = map_with_origin(100, 100);
+        let mut interp = WorldInterpolator::new();
+        set_center_character(&mut map, 7, 3 * SUBPIXEL_UNIT, -SUBPIXEL_UNIT - 100);
+        interp.record_tick(&map);
+        set_center_character(
+            &mut map,
+            7,
+            13 * SUBPIXEL_UNIT + 77,
+            -6 * SUBPIXEL_UNIT - 200,
+        );
+        interp.record_tick(&map);
+
+        let tile = map.tile_at_xy(TILEX / 2, TILEY / 2).unwrap();
+        for alpha in alpha_sweep() {
+            interp.set_alpha(alpha);
+            let (cx, cy) = interp.camera_offset(&map);
+            let (hx, hy) = interp.character_offset(&map, tile);
+            assert_eq!((cx + hx, cy + hy), (0, 0), "alpha {alpha}");
+        }
+    }
+
+    fn set_npc(map: &mut GameMap, idx: usize, xoff: i32, yoff: i32) {
+        let tile = map.tile_at_index_mut(idx).unwrap();
+        tile.ch_nr = 9;
+        tile.ch_id = 2;
+        tile.ch_sprite = 1000;
+        tile.obj_xoff_sub = xoff;
+        tile.obj_yoff_sub = yoff;
+    }
+
+    #[test]
+    fn other_characters_walking_diagonally_stay_on_lattice() {
+        let mut map = map_with_origin(100, 100);
+        let mut interp = WorldInterpolator::new();
+        set_center_character(&mut map, 7, 0, 0);
+        let idx = GameMap::tile_index(3, 3).unwrap();
+        set_npc(&mut map, idx, 0, 0);
+        interp.record_tick(&map);
+        set_npc(&mut map, idx, 16 * SUBPIXEL_UNIT, 8 * SUBPIXEL_UNIT);
+        interp.record_tick(&map);
+
+        let tile = map.tile_at_index(idx).unwrap();
+        for alpha in alpha_sweep() {
+            interp.set_alpha(alpha);
+            let (x, y) = interp.character_offset(&map, tile);
+            assert_eq!(x % SUBPIXEL_UNIT, 0);
+            assert_eq!(x / SUBPIXEL_UNIT, 2 * (y / SUBPIXEL_UNIT), "alpha {alpha}");
+        }
+    }
+
+    #[test]
+    fn character_walking_alongside_player_holds_its_screen_position() {
+        // NPC walks the same diagonal as the player, a constant off-pixel distance away.
+        let (dx, dy) = (3 * SUBPIXEL_UNIT + 100, SUBPIXEL_UNIT + 37);
+        let mut map = map_with_origin(100, 100);
+        let mut interp = WorldInterpolator::new();
+        let idx = GameMap::tile_index(3, 3).unwrap();
+        set_center_character(&mut map, 7, 0, 0);
+        set_npc(&mut map, idx, dx, dy);
+        interp.record_tick(&map);
+        set_center_character(&mut map, 7, -16 * SUBPIXEL_UNIT, 8 * SUBPIXEL_UNIT);
+        set_npc(
+            &mut map,
+            idx,
+            -16 * SUBPIXEL_UNIT + dx,
+            8 * SUBPIXEL_UNIT + dy,
+        );
+        interp.record_tick(&map);
+
+        let tile = map.tile_at_index(idx).unwrap();
+        let mut screen = std::collections::HashSet::new();
+        for alpha in alpha_sweep() {
+            interp.set_alpha(alpha);
+            let (cx, cy) = interp.camera_offset(&map);
+            let (hx, hy) = interp.character_offset(&map, tile);
+            screen.insert((cx + hx, cy + hy));
+        }
+        assert_eq!(screen.len(), 1, "{screen:?}");
+    }
+
+    #[test]
+    fn stationary_character_moves_with_the_ground() {
+        let mut map = map_with_origin(100, 100);
+        let mut interp = WorldInterpolator::new();
+        let idx = GameMap::tile_index(3, 3).unwrap();
+        set_center_character(&mut map, 7, 0, 0);
+        set_npc(&mut map, idx, 0, 0);
+        interp.record_tick(&map);
+        set_center_character(&mut map, 7, -8 * SUBPIXEL_UNIT, 0);
+        interp.record_tick(&map);
+
+        let tile = map.tile_at_index(idx).unwrap();
+        for alpha in alpha_sweep() {
+            interp.set_alpha(alpha);
+            assert_eq!(interp.character_offset(&map, tile), (0, 0), "alpha {alpha}");
+        }
     }
 
     #[test]
@@ -316,7 +615,7 @@ mod tests {
         );
         let tile = map.tile_at_xy(TILEX / 2, TILEY / 2).unwrap();
         assert_eq!(
-            interp.character_offset(tile),
+            interp.character_offset(&map, tile),
             (-4 * SUBPIXEL_UNIT, 2 * SUBPIXEL_UNIT)
         );
     }
@@ -360,7 +659,7 @@ mod tests {
 
         assert_eq!(interp.camera_offset(&map), (0, 0));
         let tile = map.tile_at_xy(TILEX / 2, TILEY / 2).unwrap();
-        assert_eq!(interp.character_offset(tile), (0, 0));
+        assert_eq!(interp.character_offset(&map, tile), (0, 0));
     }
 
     #[test]
@@ -381,7 +680,7 @@ mod tests {
         }
         interp.set_alpha(0.0);
         let tile = map.tile_at_index(idx).unwrap();
-        assert_eq!(interp.character_offset(tile), (6 * SUBPIXEL_UNIT, 0));
+        assert_eq!(interp.character_offset(&map, tile), (6 * SUBPIXEL_UNIT, 0));
     }
 
     #[test]

@@ -9,6 +9,7 @@ use mag_core::constants::{
 
 use crate::{
     filepaths, font_cache,
+    game_map::GameMap,
     gfx_cache::GraphicsCache,
     player_state::PlayerState,
     types::map::{CMapTile, SUBPIXEL_UNIT},
@@ -834,7 +835,7 @@ impl GameScene {
                 if tile.ch_nr == 0 && tile.obj2 <= 0 && tile.ch_sprite == 0 {
                     continue;
                 }
-                let pos = self.tile_pos(tile, x, y, cam_xoff, cam_yoff);
+                let pos = self.tile_pos(map, tile, x, y, cam_xoff, cam_yoff);
                 let slot = Self::draw_slot(ps, pos);
                 if slot != (x, y) {
                     incoming.entry(slot).or_default().push(pos);
@@ -854,7 +855,7 @@ impl GameScene {
                     continue;
                 }
 
-                let pos = self.tile_pos(tile, x, y, cam_xoff, cam_yoff);
+                let pos = self.tile_pos(map, tile, x, y, cam_xoff, cam_yoff);
 
                 Self::draw_tile_object(canvas, gfx, ps, tile, pos, hover_highlight, hide)?;
                 let own = (Self::draw_slot(ps, pos) == (x, y)).then_some(pos);
@@ -916,13 +917,14 @@ impl GameScene {
     /// Builds the draw position for the tile at `(x, y)` with its interpolated character offset.
     fn tile_pos(
         &self,
+        map: &GameMap,
         tile: &CMapTile,
         x: usize,
         y: usize,
         cam_xoff: i32,
         cam_yoff: i32,
     ) -> TilePos {
-        let (ch_xoff, ch_yoff) = self.world_interpolator.character_offset(tile);
+        let (ch_xoff, ch_yoff) = self.world_interpolator.character_offset(map, tile);
         TilePos {
             x,
             y,
