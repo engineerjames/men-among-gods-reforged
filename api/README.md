@@ -242,6 +242,61 @@ Diagnostics "Network Test" action:
 Both endpoints are mounted under the existing `/diag` route group and are
 subject to the public per-IP rate limit middleware.
 
+## Public world information endpoints
+
+Read-only, unauthenticated JSON endpoints under `/world/*` intended for
+community tooling (e.g. a Discord bot). They share the public per-IP rate
+limiter.
+
+| Endpoint | Source | Freshness |
+|---|---|---|
+| `GET /world/time` | `game:live:status` | ~10 s |
+| `GET /world/online` | `game:live:status` | ~10 s |
+| `GET /world/leaderboard/{board}?limit=` | `game:char:*` scan, cached 60 s | up to ~12 min (saver rotation) |
+| `GET /world/top`, `GET /world/richest` | aliases for `leaderboard/points` and `leaderboard/wealth` | as above |
+| `GET /world/stats` | `game:char:*` scan, cached 60 s | up to ~12 min (saver rotation) |
+
+The game server publishes a compact `LiveStatus` snapshot
+(`core::live_status_store`) to `game:live:status` every 360 ticks with a
+60 s TTL. If the key is missing the server is down or not yet publishing and
+`/world/time` + `/world/online` return `503 {"error":"server_offline"}`.
+
+- `/world/time` returns `mdtime`, `mdday`, `year`, `hour`, `minute`, `day`,
+    `month`, `moon` (`new|growing|full|dwindling`), `daylight` (0-255), a
+    preformatted `sentence` (`"It's 0:40 on the 8th of the 11th month of the
+    year 50."`), `moon_description` (`"The Moon is growing."`), plus server
+    stats `uptime_seconds`, `players_online` and `max_online` (all-time peak).
+- `/world/online` lists players exactly as the in-game `#who` shows them to a
+    normal player: invisible / `NoWho` characters are omitted, and `area` is
+    `null` for gods and purple-kindred characters. Each entry carries `name`,
+    `points`, `rank` and a `roles` object (`god`, `creator`, `imp`, `staff`,
+    `usurp`, `purple`, `poh`, `poh_leader`).
+- `/world/leaderboard/{board}` includes every player character (staff and
+    gods are not filtered; use `roles` to flag them). `limit` defaults to 10
+    and is clamped to `1..=100`. Every row has `position`, `name`, `points`,
+    `rank`, `roles` and the board's `value`; the envelope's `metric` says what
+    `value` means. Boards:
+
+    | `board` | `value` | extra fields |
+    |---|---|---|
+    | `points` | experience points | |
+    | `wealth` | carried + banked gold, hundredths (`/100` gold, `%100` silver) | `gold`, `bank` |
+    | `pvp_kills` | player kills | `pvp_kills`, `deaths` |
+    | `deaths` | deaths | `pvp_kills`, `deaths` |
+    | `giant_slayers` | NPC kills above own rank | `kills_below`, `kills_at`, `kills_above` |
+    | `playtime` | lifetime online seconds | `hours` |
+    | `oldest` | creation date (unix s), earliest first | `last_login` |
+    | `veterans` | as `oldest`, only players seen in the last 30 days | `last_login` |
+    | `stronghold` | unspent Black Stronghold points | `kills_below`, `kills_at`, `kills_above`, `candles` |
+    | `infamous` | shopkeeper / quest-giver murders | |
+
+    Count-based boards omit players with a zero value; `oldest`/`veterans`
+    omit characters without a creation date.
+- `/world/stats` returns `total_players`, a `ranks` histogram
+    (`[{index, rank, count}]`, lowest rank first), a `classes` map
+    (`Mercenary`, `Templar`, `Harakim`, `SeyanDu`, `Warrior`, `Sorcerer`,
+    `ArchTemplar`, `ArchHarakim`, `Unknown`) and the `purple` player count.
+
 # Integration with the game server and client applications
 The authentication service is designed to be integrated with both the game server and client applications. Over time this is hoped to be a tighter integration.
 
@@ -339,8 +394,10 @@ sequenceDiagram
 ## Communication flow - Playing the game
 This is where the API and game server meet. Gameplay world state is persisted in KeyDB and loaded into memory by the game server at startup. Fresh environments are seeded ahead of time from a `.wsnap` world snapshot, so the server starts from KeyDB rather than a removed flat-file backend.
 
-When an account creates a character, the API writes the character metadata to KeyDB immediately. The game server establishes the runtime link the first time the player logs in with a one-time ticket: it loads the character record, creates or reuses the in-game character slot as needed, and then stores the active `server_id` back on the character record so the authentication service can enforce ownership and provide the character list to the client.
+When an account creates a character, the API writes the character metadata to KeyDB immediately. The game server establishes the runtime link the first time the player logs in with a one-time ticket: it loads the character record, creates or reuses the in-game character slot as needed, and then stores the active `server_id` back on the character record so the authentication service can enforce ownership and provide the character list to the client. The server also writes the reverse link `game:char_owner:{server_id} = character_id`.
 After that link exists, the game server also keeps the API-side `class`, `sex`, and `selection_sprite_id` fields synchronized with the live gameplay character so promoted and transformed characters render correctly on the selection screen.
+
+In-game character slots are recycled: once the server erases a player (inactivity expiry, invalid data, `#ERASEPLAYER`), the slot index can be reused by an NPC spawn or another player's new character. To keep a dangling `server_id` from attaching a login to the wrong entity, the server deletes the API `character:{id}` record (and its account-set / name-claim indexes) when it erases a slot, and at login it only reuses a linked slot that is non-empty, flagged as a player, and whose `game:char_owner` entry (when present) matches the ticket's `character_id`. A link that fails those checks is treated as deleted: the login is denied and the API record is removed so the character disappears from the selection screen.
 
 ### First Login Flow
 ```mermaid
@@ -376,6 +433,7 @@ sequenceDiagram
     GS->>DB: HGETALL character:{character_id}
     GS->>GS: Create in-game character slot if needed and set name/description
     GS->>DB: HSET character:{character_id} { server_id={cn}, class, sex, selection_sprite_id }
+    GS->>DB: SET game:char_owner:{cn} character_id
     GS-->>C: SV_LOGIN_OK + SV_TICK
 ```
 
@@ -407,7 +465,8 @@ sequenceDiagram
     GS->>DB: GET+DEL game_login_ticket:{ticket} (atomic consume)
     GS->>GS: Set player version/race from ticket metadata
     GS->>DB: HGETALL character:{character_id}
-    Note over GS: If character has a valid server_id, reuse that slot
+    GS->>DB: GET game:char_owner:{server_id}
+    Note over GS: Reuse the slot only if it is live, a player, and owned by character_id; otherwise deny and delete the API record
     GS-->>C: SV_LOGIN_OK + SV_TICK
 ```
 

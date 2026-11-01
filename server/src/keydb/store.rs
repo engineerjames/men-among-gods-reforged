@@ -703,6 +703,28 @@ pub fn save_globals(con: &mut Connection, globals: &core::types::Global) -> Resu
     Ok(())
 }
 
+/// Publish the public live-status snapshot under
+/// [`core::live_status_store::LIVE_STATUS_KEY`] with a short TTL so a dead
+/// server disappears from the public API automatically.
+///
+/// # Arguments
+///
+/// * `con`    - An open Redis/KeyDB connection.
+/// * `status` - Snapshot to publish.
+///
+/// # Returns
+///
+/// * `Ok(())` on success, or an `Err` describing the failure.
+pub fn save_live_status(
+    con: &mut Connection,
+    status: &core::live_status_store::LiveStatus,
+) -> Result<(), String> {
+    use core::live_status_store::{LIVE_STATUS_KEY, LIVE_STATUS_TTL_SECS};
+    let bytes = status.to_bytes()?;
+    con.set_ex::<_, _, ()>(LIVE_STATUS_KEY, bytes, LIVE_STATUS_TTL_SECS)
+        .map_err(|e| format!("KeyDB SETEX {LIVE_STATUS_KEY}: {e}"))
+}
+
 /// Save text data (bad names, bad words, MOTD) to KeyDB.
 ///
 /// Bad-name and bad-word lists are bincode-encoded `Vec<String>` blobs.

@@ -305,7 +305,25 @@ pub fn sync_character_selection_metadata(
     set_character_selection_metadata(character_id, class, sex, selection_sprite_id, rank_index)
 }
 
-/// Persists the linked gameplay `server_id` for an API-side character hash.
+/// KeyDB key holding the API character id that owns gameplay slot `server_id`.
+///
+/// This is the reverse of the `server_id` field on `character:{id}` and lets the
+/// server verify at login that a slot still belongs to the character the API
+/// thinks it does (slots are recycled by `God::create_char` once erased).
+///
+/// # Arguments
+///
+/// * `server_id` - Internal gameplay slot index.
+///
+/// # Returns
+///
+/// * Key in the form `game:char_owner:{server_id}`.
+fn character_slot_owner_key(server_id: u32) -> String {
+    format!("game:char_owner:{}", server_id)
+}
+
+/// Persists the linked gameplay `server_id` for an API-side character hash and
+/// records the reverse `game:char_owner:{server_id}` link.
 ///
 /// # Arguments
 ///
@@ -319,12 +337,135 @@ pub fn sync_character_selection_metadata(
 pub fn set_character_server_id(character_id: u64, server_id: u32) -> Result<(), String> {
     let mut con = connect()?;
     let key = format!("character:{}", character_id);
-    redis::cmd("HSET")
-        .arg(&key)
-        .arg("server_id")
-        .arg(server_id)
+    redis::pipe()
+        .hset(&key, "server_id", server_id)
+        .ignore()
+        .set(character_slot_owner_key(server_id), character_id)
+        .ignore()
         .query::<()>(&mut con)
         .map_err(|err| format!("Failed to set character server_id: {err}"))
+}
+
+/// Loads the API character id currently recorded as the owner of a gameplay slot.
+///
+/// # Arguments
+///
+/// * `server_id` - Internal gameplay slot index.
+///
+/// # Returns
+///
+/// * `Ok(Some(character_id))` when an owner link exists.
+/// * `Ok(None)` when the slot has no recorded owner (legacy character or NPC).
+/// * `Err(String)` when KeyDB access fails.
+pub fn load_character_slot_owner(server_id: u32) -> Result<Option<u64>, String> {
+    let mut con = connect()?;
+    con.get(character_slot_owner_key(server_id))
+        .map_err(|err| format!("Failed to load character slot owner: {err}"))
+}
+
+/// Deletes an API-side character record and its indexes.
+///
+/// Mirrors `api::pipelines::delete_character`: removes the id from the owning
+/// account's `account:{id}:characters` set, releases the `character:name:{lc}`
+/// claim when it still points at this character, drops the reverse slot-owner
+/// link when it still points at this character, and finally deletes the
+/// `character:{id}` hash.
+///
+/// # Arguments
+///
+/// * `character_id` - API character ID to delete.
+///
+/// # Returns
+///
+/// * `Ok(())` on success (including when the record was already gone).
+/// * `Err(String)` when KeyDB access fails.
+pub fn delete_api_character(character_id: u64) -> Result<(), String> {
+    let mut con = connect()?;
+    let key = format!("character:{}", character_id);
+    let (account_id, name, server_id): (Option<u64>, Option<String>, Option<u32>) =
+        redis::cmd("HMGET")
+            .arg(&key)
+            .arg("account_id")
+            .arg("name")
+            .arg("server_id")
+            .query(&mut con)
+            .map_err(|err| format!("Failed to read character {character_id}: {err}"))?;
+
+    let mut pipe = redis::pipe();
+    if let Some(account_id) = account_id {
+        pipe.srem(format!("account:{}:characters", account_id), character_id)
+            .ignore();
+    }
+    pipe.del(&key).ignore();
+    pipe.query::<()>(&mut con)
+        .map_err(|err| format!("Failed to delete character {character_id}: {err}"))?;
+
+    if let Some(name) = name.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
+        delete_key_if_value_matches(
+            &mut con,
+            &format!("character:name:{}", name.to_ascii_lowercase()),
+            character_id,
+        )?;
+    }
+    if let Some(server_id) = server_id {
+        delete_key_if_value_matches(&mut con, &character_slot_owner_key(server_id), character_id)?;
+    }
+    Ok(())
+}
+
+/// Deletes `key` only when its current value equals `expected`.
+///
+/// # Arguments
+///
+/// * `con` - Open KeyDB connection.
+/// * `key` - Key to conditionally delete.
+/// * `expected` - Value the key must hold for the delete to proceed.
+///
+/// # Returns
+///
+/// * `Ok(())` whether or not the key was deleted.
+/// * `Err(String)` when KeyDB access fails.
+fn delete_key_if_value_matches(
+    con: &mut redis::Connection,
+    key: &str,
+    expected: u64,
+) -> Result<(), String> {
+    let stored: Option<u64> = con
+        .get(key)
+        .map_err(|err| format!("Failed to read {key}: {err}"))?;
+    if stored == Some(expected) {
+        con.del::<_, ()>(key)
+            .map_err(|err| format!("Failed to delete {key}: {err}"))?;
+    }
+    Ok(())
+}
+
+/// Removes the API-side character record linked to an erased gameplay slot.
+///
+/// Called when the server erases a player slot (expiry, invalid data) so the
+/// API no longer lists a character whose slot may be recycled by an NPC or
+/// another player's new character.
+///
+/// # Arguments
+///
+/// * `server_id` - Internal gameplay slot index that was erased.
+///
+/// # Returns
+///
+/// * `Ok(Some(character_id))` when a linked API character was deleted.
+/// * `Ok(None)` when the slot had no API owner.
+/// * `Err(String)` when KeyDB access fails.
+pub fn erase_character_slot(server_id: u32) -> Result<Option<u64>, String> {
+    let Some(character_id) = load_character_slot_owner(server_id)? else {
+        return Ok(None);
+    };
+    delete_api_character(character_id)?;
+    // `delete_api_character` only drops the owner link when the hash still pointed here;
+    // make sure a half-written link never survives the erase.
+    let mut con = connect()?;
+    con.del::<_, ()>(character_slot_owner_key(server_id))
+        .map_err(|err| format!("Failed to delete character slot owner: {err}"))?;
+    Ok(Some(character_id))
 }
 
 // ---------------------------------------------------------------------------

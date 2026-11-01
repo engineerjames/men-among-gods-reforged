@@ -361,6 +361,7 @@ file backend has been removed.
 | `game:item:{idx}` | bincode `Item` | 98,304 |
 | `game:titem:{idx}` | bincode `Item` | 4,548 |
 | `game:char:{idx}` | bincode `Character` | 8,192 |
+| `game:char_owner:{idx}` | API `character_id` owning player slot `idx` (reverse of `character:{id}.server_id`; written at first login, deleted when the slot is erased) | 0..8,192 |
 | `game:tchar:{idx}` | bincode `Character` | 4,548 |
 | `game:effect:{idx}` | bincode `Effect` | 4,096 |
 | `game:global` | bincode `Global` | 1 |
@@ -368,6 +369,7 @@ file backend has been removed.
 | `game:badwords` | bincode `Vec<String>` | 1 |
 | `game:motd` | UTF-8 string | 1 |
 | `game:meta:version` | integer | 1 |
+| `game:live:status` | bincode `LiveStatus` (who list + in-game time; republished every 360 ticks, TTL 60s) | 0–1 |
 | `game:map:patch_queue` | bincode `MapPatch` list (RPUSH) | dynamic |
 | `game:map:patch_request` | JSON `{request_id, requested_at}` (TTL 30s) | 0–1 |
 | `game:map:patch_status:{request_id}` | `applied:{unix_ts}` (TTL 300s) | 0..n |

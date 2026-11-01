@@ -7,6 +7,7 @@ pub mod password;
 pub mod pipelines;
 pub mod rate_limit;
 pub mod routes;
+pub mod world;
 
 use axum::Router;
 use axum::middleware;
@@ -37,6 +38,9 @@ pub struct ApiState {
     /// HMAC signing secret for HS256 JWTs. Cached once at startup so
     /// per-request handlers never hit `env::var`.
     pub jwt_secret: Arc<Vec<u8>>,
+    /// Process-local cache for the public `/world/top` and `/world/richest`
+    /// character scans.
+    pub leaderboard_cache: world::LeaderboardCache,
 }
 
 fn parse_log_level(value: &str) -> Option<LevelFilter> {
@@ -212,6 +216,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         con,
         email_sender,
         jwt_secret,
+        leaderboard_cache: world::new_leaderboard_cache(),
     };
 
     let admin_router = admin::build_admin_router(state.clone());
@@ -231,6 +236,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let public_router = Router::new()
         // Diagnostics routes
         .nest("/diag", diag::router())
+        // Public read-only world information (who list, time, leaderboards)
+        .nest("/world", world::router())
         // Public routes
         .route("/login", post(routes::login))
         .route("/accounts", post(routes::create_account))

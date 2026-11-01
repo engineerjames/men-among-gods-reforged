@@ -3658,24 +3658,6 @@ pub fn answer_time(gs: &mut GameState, cn: usize, _co: usize) {
     );
 }
 
-/// Port of `stronghold_points(int cn)` from `talk.cpp`
-///
-/// Calculates the number of stronghold (cityguard) points a character has.
-/// Computation factors in kills, candles and points already spent.
-///
-/// # Arguments
-/// * `cn` - Character whose points are calculated
-///
-/// # Returns
-/// Total available stronghold points
-pub fn stronghold_points(cn: &Character) -> i32 {
-    cn.data[26] / 25 +      // kills below rank
-    cn.data[27] +           // kills at rank
-    cn.data[28] * 2 +       // kills above rank
-    cn.data[43] * 25 -      // candles
-    cn.data[41] // points spent
-}
-
 /// Port of `stronghold_exp_per_pt(int cn)` from `talk.cpp`
 ///
 /// Calculates how much experience is granted per stronghold point based on the character's
@@ -3702,7 +3684,7 @@ pub fn stronghold_exp_per_pt(cn: &Character) -> i32 {
 /// * `_know_idx` - Knowledge index that triggered this answer (unused)
 pub fn answer_points(gs: &mut GameState, cn: usize, co: usize, _know_idx: usize) {
     let exp = stronghold_exp_per_pt(&gs.characters[co]);
-    let pts = stronghold_points(&gs.characters[co]);
+    let pts = gs.characters[co].stronghold_points();
 
     gs.do_sayx(cn, &format!(
             "You have {} points. You can BUY GOLD at one coin per point, BUY HEALING potions for 6 points, BUY MANA potions for 9 points or BUY EXPerience at {} exp per point.",
@@ -3719,7 +3701,7 @@ pub fn answer_points(gs: &mut GameState, cn: usize, co: usize, _know_idx: usize)
 /// * `cn` - NPC character handling the exchange
 /// * `co` - Player character spending points
 pub fn answer_buygold(gs: &mut GameState, cn: usize, co: usize) {
-    let mut pts = stronghold_points(&gs.characters[co]);
+    let mut pts = gs.characters[co].stronghold_points();
     pts = pts.min(100);
 
     if pts < 1 {
@@ -3759,7 +3741,7 @@ pub fn answer_buygold(gs: &mut GameState, cn: usize, co: usize) {
 /// * `cn` - NPC vendor
 /// * `co` - Player purchasing the potion
 pub fn answer_buyhealth(gs: &mut GameState, cn: usize, co: usize) {
-    let pts = stronghold_points(&gs.characters[co]);
+    let pts = gs.characters[co].stronghold_points();
 
     if pts < 6 {
         gs.do_sayx(
@@ -3798,7 +3780,7 @@ pub fn answer_buyhealth(gs: &mut GameState, cn: usize, co: usize) {
 /// * `cn` - NPC vendor
 /// * `co` - Player purchasing the potion
 pub fn answer_buymana(gs: &mut GameState, cn: usize, co: usize) {
-    let pts = stronghold_points(&gs.characters[co]);
+    let pts = gs.characters[co].stronghold_points();
 
     if pts < 9 {
         gs.do_sayx(
@@ -3838,7 +3820,7 @@ pub fn answer_buymana(gs: &mut GameState, cn: usize, co: usize) {
 /// * `cn` - NPC vendor
 /// * `co` - Player purchasing experience
 pub fn answer_buyexp(gs: &mut GameState, cn: usize, co: usize) {
-    let pts = stronghold_points(&gs.characters[co]);
+    let pts = gs.characters[co].stronghold_points();
     let exp = stronghold_exp_per_pt(&gs.characters[co]);
 
     if pts < 1 {

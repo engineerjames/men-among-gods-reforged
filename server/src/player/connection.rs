@@ -72,26 +72,27 @@ fn plr_login_with_resolution(gs: &mut GameState, nr: usize) {
         return;
     }
 
-    let (cn, is_brand_new_character) = match apply_api_login_character_record(gs, &character) {
-        Ok(value) => value,
-        Err(reason) => {
-            player_logging::log_identity_event(
-                nr,
-                login_ticket_data.character_id,
-                &character.name,
-                player_logging::PlayerLogCategory::Login,
-                player_logging::PlayerLogOutcome::Rejected,
-                &format!("character_validation_failed reason={reason:?}"),
-            );
-            log::warn!("API login denied: {:?}", reason);
-            plr_logout(gs, 0, nr, reason);
-            return;
-        }
-    };
+    let (cn, needs_server_id_persist) =
+        match apply_api_login_character_record(gs, &character, resolution.slot_owner) {
+            Ok(value) => value,
+            Err(reason) => {
+                player_logging::log_identity_event(
+                    nr,
+                    login_ticket_data.character_id,
+                    &character.name,
+                    player_logging::PlayerLogCategory::Login,
+                    player_logging::PlayerLogOutcome::Rejected,
+                    &format!("character_validation_failed reason={reason:?}"),
+                );
+                log::warn!("API login denied: {:?}", reason);
+                plr_logout(gs, 0, nr, reason);
+                return;
+            }
+        };
 
     gs.players[nr].usnr = cn;
     gs.players[nr].login_ticket = 0;
-    gs.players[nr].login_needs_server_id = is_brand_new_character;
+    gs.players[nr].login_needs_server_id = needs_server_id_persist;
     gs.players[nr].login_persistence_queued = false;
 
     // get character number requested by player
@@ -380,9 +381,9 @@ where
         }
     };
 
-    let (cn, is_brand_new_character) = apply_api_login_character_record(gs, &character)?;
+    let (cn, needs_server_id_persist) = apply_api_login_character_record(gs, &character, None)?;
 
-    if is_brand_new_character && let Err(err) = set_server_id(character_id, cn as u32) {
+    if needs_server_id_persist && let Err(err) = set_server_id(character_id, cn as u32) {
         log::warn!(
             "Failed to persist server_id for API character {}: {}",
             character_id,
@@ -403,25 +404,54 @@ where
     Ok(cn)
 }
 
+/// Resolve (or create) the gameplay slot backing an API character record.
+///
+/// For linked records (`server_id` present) the slot must still belong to this
+/// character: it must be non-empty, flagged as a player, and — when a reverse
+/// owner link exists — owned by `character.id`. Slots are recycled by
+/// `God::create_char` once erased, so a dangling `server_id` could otherwise
+/// attach a login to an NPC or to another player's new character. A stale link
+/// queues deletion of the API record and denies the login.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state.
+/// * `character` - API-side character record selected by the login ticket.
+/// * `slot_owner` - API character id recorded as owner of `character.server_id`,
+///   `None` when no reverse link exists yet (legacy records).
+///
+/// # Returns
+///
+/// * `Ok((cn, needs_server_id_persist))` with the slot index and whether the
+///   `server_id`/owner link must be (re)written to KeyDB after login.
+/// * `Err(LogoutReason)` when the slot cannot be resolved or created.
 fn apply_api_login_character_record(
     gs: &mut GameState,
     character: &CharacterSummary,
+    slot_owner: Option<u64>,
 ) -> Result<(usize, bool), LogoutReason> {
     let is_brand_new_character = character.server_id.is_none();
 
     let cn = match character.server_id {
         Some(server_id) => {
             let candidate = server_id as usize;
-            let candidate_is_valid = candidate > 0
+            let slot_exists = candidate > 0
                 && candidate < core::constants::MAXCHARS
                 && gs.characters[candidate].used != core::constants::USE_EMPTY;
+            let slot_is_ours = slot_exists
+                && gs.characters[candidate].is_player()
+                && slot_owner.is_none_or(|owner| owner == character.id);
 
-            if !candidate_is_valid {
+            if !slot_is_ours {
                 log::error!(
-                    "API character {} has invalid/stale server_id={} (slot missing or empty)",
+                    "API character {} has stale server_id={} (exists={}, player={}, owner={:?}); deleting API record",
                     character.id,
-                    server_id
+                    server_id,
+                    slot_exists,
+                    slot_exists && gs.characters[candidate].is_player(),
+                    slot_owner
                 );
+                gs.delete_api_character(character.id);
                 return Err(LogoutReason::Failure);
             }
 
@@ -484,7 +514,9 @@ fn apply_api_login_character_record(
     };
     write_ascii_into_fixed(&mut gs.characters[cn].description, &desc);
 
-    Ok((cn, is_brand_new_character))
+    // Legacy records predate the reverse owner link; write it on first login so
+    // later logins can detect slot recycling.
+    Ok((cn, is_brand_new_character || slot_owner.is_none()))
 }
 
 /// Port of `plr_logout(int cn, int player_id, LogoutReason reason)` from `svr_tick.cpp`
@@ -935,6 +967,7 @@ mod tests {
     fn apply_api_login_character_record_covers_existing_and_new_slots() {
         with_test_gs(|gs| {
             setup_existing_character(gs, 5, 0, USE_NONACTIVE, "Stale Name");
+            gs.characters[5].flags = CharacterFlags::Player.bits();
             let existing = CharacterSummary {
                 id: 44,
                 name: "Fresh Name".to_owned(),
@@ -946,14 +979,21 @@ mod tests {
                 rank_index: None,
             };
 
-            let (cn, is_new) = apply_api_login_character_record(gs, &existing).unwrap();
+            let (cn, needs_persist) =
+                apply_api_login_character_record(gs, &existing, Some(44)).unwrap();
             assert_eq!(cn, 5);
-            assert!(!is_new);
+            assert!(!needs_persist);
             assert_eq!(gs.characters[5].get_name(), "Fresh Name");
             assert_eq!(
                 c_string_to_str(&gs.characters[5].description),
                 "Updated description"
             );
+
+            // Legacy record without a reverse owner link: accepted, link gets back-filled.
+            let (cn, needs_persist) =
+                apply_api_login_character_record(gs, &existing, None).unwrap();
+            assert_eq!(cn, 5);
+            assert!(needs_persist);
 
             let template_id = get_race_integer(true, Class::Mercenary) as usize;
             seed_character_template(
@@ -972,7 +1012,7 @@ mod tests {
                 rank_index: None,
             };
 
-            let (new_cn, is_new) = apply_api_login_character_record(gs, &created).unwrap();
+            let (new_cn, is_new) = apply_api_login_character_record(gs, &created, None).unwrap();
             assert!(new_cn > 0);
             assert!(is_new);
             assert_eq!(gs.characters[new_cn].used, USE_NONACTIVE);
@@ -994,6 +1034,49 @@ mod tests {
             let description = c_string_to_str(&gs.characters[new_cn].description);
             assert!(description.contains("Api Hero"));
             assert!(description.contains("looks somewhat nondescript"));
+        });
+    }
+
+    /// Regression: an erased slot recycled by an NPC (or another player's new
+    /// character) must never be attached to a login holding a dangling `server_id`.
+    #[test]
+    fn apply_api_login_character_record_rejects_recycled_or_foreign_slots() {
+        with_test_gs(|gs| {
+            let linked = CharacterSummary {
+                id: 44,
+                name: "Ankan".to_owned(),
+                description: String::new(),
+                sex: Sex::Male,
+                class: Class::Mercenary,
+                selection_sprite_id: None,
+                server_id: Some(5),
+                rank_index: None,
+            };
+
+            // Slot erased and not yet reused.
+            setup_existing_character(gs, 5, 0, core::constants::USE_EMPTY, "Ankan");
+            assert_eq!(
+                apply_api_login_character_record(gs, &linked, Some(44)),
+                Err(LogoutReason::Failure)
+            );
+
+            // Slot recycled by an NPC: live, but not a player (this incident's spider).
+            setup_existing_character(gs, 5, 0, USE_ACTIVE, "spider");
+            gs.characters[5].flags = 0;
+            assert_eq!(
+                apply_api_login_character_record(gs, &linked, None),
+                Err(LogoutReason::Failure)
+            );
+            assert_eq!(gs.characters[5].get_name(), "spider");
+
+            // Slot recycled by another API character (owner link points elsewhere).
+            setup_existing_character(gs, 5, 0, USE_NONACTIVE, "Someone Else");
+            gs.characters[5].flags = CharacterFlags::Player.bits();
+            assert_eq!(
+                apply_api_login_character_record(gs, &linked, Some(99)),
+                Err(LogoutReason::Failure)
+            );
+            assert_eq!(gs.characters[5].get_name(), "Someone Else");
         });
     }
 

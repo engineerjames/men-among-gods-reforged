@@ -358,17 +358,6 @@ impl GameState {
         let defender_is_player =
             (self.characters[defender_index].flags & CharacterFlags::Player.bits()) != 0;
 
-        // GF_MAYHEM: In mayhem mode, non-player characters get a skill bonus.
-        let mayhem = (self.globals.flags & core::constants::GF_MAYHEM) != 0;
-        if mayhem {
-            if !attacker_is_player {
-                s1 += 10;
-            }
-            if !defender_is_player {
-                s2 += 10;
-            }
-        }
-
         // Apply negative luck adjustments if present (C++: luck < 0 -> luck/250 - 1)
         // Only applies to players in the original C code
         let attacker_luck = self.characters[attacker_index].luck;

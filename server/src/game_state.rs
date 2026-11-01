@@ -691,6 +691,45 @@ impl GameState {
         client.submit_ban_write(request)
     }
 
+    /// Queue deletion of the API character record linked to gameplay slot `cn`.
+    ///
+    /// Must be called whenever the server erases a slot that may belong to a
+    /// player (expiry, invalid data), *before* the slot can be recycled by
+    /// `God::create_char`. Failures are logged; the login path independently
+    /// rejects stale links, so a missed delete only leaves a ghost entry on
+    /// the character-selection screen.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Gameplay character slot being erased.
+    pub(crate) fn erase_api_character_slot(&self, cn: usize) {
+        let Some(client) = self.tick_keydb_client.as_ref() else {
+            log::warn!("Cannot queue API unlink for erased slot {cn}: KeyDB worker unavailable");
+            return;
+        };
+        if client.submit_erase_character_slot(cn as u32).is_err() {
+            log::warn!("Failed to queue API unlink for erased slot {cn}");
+        }
+    }
+
+    /// Queue deletion of an API character record whose gameplay slot is gone
+    /// or now belongs to someone else.
+    ///
+    /// # Arguments
+    ///
+    /// * `character_id` - API-side character identifier.
+    pub(crate) fn delete_api_character(&self, character_id: u64) {
+        let Some(client) = self.tick_keydb_client.as_ref() else {
+            log::warn!(
+                "Cannot queue deletion of API character {character_id}: KeyDB worker unavailable"
+            );
+            return;
+        };
+        if client.submit_delete_api_character(character_id).is_err() {
+            log::warn!("Failed to queue deletion of API character {character_id}");
+        }
+    }
+
     /// Perform a clean shutdown of the game state by clearing the dirty flag
     /// and saving all data to KeyDB.
     pub fn shutdown(&mut self) {

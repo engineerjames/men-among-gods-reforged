@@ -82,6 +82,8 @@ pub enum SaveJob {
         /// Outcome message to publish after the save succeeds.
         message: String,
     },
+    /// Publish the public live-status snapshot (`game:live:status`) with a TTL.
+    LiveStatus(core::live_status_store::LiveStatus),
     /// Request a synchronous flush — the saver thread will ack via the
     /// provided one-shot channel once the write completes.
     Flush(mpsc::Sender<Result<(), String>>),
@@ -317,6 +319,16 @@ fn saver_thread_main(rx: mpsc::Receiver<SaveJob>) {
                     }
                 } else {
                     log::warn!("Background save small data skipped: KeyDB unavailable");
+                }
+            }
+            SaveJob::LiveStatus(status) => {
+                if let Some(connection) = con.as_mut() {
+                    if let Err(e) = store::save_live_status(connection, &status) {
+                        log::error!("Background publish live status failed: {e}");
+                        con = None;
+                    }
+                } else {
+                    log::warn!("Background publish live status skipped: KeyDB unavailable");
                 }
             }
             SaveJob::RuntimeData {
