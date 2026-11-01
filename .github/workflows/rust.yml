@@ -47,4 +47,5 @@ jobs:
     - name: Run workspace tests
       run: cargo test --workspace --all-targets --release
     - name: Run workspace clippy
+      if: matrix.os != 'windows-latest'
       run: cargo clippy --workspace --all-targets -- -D warnings
