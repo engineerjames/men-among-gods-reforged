@@ -51,17 +51,18 @@ pub fn fitted_pixel_perfect_window_size(
 ///
 /// When `pixel_perfect_scaling` is enabled, this emulates SDL integer scaling
 /// by using an integer zoom factor and centering the result. Otherwise it uses
-/// aspect-preserving continuous letterboxing.
+/// aspect-preserving continuous letterboxing. The same rect is used to blit the
+/// rendered frame, so mouse mapping and presentation always agree.
 ///
 /// # Arguments
 /// * `window` - The SDL2 window to measure.
-/// * `logical_width` - The width of the logical coordinate space (e.g. 1920).
-/// * `logical_height` - The height of the logical coordinate space (e.g. 1080).
+/// * `logical_width` - The width of the logical coordinate space.
+/// * `logical_height` - The height of the logical coordinate space.
 /// * `pixel_perfect_scaling` - Whether integer scaling is active.
 ///
 /// # Returns
 /// * `(view_x, view_y, view_w, view_h)` in drawable pixels.
-fn logical_viewport(
+pub fn logical_viewport(
     window: &Window,
     logical_width: f32,
     logical_height: f32,

@@ -2693,6 +2693,8 @@ impl Scene for GameScene {
     ) -> Result<(), String> {
         canvas.set_draw_color(Color::RGB(0, 0, 0));
         canvas.clear();
+        self.world_interpolator
+            .set_render_scale(app_state.render_scale);
 
         // Sync new log messages from PlayerState into the ChatBox before rendering.
         if let Some(ps) = app_state.player_state.as_ref() {

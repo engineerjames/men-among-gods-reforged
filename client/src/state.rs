@@ -110,6 +110,9 @@ pub struct AppState<'tc> {
     pub settings: Settings,
     /// Pending display change to be applied by the main loop.
     pub display_command: Option<DisplayCommand>,
+    /// Integer supersample factor of the frame being rendered (device pixels
+    /// per logical pixel). Set by the main loop; read by world rendering.
+    pub render_scale: u32,
     /// `true` when the most recent input came from a game controller rather
     /// than keyboard/mouse. Widgets read this flag to adapt their rendering
     /// (e.g. show controller button prompts instead of key hints).
@@ -155,6 +158,7 @@ impl<'tc> AppState<'tc> {
             player_state: None,
             settings: Settings::default(),
             display_command: None,
+            render_scale: 1,
             controller_active: false,
             panning_background,
             reset_username: None,

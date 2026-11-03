@@ -21,9 +21,6 @@ use super::FLOOR_TILE_WIDTH;
 /// and shown without interpolation.
 const SNAP_DISTANCE_SUB: i32 = FLOOR_TILE_WIDTH * SUBPIXEL_UNIT;
 
-/// One `(2, ±1)` px step of the isometric pixel lattice, in [`SUBPIXEL_UNIT`] units.
-const LATTICE_UNIT: i32 = 4 * SUBPIXEL_UNIT;
-
 /// Projected world-space position in [`SUBPIXEL_UNIT`] units.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct WorldPos {
@@ -129,34 +126,43 @@ impl WorldPos {
         }
     }
 
-    /// Floors each axis to a whole pixel.
+    /// Floors each axis to a whole device pixel.
+    ///
+    /// # Arguments
+    ///
+    /// * `px` - Size of one device pixel in [`SUBPIXEL_UNIT`] units.
     ///
     /// # Returns
     ///
-    /// * The position with both components multiples of [`SUBPIXEL_UNIT`].
-    fn floor_px(self) -> Self {
+    /// * The position with both components multiples of `px`.
+    fn floor_px(self, px: i32) -> Self {
         Self {
-            x: self.x.div_euclid(SUBPIXEL_UNIT) * SUBPIXEL_UNIT,
-            y: self.y.div_euclid(SUBPIXEL_UNIT) * SUBPIXEL_UNIT,
+            x: self.x.div_euclid(px) * px,
+            y: self.y.div_euclid(px) * px,
         }
     }
 
-    /// Rounds to the nearest point of the isometric pixel lattice spanned by
-    /// `(2, 1)` and `(2, -1)` px.
+    /// Rounds to the nearest point of the isometric device-pixel lattice
+    /// spanned by `(2, 1)` and `(2, -1)` px.
     ///
     /// Floor-diamond edges have slope ±1/2, so only shifts on this lattice
     /// keep their rasterised staircase in phase; flooring x and y separately
     /// on a diagonal walk makes edges flicker between two phases.
     ///
+    /// # Arguments
+    ///
+    /// * `px` - Size of one device pixel in [`SUBPIXEL_UNIT`] units.
+    ///
     /// # Returns
     ///
     /// * The nearest lattice point, in [`SUBPIXEL_UNIT`] units.
-    fn snap_lattice(self) -> Self {
-        let m = (self.x + 2 * self.y + LATTICE_UNIT / 2).div_euclid(LATTICE_UNIT);
-        let n = (self.x - 2 * self.y + LATTICE_UNIT / 2).div_euclid(LATTICE_UNIT);
+    fn snap_lattice(self, px: i32) -> Self {
+        let unit = 4 * px;
+        let m = (self.x + 2 * self.y + unit / 2).div_euclid(unit);
+        let n = (self.x - 2 * self.y + unit / 2).div_euclid(unit);
         Self {
-            x: 2 * (m + n) * SUBPIXEL_UNIT,
-            y: (m - n) * SUBPIXEL_UNIT,
+            x: 2 * (m + n) * px,
+            y: (m - n) * px,
         }
     }
 }
@@ -215,17 +221,21 @@ impl Motion {
         }
     }
 
-    /// Rounds the offset to whole pixels: onto the isometric lattice when the
-    /// motion is diagonal in screen space, per axis otherwise.
+    /// Rounds the offset to whole device pixels: onto the isometric lattice
+    /// when the motion is diagonal in screen space, per axis otherwise.
+    ///
+    /// # Arguments
+    ///
+    /// * `px` - Size of one device pixel in [`SUBPIXEL_UNIT`] units.
     ///
     /// # Returns
     ///
     /// * The pixel-aligned offset.
-    fn quantise(self) -> WorldPos {
+    fn quantise(self, px: i32) -> WorldPos {
         if self.vel.x != 0 && self.vel.y != 0 {
-            self.off.snap_lattice()
+            self.off.snap_lattice(px)
         } else {
-            self.off.floor_px()
+            self.off.floor_px(px)
         }
     }
 }
@@ -279,7 +289,7 @@ impl TickSnapshot {
 }
 
 /// Render-side interpolator between the previous and current server tick.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(super) struct WorldInterpolator {
     /// Snapshot from the tick before the current one.
     previous: TickSnapshot,
@@ -287,6 +297,19 @@ pub(super) struct WorldInterpolator {
     current: TickSnapshot,
     /// Progress from `previous` toward `current` for the frame being rendered.
     alpha: f32,
+    /// Size of one device pixel in [`SUBPIXEL_UNIT`] units.
+    px: i32,
+}
+
+impl Default for WorldInterpolator {
+    fn default() -> Self {
+        Self {
+            previous: TickSnapshot::default(),
+            current: TickSnapshot::default(),
+            alpha: 1.0,
+            px: SUBPIXEL_UNIT,
+        }
+    }
 }
 
 impl WorldInterpolator {
@@ -296,10 +319,23 @@ impl WorldInterpolator {
     ///
     /// * An empty interpolator.
     pub(super) fn new() -> Self {
-        Self {
-            alpha: 1.0,
-            ..Self::default()
-        }
+        Self::default()
+    }
+
+    /// Sets how many device pixels make up one logical pixel, so positions can
+    /// be rounded at device resolution.
+    ///
+    /// # Arguments
+    ///
+    /// * `render_scale` - Integer supersample factor; must divide [`SUBPIXEL_UNIT`].
+    pub(super) fn set_render_scale(&mut self, render_scale: u32) {
+        let k = (render_scale.max(1) as i32).min(SUBPIXEL_UNIT);
+        debug_assert_eq!(
+            SUBPIXEL_UNIT % k,
+            0,
+            "render scale {k} must divide SUBPIXEL_UNIT"
+        );
+        self.px = SUBPIXEL_UNIT / k;
     }
 
     /// Drops all history, e.g. on login or map reload.
@@ -338,10 +374,10 @@ impl WorldInterpolator {
     ///
     /// # Returns
     ///
-    /// * `(x, y)` in [`SUBPIXEL_UNIT`] units, rounded to whole pixels; equal
-    ///   to `-centre.obj_*off_sub` when no usable history exists.
+    /// * `(x, y)` in [`SUBPIXEL_UNIT`] units, rounded to whole device pixels;
+    ///   equal to `-centre.obj_*off_sub` when no usable history exists.
     pub(super) fn camera_offset(&self, map: &GameMap) -> (i32, i32) {
-        let cam = self.camera_motion(map).quantise();
+        let cam = self.camera_motion(map).quantise(self.px);
         (cam.x, cam.y)
     }
 
@@ -377,7 +413,7 @@ impl WorldInterpolator {
     /// # Returns
     ///
     /// * `(x, y)` in [`SUBPIXEL_UNIT`] units relative to the tile's ground
-    ///   diamond, rounded to whole pixels; falls back to the tile's own
+    ///   diamond, rounded to whole device pixels; falls back to the tile's own
     ///   offsets without history.
     pub(super) fn character_offset(&self, map: &GameMap, tile: &CMapTile) -> (i32, i32) {
         let anchor = WorldPos::anchor(tile);
@@ -392,7 +428,7 @@ impl WorldInterpolator {
         };
         let ch = Motion::of(prev, target, anchor, self.alpha);
         let cam = self.camera_motion(map);
-        let off = (cam + ch).quantise() - cam.quantise();
+        let off = (cam + ch).quantise(self.px) - cam.quantise(self.px);
         (off.x, off.y)
     }
 }
@@ -436,6 +472,40 @@ mod tests {
 
     fn alpha_sweep() -> impl Iterator<Item = f32> {
         (0..=64).map(|i| i as f32 / 64.0)
+    }
+
+    #[test]
+    fn subpixel_unit_divides_evenly_at_every_render_scale() {
+        for k in 1..=8 {
+            assert_eq!(SUBPIXEL_UNIT % k, 0, "render scale {k}");
+        }
+    }
+
+    #[test]
+    fn render_scale_refines_diagonal_steps_to_device_pixels() {
+        let mut map = map_with_origin(100, 100);
+        set_center_character(&mut map, 7, 0, 0);
+        let mut interp = WorldInterpolator::new();
+        interp.record_tick(&map);
+        set_center_character(&mut map, 7, -16 * SUBPIXEL_UNIT, 8 * SUBPIXEL_UNIT);
+        interp.record_tick(&map);
+
+        for k in [1, 2, 3, 4, 8] {
+            interp.set_render_scale(k);
+            let px = SUBPIXEL_UNIT / k as i32;
+            let mut seen = std::collections::HashSet::new();
+            for alpha in alpha_sweep() {
+                interp.set_alpha(alpha);
+                let (x, y) = interp.camera_offset(&map);
+                assert_eq!(x % px, 0, "k={k} alpha={alpha}");
+                assert_eq!(y % px, 0, "k={k} alpha={alpha}");
+                // Still on the (2, -1) device-pixel lattice.
+                assert_eq!(x / px, -2 * (y / px), "k={k} alpha={alpha}");
+                seen.insert(x);
+            }
+            // One (2, 1) lattice step per 2 logical px at k=1, k steps at scale k.
+            assert_eq!(seen.len(), 8 * k as usize + 1, "k={k}: {seen:?}");
+        }
     }
 
     #[test]

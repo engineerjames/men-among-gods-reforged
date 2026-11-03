@@ -31,26 +31,24 @@ impl GameScene {
     /// * `yoff_sub` - Combined vertical camera/sprite offset in [`SUBPIXEL_UNIT`] units.
     ///
     /// # Returns
-    /// `(cx, cy)` in logical screen coordinates.
-    ///
-    /// The sub-pixel offsets are floored here — once, on the already-combined
-    /// camera and sprite offset — so that two sprites a constant sub-pixel
-    /// distance apart never alternate between two pixel positions.
+    /// `(cx, cy)` in logical screen coordinates, with the fractional part of the
+    /// offsets preserved so the supersampled frame can place sprites on device
+    /// pixels. Callers pass offsets already rounded by the interpolator, so the
+    /// result lands exactly on a device pixel.
     pub(super) fn tile_ground_diamond_origin(
         tile_x: usize,
         tile_y: usize,
         xoff_sub: i32,
         yoff_sub: i32,
-    ) -> (i32, i32) {
+    ) -> (f32, f32) {
         let xpos = (tile_x as i32) * FLOOR_TILE_WIDTH;
         let ypos = (tile_y as i32) * FLOOR_TILE_WIDTH;
-        let cx = xpos / 2
-            + ypos / 2
-            + FLOOR_TILE_WIDTH
-            + MAP_ORIGIN_X
-            + xoff_sub.div_euclid(SUBPIXEL_UNIT);
-        let cy = xpos / 4 - ypos / 4 + MAP_ORIGIN_Y + yoff_sub.div_euclid(SUBPIXEL_UNIT);
-        (cx, cy)
+        let cx = xpos / 2 + ypos / 2 + FLOOR_TILE_WIDTH + MAP_ORIGIN_X;
+        let cy = xpos / 4 - ypos / 4 + MAP_ORIGIN_Y;
+        (
+            cx as f32 + xoff_sub as f32 / SUBPIXEL_UNIT as f32,
+            cy as f32 + yoff_sub as f32 / SUBPIXEL_UNIT as f32,
+        )
     }
 
     /// Returns the camera offsets, in [`SUBPIXEL_UNIT`] units, for the frame
@@ -88,19 +86,20 @@ impl GameScene {
         cam_xoff_sub: i32,
         cam_yoff_sub: i32,
     ) -> Option<(usize, usize)> {
-        let mut best: Option<(usize, usize, i32)> = None;
+        let mut best: Option<(usize, usize, f32)> = None;
 
         for my in 0..TILEY {
             for mx in 0..TILEX {
                 let (cx, cy_top) =
                     Self::tile_ground_diamond_origin(mx, my, cam_xoff_sub, cam_yoff_sub);
-                let dx = (screen_x - cx).abs();
-                let dy = (screen_y - (cy_top + FLOOR_TILE_HEIGHT / 2)).abs();
+                let dx = (screen_x as f32 - cx).abs();
+                let dy = (screen_y as f32 - (cy_top + (FLOOR_TILE_HEIGHT / 2) as f32)).abs();
 
                 // Inside 32x16 isometric floor diamond:
                 // |dx|/16 + |dy|/8 <= 1  =>  dx*8 + dy*16 <= 128
-                let metric = dx * (FLOOR_TILE_HEIGHT / 2) + dy * (FLOOR_TILE_WIDTH / 2);
-                if metric <= (FLOOR_TILE_WIDTH / 2) * (FLOOR_TILE_HEIGHT / 2) {
+                let metric =
+                    dx * (FLOOR_TILE_HEIGHT / 2) as f32 + dy * (FLOOR_TILE_WIDTH / 2) as f32;
+                if metric <= ((FLOOR_TILE_WIDTH / 2) * (FLOOR_TILE_HEIGHT / 2)) as f32 {
                     match best {
                         Some((_, _, cur_metric)) if metric >= cur_metric => {}
                         _ => best = Some((mx, my, metric)),
@@ -262,47 +261,24 @@ mod tests {
     #[test]
     fn diamond_origin_at_zero() {
         let (cx, cy) = GameScene::tile_ground_diamond_origin(0, 0, 0, 0);
-        assert_eq!(cx, FLOOR_TILE_WIDTH + MAP_ORIGIN_X);
-        assert_eq!(cy, MAP_ORIGIN_Y);
+        assert_eq!(cx, (FLOOR_TILE_WIDTH + MAP_ORIGIN_X) as f32);
+        assert_eq!(cy, MAP_ORIGIN_Y as f32);
     }
 
     #[test]
     fn diamond_origin_with_camera_offset() {
         let (cx, cy) =
             GameScene::tile_ground_diamond_origin(0, 0, 10 * SUBPIXEL_UNIT, -5 * SUBPIXEL_UNIT);
-        assert_eq!(cx, FLOOR_TILE_WIDTH + MAP_ORIGIN_X + 10);
-        assert_eq!(cy, MAP_ORIGIN_Y - 5);
+        assert_eq!(cx, (FLOOR_TILE_WIDTH + MAP_ORIGIN_X + 10) as f32);
+        assert_eq!(cy, (MAP_ORIGIN_Y - 5) as f32);
     }
 
     #[test]
-    fn diamond_origin_floors_sub_pixel_offsets_downward() {
+    fn diamond_origin_keeps_device_pixel_fractions() {
         let base = GameScene::tile_ground_diamond_origin(0, 0, 0, 0);
-
-        // Fractions below a whole pixel must not round up, in either direction,
-        // otherwise sprites a constant sub-pixel distance apart alternate
-        // between two pixel positions from frame to frame.
-        let up = GameScene::tile_ground_diamond_origin(0, 0, SUBPIXEL_UNIT - 1, SUBPIXEL_UNIT - 1);
-        assert_eq!(up, base);
-
-        let down = GameScene::tile_ground_diamond_origin(0, 0, -1, -1);
-        assert_eq!(down, (base.0 - 1, base.1 - 1));
-    }
-
-    #[test]
-    fn diamond_origin_rounds_combined_offset_once() {
-        // Two sprites two thirds of a pixel apart must keep exactly that gap on
-        // screen at every camera sub-position within the pixel.
-        let gap = SUBPIXEL_UNIT * 2 / 3;
-        for cam in 0..SUBPIXEL_UNIT {
-            let a = GameScene::tile_ground_diamond_origin(0, 0, cam, 0).0;
-            let b = GameScene::tile_ground_diamond_origin(0, 0, cam + gap, 0).0;
-            assert!(
-                b - a <= 1,
-                "sub-pixel gap widened to {} px at cam={}",
-                b - a,
-                cam
-            );
-        }
+        let (cx, cy) =
+            GameScene::tile_ground_diamond_origin(0, 0, SUBPIXEL_UNIT / 2, -SUBPIXEL_UNIT / 4);
+        assert_eq!((cx, cy), (base.0 + 0.5, base.1 - 0.25));
     }
 
     #[test]
@@ -312,8 +288,11 @@ mod tests {
         let (cx, cy) = GameScene::tile_ground_diamond_origin(tile_x, tile_y, 0, 0);
         let xpos = (tile_x as i32) * FLOOR_TILE_WIDTH;
         let ypos = (tile_y as i32) * FLOOR_TILE_WIDTH;
-        assert_eq!(cx, xpos / 2 + ypos / 2 + FLOOR_TILE_WIDTH + MAP_ORIGIN_X);
-        assert_eq!(cy, xpos / 4 - ypos / 4 + MAP_ORIGIN_Y);
+        assert_eq!(
+            cx,
+            (xpos / 2 + ypos / 2 + FLOOR_TILE_WIDTH + MAP_ORIGIN_X) as f32
+        );
+        assert_eq!(cy, (xpos / 4 - ypos / 4 + MAP_ORIGIN_Y) as f32);
     }
 
     #[test]
@@ -321,13 +300,13 @@ mod tests {
         let (cx, cy) = GameScene::tile_ground_diamond_origin(TILEX / 2, TILEY / 2, 0, 0);
         assert_eq!(
             cx,
-            crate::constants::TARGET_WIDTH_INT as i32 / 2,
+            (crate::constants::TARGET_WIDTH_INT / 2) as f32,
             "center tile X should equal half the logical viewport width"
         );
         // cy is the diamond top; the visual center is cy + FLOOR_TILE_HEIGHT / 2.
         assert_eq!(
-            cy + FLOOR_TILE_HEIGHT / 2,
-            crate::constants::TARGET_HEIGHT_INT as i32 / 2,
+            cy + (FLOOR_TILE_HEIGHT / 2) as f32,
+            (crate::constants::TARGET_HEIGHT_INT / 2) as f32,
             "center tile visual midpoint Y should equal half the logical viewport height"
         );
     }
@@ -344,7 +323,12 @@ mod tests {
     #[test]
     fn cursor_center_inside() {
         let (cx, cy) = GameScene::tile_ground_diamond_origin(TILEX / 2, TILEY / 2, 0, 0);
-        assert!(GameScene::cursor_in_map_interaction_area(cx, cy + 8, 0, 0));
+        assert!(GameScene::cursor_in_map_interaction_area(
+            cx as i32,
+            cy as i32 + 8,
+            0,
+            0
+        ));
     }
 
     // -- screen_to_map_tile --
@@ -354,7 +338,8 @@ mod tests {
         let center_x = TILEX / 2;
         let center_y = TILEY / 2;
         let (cx, cy) = GameScene::tile_ground_diamond_origin(center_x, center_y, 0, 0);
-        let result = GameScene::screen_to_map_tile(cx, cy + FLOOR_TILE_HEIGHT / 2, 0, 0);
+        let result =
+            GameScene::screen_to_map_tile(cx as i32, cy as i32 + FLOOR_TILE_HEIGHT / 2, 0, 0);
         assert_eq!(result, Some((center_x, center_y)));
     }
 

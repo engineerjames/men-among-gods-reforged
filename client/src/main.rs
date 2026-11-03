@@ -12,6 +12,7 @@ use sdl2::video::FullscreenType;
 
 use client::automation::AutomationDriver;
 use client::font_cache::TextEngine;
+use client::frame_target::{self, FrameTarget};
 use client::gfx_cache::GraphicsCache;
 use client::platform::PlatformProfile;
 use client::preferences::DisplayMode;
@@ -232,6 +233,15 @@ fn main() -> Result<(), String> {
     let mut last_frame = Instant::now();
     let mut pixel_perfect_resize_deadline = None;
 
+    let logical_size = (constants::TARGET_WIDTH_INT, constants::TARGET_HEIGHT_INT);
+    let mut max_render_scale = if canvas.render_target_supported() {
+        frame_target::max_render_scale(&canvas.info(), logical_size)
+    } else {
+        log::warn!("Renderer lacks render-target support; falling back to logical-size scaling");
+        0
+    };
+    let mut frame: Option<FrameTarget<'_>> = None;
+
     // Log info about the monitor, graphics card, etc.
     if let Ok(video_subsystem) = sdl_context.video() {
         for i in 0..video_subsystem.num_video_displays().unwrap_or(0) {
@@ -445,16 +455,62 @@ fn main() -> Result<(), String> {
             .as_mut()
             .and_then(AutomationDriver::take_pending_screenshot);
 
-        let _ = canvas.set_logical_size(constants::TARGET_WIDTH_INT, constants::TARGET_HEIGHT_INT);
-        // Integer scale --> pixel-perfect (nearest integer multiplier) when on.
-        let _ = canvas.set_integer_scale(app_state.settings.pixel_perfect_scaling);
-        measure!(
-            "client.render_world",
-            scene_manager.render_world(&mut app_state, &mut canvas)
+        let pixel_perfect = app_state.settings.pixel_perfect_scaling;
+        let (view_x, view_y, view_w, view_h) = dpi_scaling::logical_viewport(
+            canvas.window(),
+            constants::TARGET_WIDTH,
+            constants::TARGET_HEIGHT,
+            pixel_perfect,
         );
-        // Logical size off --> raw physical pixels.
-        let _ = canvas.set_integer_scale(false);
-        let _ = canvas.set_logical_size(0, 0);
+        let wanted_scale =
+            frame_target::render_scale(view_w, constants::TARGET_WIDTH, max_render_scale);
+        if max_render_scale > 0 && frame.as_ref().map(FrameTarget::scale) != Some(wanted_scale) {
+            match FrameTarget::new(&texture_creator, logical_size, wanted_scale) {
+                Ok(target) => {
+                    log::info!(
+                        "Rendering at {wanted_scale}x supersample ({view_w}x{view_h} viewport)"
+                    );
+                    frame = Some(target);
+                }
+                Err(err) => {
+                    log::warn!(
+                        "Failed to create {wanted_scale}x frame target, using logical-size scaling: {err}"
+                    );
+                    frame = None;
+                    max_render_scale = 0;
+                }
+            }
+        }
+
+        measure!("client.render_world", {
+            if let Some(target) = frame.as_mut() {
+                let scale = target.scale();
+                app_state.render_scale = scale;
+                app_state.text_engine.set_dpi_scale(scale as f32);
+                let viewport = sdl2::rect::Rect::new(
+                    view_x.round() as i32,
+                    view_y.round() as i32,
+                    view_w.round().max(1.0) as u32,
+                    view_h.round().max(1.0) as u32,
+                );
+                let exact = frame_target::blit_is_exact(scale, view_w, constants::TARGET_WIDTH);
+                if let Err(err) = target.render_frame(&mut canvas, viewport, exact, |c| {
+                    scene_manager.render_world(&mut app_state, c);
+                    Ok(())
+                }) {
+                    log::error!("Frame render failed: {err}");
+                }
+            } else {
+                // Fallback without render targets: SDL scales each draw call.
+                app_state.render_scale = 1;
+                let _ = canvas.set_logical_size(logical_size.0, logical_size.1);
+                let _ = canvas.set_integer_scale(pixel_perfect);
+                let _ = app_state.text_engine.sync_dpi_scale_from_canvas(&canvas);
+                scene_manager.render_world(&mut app_state, &mut canvas);
+                let _ = canvas.set_integer_scale(false);
+                let _ = canvas.set_logical_size(0, 0);
+            }
+        });
 
         if let Some(path) = screenshot_request.take()
             && let Err(err) = save_screenshot(&canvas, &path)
