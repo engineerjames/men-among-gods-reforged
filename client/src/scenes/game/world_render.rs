@@ -272,8 +272,8 @@ impl GameScene {
             cam_xoff_sub + xoff_sub,
             cam_yoff_sub + yoff_sub,
         );
-        let rx = ground_x - xs * (FLOOR_TILE_WIDTH / 2);
-        let ry = ground_y + FLOOR_TILE_HEIGHT - ys * 32;
+        let rx = ground_x - (xs * (FLOOR_TILE_WIDTH / 2)) as f32;
+        let ry = ground_y + (FLOOR_TILE_HEIGHT - ys * 32) as f32;
 
         // Apply darkness modulation from tile light value.
         // C formula: channel = channel * LEFFECT / (darkness² + LEFFECT)
@@ -284,10 +284,15 @@ impl GameScene {
             texture.set_color_mod(factor, factor, factor);
         }
 
-        let result = canvas.copy(
+        let result = canvas.copy_f(
             texture,
             None,
-            Some(sdl2::rect::Rect::new(rx, ry, q.width, q.height)),
+            Some(sdl2::rect::FRect::new(
+                rx,
+                ry,
+                q.width as f32,
+                q.height as f32,
+            )),
         );
 
         // Reset color modulation so next draw of this sprite is unaffected.
@@ -328,15 +333,20 @@ impl GameScene {
             cam_xoff_sub + xoff_sub,
             cam_yoff_sub + yoff_sub,
         );
-        let rx = ground_x - xs * (FLOOR_TILE_WIDTH / 2);
-        let ry = ground_y + FLOOR_TILE_HEIGHT - ys * 32;
+        let rx = ground_x - (xs * (FLOOR_TILE_WIDTH / 2)) as f32;
+        let ry = ground_y + (FLOOR_TILE_HEIGHT - ys * 32) as f32;
 
         texture.set_blend_mode(sdl2::render::BlendMode::Add);
         texture.set_alpha_mod(alpha);
-        let result = canvas.copy(
+        let result = canvas.copy_f(
             texture,
             None,
-            Some(sdl2::rect::Rect::new(rx, ry, q.width, q.height)),
+            Some(sdl2::rect::FRect::new(
+                rx,
+                ry,
+                q.width as f32,
+                q.height as f32,
+            )),
         );
         texture.set_alpha_mod(255);
         texture.set_blend_mode(sdl2::render::BlendMode::Blend);
@@ -373,16 +383,21 @@ impl GameScene {
             cam_xoff_sub + xoff_sub,
             cam_yoff_sub + yoff_sub,
         );
-        let rx = ground_x - xs * (FLOOR_TILE_WIDTH / 2);
-        let ry = ground_y + FLOOR_TILE_HEIGHT - ys * 32;
+        let rx = ground_x - (xs * (FLOOR_TILE_WIDTH / 2)) as f32;
+        let ry = ground_y + (FLOOR_TILE_HEIGHT - ys * 32) as f32;
 
         texture.set_blend_mode(sdl2::render::BlendMode::Add);
         texture.set_alpha_mod(alpha);
         texture.set_color_mod(tint.r, tint.g, tint.b);
-        let result = canvas.copy(
+        let result = canvas.copy_f(
             texture,
             None,
-            Some(sdl2::rect::Rect::new(rx, ry, q.width, q.height)),
+            Some(sdl2::rect::FRect::new(
+                rx,
+                ry,
+                q.width as f32,
+                q.height as f32,
+            )),
         );
         texture.set_color_mod(255, 255, 255);
         texture.set_alpha_mod(255);
@@ -425,12 +440,12 @@ impl GameScene {
             cam_xoff_sub + xoff_sub,
             cam_yoff_sub + yoff_sub,
         );
-        let rx = ground_x - xs * (FLOOR_TILE_WIDTH / 2);
-        let ry = ground_y + FLOOR_TILE_HEIGHT - ys * 32;
+        let rx = ground_x - (xs * (FLOOR_TILE_WIDTH / 2)) as f32;
+        let ry = ground_y + (FLOOR_TILE_HEIGHT - ys * 32) as f32;
 
         // Shadow is placed at character's feet, flattened to 1/4 height.
         // disp=14 matches the original C code.
-        let shadow_ry = ry + ys * 32 - 14;
+        let shadow_ry = ry + (ys * 32 - 14) as f32;
         let shadow_h = (q.height / 4).max(1);
 
         // Darken: black tint with partial alpha to simulate the v >>= 1 pixel halving.
@@ -438,10 +453,15 @@ impl GameScene {
         texture.set_alpha_mod(80);
         texture.set_blend_mode(sdl2::render::BlendMode::Blend);
 
-        let result = canvas.copy_ex(
+        let result = canvas.copy_ex_f(
             texture,
             None,
-            Some(sdl2::rect::Rect::new(rx, shadow_ry, q.width, shadow_h)),
+            Some(sdl2::rect::FRect::new(
+                rx,
+                shadow_ry,
+                q.width as f32,
+                shadow_h as f32,
+            )),
             0.0,
             None,
             false,
@@ -474,14 +494,15 @@ impl GameScene {
         yoff_sub: i32,
     ) -> Result<(), String> {
         // Isometric projection for a 2×2 tile area (64×64 pixels), matching dd_alphaeffect_magic.
+        // The glow is drawn point by point, so it sits on whole logical pixels.
         let (ground_x, ground_y) = Self::tile_ground_diamond_origin(
             tile_x,
             tile_y,
             cam_xoff_sub + xoff_sub,
             cam_yoff_sub + yoff_sub,
         );
-        let rx = ground_x - FLOOR_TILE_WIDTH;
-        let ry = ground_y - (FLOOR_TILE_WIDTH + FLOOR_TILE_HEIGHT);
+        let rx = ground_x.round() as i32 - FLOOR_TILE_WIDTH;
+        let ry = ground_y.round() as i32 - (FLOOR_TILE_WIDTH + FLOOR_TILE_HEIGHT);
 
         let str_div = strength.max(1) as i32;
         let strength_clamped = strength.clamp(1, 7) as i32;
@@ -951,7 +972,8 @@ impl GameScene {
         }
     }
 
-    /// Screen rect of a sprite placed on a tile, matching [`Self::draw_world_sprite`].
+    /// Screen rect of a sprite placed on a tile, matching [`Self::draw_world_sprite`]
+    /// (rounded down to whole logical pixels for overlap tests).
     fn world_sprite_rect(
         gfx: &mut GraphicsCache<'_>,
         sprite_id: i32,
@@ -963,8 +985,8 @@ impl GameScene {
         let q = gfx.get_texture(sprite_id as usize).query();
         let (ground_x, ground_y) = Self::tile_ground_diamond_origin(x, y, cam_xoff, cam_yoff);
         sdl2::rect::Rect::new(
-            ground_x - (q.width as i32 / 32) * (FLOOR_TILE_WIDTH / 2),
-            ground_y + FLOOR_TILE_HEIGHT - (q.height as i32 / 32) * 32,
+            ground_x.floor() as i32 - (q.width as i32 / 32) * (FLOOR_TILE_WIDTH / 2),
+            ground_y.floor() as i32 + FLOOR_TILE_HEIGHT - (q.height as i32 / 32) * 32,
             q.width,
             q.height,
         )
@@ -1211,6 +1233,11 @@ impl GameScene {
                 // with the character sprite it labels.
                 let (np_ground_x, np_ground_y) =
                     Self::tile_ground_diamond_origin(x, y, cam_xoff + ch_xoff, cam_yoff + ch_yoff);
+                // Lay out on whole pixels, then re-apply the sprite's device-pixel fraction.
+                let (frac_x, frac_y) = (
+                    np_ground_x - np_ground_x.floor(),
+                    np_ground_y - np_ground_y.floor(),
+                );
                 let glyph = tile.danger_glyph();
                 let glyph_h = danger_glyph_height(glyph);
                 let glyph_id = if show_danger_glyphs {
@@ -1222,30 +1249,30 @@ impl GameScene {
                     let (tex_w, tex_h) = gfx.query_texture_size(id);
                     danger_glyph_width(tex_w, tex_h, glyph_h)
                 });
-                let layout = nameplate_layout(np_ground_x, &text, glyph_width);
-                let np_ry = np_ground_y - PERCENT_HEALTH_TEXT_OFFSET_Y;
+                let layout = nameplate_layout(np_ground_x.floor() as i32, &text, glyph_width);
+                let np_ry = np_ground_y.floor() as i32 - PERCENT_HEALTH_TEXT_OFFSET_Y;
                 if let (Some(glyph_id), Some(glyph_x), Some(glyph_w)) =
                     (glyph_id, layout.glyph_x, glyph_width)
                 {
                     let glyph_y = np_ry - (glyph_h - font_cache::BITMAP_GLYPH_H as i32) / 2;
-                    canvas.copy(
+                    canvas.copy_f(
                         gfx.get_texture(glyph_id),
                         None,
-                        Some(sdl2::rect::Rect::new(
-                            glyph_x,
-                            glyph_y,
-                            glyph_w as u32,
-                            glyph_h as u32,
+                        Some(sdl2::rect::FRect::new(
+                            glyph_x as f32 + frac_x,
+                            glyph_y as f32 + frac_y,
+                            glyph_w as f32,
+                            glyph_h as f32,
                         )),
                     )?;
                 }
-                font_cache::draw_text(
+                font_cache::draw_text_f(
                     canvas,
                     gfx,
                     1,
                     &text,
-                    layout.text_x,
-                    np_ry,
+                    layout.text_x as f32 + frac_x,
+                    np_ry as f32 + frac_y,
                     font_cache::TextStyle::drop_shadow(),
                 )?;
             }

@@ -9,6 +9,7 @@ pub mod constants;
 pub mod dpi_scaling;
 pub mod filepaths;
 pub mod font_cache;
+pub mod frame_target;
 pub mod game_map;
 pub mod gfx_cache;
 pub mod hosts;

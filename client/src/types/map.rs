@@ -1,12 +1,15 @@
-/// Number of fixed-point units per screen pixel used by the sub-tile movement
-/// offsets (`obj_xoff_sub` / `obj_yoff_sub`).
+/// Number of fixed-point units per logical screen pixel used by the sub-tile
+/// movement offsets (`obj_xoff_sub` / `obj_yoff_sub`).
 ///
-/// Movement interpolation is computed in this finer unit and only rounded down
-/// to whole pixels once, when the final screen position of a sprite is derived.
-/// Rounding each character's offset independently would make two characters
-/// that are a constant sub-pixel distance apart alternate between two pixel
-/// positions every frame.
-pub const SUBPIXEL_UNIT: i32 = 256;
+/// Movement interpolation is computed in this finer unit and only rounded once,
+/// to whole *device* pixels, when the final screen position of a sprite is
+/// derived. Rounding each character's offset independently would make two
+/// characters that are a constant sub-pixel distance apart alternate between
+/// two pixel positions every frame.
+///
+/// `840 = lcm(1..=8)`, so one device pixel is a whole number of units at every
+/// supported render scale.
+pub const SUBPIXEL_UNIT: i32 = 840;
 
 use mag_core::constants::DangerGlyph;
 

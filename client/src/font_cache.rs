@@ -212,9 +212,39 @@ pub fn draw_text(
     y: i32,
     style: TextStyle,
 ) -> Result<(), String> {
+    draw_text_f(canvas, gfx_cache, font, text, x as f32, y as f32, style)
+}
+
+/// Draws bitmap text at a fractional logical position.
+///
+/// Used for world-space labels that follow sprites placed on device pixels of
+/// the supersampled frame; the fraction is honoured by `copy_f`.
+///
+/// # Arguments
+///
+/// * `canvas` - SDL2 canvas to draw onto.
+/// * `gfx_cache` - Graphics cache holding font textures.
+/// * `font` - Bitmap font index (0–3).
+/// * `text` - Text string to render.
+/// * `x` - Left edge, or horizontal center when `style.centered` is true.
+/// * `y` - Top edge of the glyph row in logical pixels.
+/// * `style` - Rendering style (tint, alpha, centering).
+///
+/// # Returns
+///
+/// `Ok(())` on success, or an SDL2 error string.
+pub fn draw_text_f(
+    canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
+    gfx_cache: &mut crate::gfx_cache::GraphicsCache<'_>,
+    font: usize,
+    text: &str,
+    x: f32,
+    y: f32,
+    style: TextStyle,
+) -> Result<(), String> {
     let draw_x = if style.centered {
         let width = text.len() as i32 * BITMAP_GLYPH_ADVANCE as i32;
-        x - width / 2
+        x - (width / 2) as f32
     } else {
         x
     };
@@ -225,8 +255,8 @@ pub fn draw_text(
             gfx_cache,
             font,
             text,
-            draw_x + 1,
-            y + 1,
+            draw_x + 1.0,
+            y + 1.0,
             Some(sdl2::pixels::Color::RGB(0, 0, 0)),
             style.alpha,
         )?;
@@ -250,8 +280,8 @@ fn draw_text_impl(
     gfx_cache: &mut crate::gfx_cache::GraphicsCache<'_>,
     font: usize,
     text: &str,
-    x: i32,
-    y: i32,
+    x: f32,
+    y: f32,
     tint: Option<sdl2::pixels::Color>,
     alpha: Option<u8>,
 ) -> Result<(), String> {
@@ -271,7 +301,7 @@ fn draw_text_impl(
     for ch in text.chars() {
         let glyph = glyph_index(ch);
         if glyph < 0 {
-            cx += BITMAP_GLYPH_ADVANCE as i32;
+            cx += BITMAP_GLYPH_ADVANCE as f32;
             continue;
         }
 
@@ -283,13 +313,13 @@ fn draw_text_impl(
             BITMAP_GLYPH_W - 1,
             BITMAP_GLYPH_H,
         );
-        let dst = sdl2::rect::Rect::new(cx, y, BITMAP_GLYPH_W - 1, BITMAP_GLYPH_H);
-        if let Err(err) = canvas.copy(texture, Some(src), Some(dst)) {
+        let dst = sdl2::rect::FRect::new(cx, y, (BITMAP_GLYPH_W - 1) as f32, BITMAP_GLYPH_H as f32);
+        if let Err(err) = canvas.copy_f(texture, Some(src), Some(dst)) {
             first_error = Some(err);
             break;
         }
 
-        cx += BITMAP_GLYPH_ADVANCE as i32;
+        cx += BITMAP_GLYPH_ADVANCE as f32;
     }
 
     if tint.is_some() {
