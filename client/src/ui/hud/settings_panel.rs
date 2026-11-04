@@ -17,9 +17,7 @@ use crate::preferences::{DisplayMode, Settings};
 use crate::types::controller::{CONTROLLER_BIND_SLOTS, ControllerBindings, ControllerButton};
 use crate::types::mouse::{ExtraMouseButton, MouseModifier, MouseModifierBindings};
 use crate::ui::RenderContext;
-use crate::ui::forms::quit_confirm_dialog::{
-    ExitKind, QuitConfirmDialog, QuitConfirmDialogAction,
-};
+use crate::ui::forms::quit_confirm_dialog::{ExitKind, QuitConfirmDialog, QuitConfirmDialogAction};
 use crate::ui::style::{Background, Border};
 use crate::ui::widget::{
     Bounds, EventResponse, GameAction, HudPanel, KeyBinding, KeyBindings, UiEvent, Widget,

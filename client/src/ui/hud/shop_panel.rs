@@ -382,14 +382,22 @@ impl ShopPanel {
     /// Move controller selection right within the grid.
     pub fn controller_nav_right(&mut self) {
         let idx = self.controller_selected.unwrap_or(0);
-        let next = if idx + 1 >= self.cell_count() { 0 } else { idx + 1 };
+        let next = if idx + 1 >= self.cell_count() {
+            0
+        } else {
+            idx + 1
+        };
         self.controller_selected = Some(next);
     }
 
     /// Move controller selection left within the grid.
     pub fn controller_nav_left(&mut self) {
         let idx = self.controller_selected.unwrap_or(0);
-        let next = if idx == 0 { self.cell_count() - 1 } else { idx - 1 };
+        let next = if idx == 0 {
+            self.cell_count() - 1
+        } else {
+            idx - 1
+        };
         self.controller_selected = Some(next);
     }
 
