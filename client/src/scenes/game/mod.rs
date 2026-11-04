@@ -57,7 +57,7 @@ use crate::{
     player_state::PlayerState,
     preferences::{self, CharacterIdentity},
     scenes::scene::{Scene, SceneType},
-    state::{AppState, DisplayCommand},
+    state::{AppState, apply_global_settings_action},
     types::mouse::{
         ExtraMouseButton, FIRST_HIGH_RAW_BUTTON_INDEX, LAST_HIGH_RAW_BUTTON_INDEX, MouseModifier,
     },
@@ -1176,7 +1176,7 @@ impl GameScene {
         let mut profile_changed = false;
 
         for action in self.settings_panel.take_actions() {
-            if crate::state::apply_global_settings_action(
+            if apply_global_settings_action(
                 &mut app_state.settings,
                 &mut app_state.display_command,
                 &action,
