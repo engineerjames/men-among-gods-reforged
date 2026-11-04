@@ -2214,6 +2214,12 @@ impl Scene for GameScene {
     ///
     /// `Some(SceneType)` to trigger a scene transition, or `None` to stay.
     fn handle_event(&mut self, app_state: &mut AppState<'_>, event: &Event) -> Option<SceneType> {
+        // Window close button: ask for confirmation like the in-game Quit button.
+        if let Event::Quit { .. } = event {
+            self.settings_panel.show_quit_confirm();
+            return None;
+        }
+
         // --- Escape key: always processed regardless of menu state ---
         if let Event::KeyDown {
             keycode: Some(Keycode::Escape),

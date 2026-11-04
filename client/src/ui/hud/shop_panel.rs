@@ -1,8 +1,10 @@
 //! Shop / depot / grave overlay panel.
 //!
-//! Renders an 8-column × 8-row grid of up to 62 item slots (shops, depots,
-//! and graves all use the same layout). Shows sell/buy price labels at the
-//! bottom. Clicking outside a grave closes it, while shops and depots remain
+//! Renders an 8-column grid of up to 62 item slots (shops, depots, and graves
+//! all use the same layout). Occupied slots are packed to the front and the
+//! panel only shows as many rows as needed, but every cell still maps back to
+//! its original server slot index so `CmdShop` packets are unchanged. Shows
+//! sell/buy price labels at the bottom. Clicking outside a grave closes it, while shops and depots remain
 //! open so other HUD panels can be used alongside them.
 
 use sdl2::pixels::Color;
@@ -22,7 +24,7 @@ const CELL: i32 = 35;
 /// Number of item columns in the grid.
 const GRID_COLS: usize = 8;
 
-/// Number of item rows in the grid.
+/// Maximum number of item rows in the grid.
 const GRID_ROWS: usize = 8;
 
 /// Maximum number of shop item slots.
@@ -41,8 +43,21 @@ const PRICE_AREA_H: i32 = 24;
 /// Panel width: 8 cells + left/right padding.
 pub const SHOP_PANEL_W: u32 = (GRID_COLS as i32 * CELL + PAD_X * 2) as u32;
 
-/// Panel height: header + 8 rows + price area + bottom padding.
-pub const SHOP_PANEL_H: u32 = (PAD_TOP + GRID_ROWS as i32 * CELL + PRICE_AREA_H + 4) as u32;
+/// Maximum panel height (all 8 rows visible).
+pub const SHOP_PANEL_H: u32 = panel_height(GRID_ROWS);
+
+/// Panel height for a grid showing `rows` rows.
+///
+/// # Arguments
+///
+/// * `rows` - Number of visible grid rows.
+///
+/// # Returns
+///
+/// * Header + `rows` cells + price area + bottom padding, in pixels.
+const fn panel_height(rows: usize) -> u32 {
+    (PAD_TOP + rows as i32 * CELL + PRICE_AREA_H + 4) as u32
+}
 
 /// Border color matching the other HUD panels.
 const BORDER_COLOR: Color = Color::RGBA(120, 120, 140, 200);
@@ -111,7 +126,7 @@ pub struct ShopPanelData {
 
 /// Shop/depot/grave overlay widget.
 ///
-/// Displays an 8×8 grid of item slots with hover highlighting and
+/// Displays a compacted 8-column grid of item slots with hover highlighting and
 /// sell/buy price labels. A click outside a visible grave produces a
 /// [`WidgetAction::CloseShop`] action; shops and depots ignore outside clicks.
 pub struct ShopPanel {
@@ -121,10 +136,16 @@ pub struct ShopPanel {
     mouse_x: i32,
     mouse_y: i32,
     actions: Vec<WidgetAction>,
-    /// Controller-selected slot index (0–61), or `None` when mouse is active.
+    /// Controller-selected display cell index, or `None` when mouse is active.
     controller_selected: Option<usize>,
     /// Whether the mouse cursor is currently over the close button.
     hovered_close: bool,
+    /// Display cell → original server slot index (occupied slots first, then empty).
+    order: [usize; SHOP_SLOTS],
+    /// Number of occupied slots (prefix length of `order`).
+    filled: usize,
+    /// Number of visible grid rows (1..=`GRID_ROWS`).
+    rows: usize,
 }
 
 impl ShopPanel {
@@ -148,7 +169,46 @@ impl ShopPanel {
             actions: Vec::new(),
             controller_selected: None,
             hovered_close: false,
+            order: std::array::from_fn(|i| i),
+            filled: 0,
+            rows: GRID_ROWS,
         }
+    }
+
+    /// Recompute the compacted cell layout and panel height from slot contents.
+    ///
+    /// # Arguments
+    ///
+    /// * `items` - Item sprite per original server slot (0 = empty).
+    fn set_layout(&mut self, items: &[u16; SHOP_SLOTS]) {
+        let filled = items.iter().filter(|&&it| it != 0).count();
+        let (mut f, mut e) = (0, filled);
+        for (i, &it) in items.iter().enumerate() {
+            if it != 0 {
+                self.order[f] = i;
+                f += 1;
+            } else {
+                self.order[e] = i;
+                e += 1;
+            }
+        }
+        self.filled = filled;
+        // Always keep one row so a carried item can be dropped into an empty shop/depot.
+        self.rows = filled.div_ceil(GRID_COLS).max(1);
+        self.bounds.height = panel_height(self.rows);
+        let cells = self.cell_count();
+        if let Some(sel) = self.controller_selected.as_mut() {
+            *sel = (*sel).min(cells - 1);
+        }
+    }
+
+    /// Number of interactive display cells in the current layout.
+    ///
+    /// # Returns
+    ///
+    /// * `rows * GRID_COLS`, capped at `SHOP_SLOTS`.
+    fn cell_count(&self) -> usize {
+        (self.rows * GRID_COLS).min(SHOP_SLOTS)
     }
 
     /// Push a new data snapshot into the widget.
@@ -160,6 +220,7 @@ impl ShopPanel {
     ///
     /// * `data` - The latest shop state from `PlayerState`.
     pub fn update_data(&mut self, data: ShopPanelData) {
+        self.set_layout(&data.items);
         self.data = Some(data);
     }
 
@@ -180,6 +241,7 @@ impl ShopPanel {
         match &mut self.data {
             Some(d) => d.visible = !d.visible,
             None => {
+                self.set_layout(&[0; SHOP_SLOTS]);
                 self.data = Some(ShopPanelData {
                     items: [0; SHOP_SLOTS],
                     prices: [0; SHOP_SLOTS],
@@ -261,9 +323,18 @@ impl ShopPanel {
         Some(if is_grave { "TAKE" } else { "BUY" })
     }
 
-    /// Returns the grid slot index (0–61) under the current mouse position,
-    /// or `None` if the mouse is outside the grid or beyond slot 61.
+    /// Returns the original server slot index (0–61) under the mouse cursor.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(slot)` for an interactive cell, `None` otherwise.
     fn hovered_slot(&self) -> Option<usize> {
+        self.hovered_cell().map(|c| self.order[c])
+    }
+
+    /// Returns the display cell index under the current mouse position,
+    /// or `None` if the mouse is outside the visible interactive cells.
+    fn hovered_cell(&self) -> Option<usize> {
         let grid_x = self.bounds.x + PAD_X;
         let grid_y = self.bounds.y + PAD_TOP;
 
@@ -277,12 +348,12 @@ impl ShopPanel {
         let col = mx / CELL;
         let row = my / CELL;
 
-        if col < 0 || col >= GRID_COLS as i32 || row < 0 || row >= GRID_ROWS as i32 {
+        if col >= GRID_COLS as i32 || row >= self.rows as i32 {
             return None;
         }
 
         let idx = row as usize * GRID_COLS + col as usize;
-        if idx < SHOP_SLOTS { Some(idx) } else { None }
+        (idx < self.cell_count()).then_some(idx)
     }
 
     // ── Controller navigation ───────────────────────────────────────────
@@ -311,14 +382,14 @@ impl ShopPanel {
     /// Move controller selection right within the grid.
     pub fn controller_nav_right(&mut self) {
         let idx = self.controller_selected.unwrap_or(0);
-        let next = if idx + 1 >= SHOP_SLOTS { 0 } else { idx + 1 };
+        let next = if idx + 1 >= self.cell_count() { 0 } else { idx + 1 };
         self.controller_selected = Some(next);
     }
 
     /// Move controller selection left within the grid.
     pub fn controller_nav_left(&mut self) {
         let idx = self.controller_selected.unwrap_or(0);
-        let next = if idx == 0 { SHOP_SLOTS - 1 } else { idx - 1 };
+        let next = if idx == 0 { self.cell_count() - 1 } else { idx - 1 };
         self.controller_selected = Some(next);
     }
 
@@ -326,7 +397,7 @@ impl ShopPanel {
     pub fn controller_nav_down(&mut self) {
         let idx = self.controller_selected.unwrap_or(0);
         let next = idx + GRID_COLS;
-        self.controller_selected = Some(if next >= SHOP_SLOTS {
+        self.controller_selected = Some(if next >= self.cell_count() {
             idx % GRID_COLS
         } else {
             next
@@ -337,14 +408,8 @@ impl ShopPanel {
     pub fn controller_nav_up(&mut self) {
         let idx = self.controller_selected.unwrap_or(0);
         self.controller_selected = Some(if idx < GRID_COLS {
-            // Wrap to last row, same column.
-            let last_row_idx = (GRID_ROWS - 1) * GRID_COLS + (idx % GRID_COLS);
-            if last_row_idx >= SHOP_SLOTS {
-                // Last row doesn't have this column → use last valid slot.
-                SHOP_SLOTS - 1
-            } else {
-                last_row_idx
-            }
+            // Wrap to last row, same column (or last valid cell if that row is short).
+            ((self.rows - 1) * GRID_COLS + idx % GRID_COLS).min(self.cell_count() - 1)
         } else {
             idx - GRID_COLS
         });
@@ -352,10 +417,10 @@ impl ShopPanel {
 
     /// Activate the controller-selected slot (left-click equivalent).
     pub fn controller_activate(&mut self) {
-        if let (Some(idx), Some(data)) = (self.controller_selected, self.data.as_ref()) {
+        if let (Some(cell), Some(data)) = (self.controller_selected, self.data.as_ref()) {
             self.actions.push(WidgetAction::ShopAction {
                 shop_nr: data.shop_nr as i16,
-                action: idx as i32,
+                action: self.order[cell] as i32,
             });
         }
     }
@@ -486,7 +551,7 @@ impl Widget for ShopPanel {
 
     /// Draw the shop overlay.
     ///
-    /// Renders a semi-transparent background with a border, an 8×8 grid of
+    /// Renders a semi-transparent background with a border, the compacted grid of
     /// item sprites with additive hover highlights, and sell/buy price
     /// labels at the bottom.
     ///
@@ -572,12 +637,12 @@ impl Widget for ShopPanel {
 
         let grid_x = self.bounds.x + PAD_X;
         let grid_y = self.bounds.y + PAD_TOP;
+        let hovered_cell = self.hovered_cell();
         let hovered = self.hovered_slot();
 
-        // Draw full 8x8 slot grid to match inventory/equipment readability.
-        // Slots 62 and 63 are visual-only and rendered as disabled cells.
+        // Cells past slot 61 (only possible with all 8 rows shown) are disabled.
         ctx.canvas.set_blend_mode(BlendMode::Blend);
-        for i in 0..(GRID_ROWS * GRID_COLS) {
+        for i in 0..(self.rows * GRID_COLS) {
             let col = (i % GRID_COLS) as i32;
             let row = (i / GRID_COLS) as i32;
             let cell_rect = sdl2::rect::Rect::new(
@@ -596,18 +661,15 @@ impl Widget for ShopPanel {
             ctx.canvas.draw_rect(cell_rect)?;
         }
 
-        // Draw item grid.
-        for i in 0..SHOP_SLOTS {
-            let item = data.items[i];
-            if item == 0 {
-                continue;
-            }
+        // Draw occupied slots packed into the leading cells.
+        for i in 0..self.filled {
+            let item = data.items[self.order[i]];
 
             let col = (i % GRID_COLS) as i32;
             let row = (i / GRID_COLS) as i32;
             let x = grid_x + col * CELL + 2;
             let y = grid_y + row * CELL + 1;
-            let is_hovered = hovered == Some(i);
+            let is_hovered = hovered_cell == Some(i);
 
             // Draw item sprite.
             let texture = ctx.gfx.get_texture(item as usize);
@@ -653,7 +715,7 @@ impl Widget for ShopPanel {
         let is_depot = (data.shop_nr & SHOP_NR_DEPOT_FLAG) != 0;
 
         // Slot price label (shown when hovering a slot that has a price).
-        let price_y = grid_y + GRID_ROWS as i32 * CELL + 2;
+        let price_y = grid_y + self.rows as i32 * CELL + 2;
         if let Some(idx) = hovered {
             let price = data.prices[idx];
             if price != 0 {
@@ -892,5 +954,65 @@ mod tests {
         panel.mouse_x = 100 + PAD_X + 5 * CELL + 5;
         panel.mouse_y = 100 + PAD_TOP + 7 * CELL + 5;
         assert_eq!(panel.hovered_slot(), Some(61));
+    }
+
+    #[test]
+    fn compacted_cells_send_original_slot_indices() {
+        let mut panel = make_panel();
+        let mut data = make_visible_data();
+        data.items = [0; SHOP_SLOTS];
+        data.is_grave = true;
+        for slot in [5, 45, 61] {
+            data.items[slot] = 1;
+        }
+        panel.update_data(data);
+
+        assert_eq!(panel.rows, 1);
+        assert_eq!(panel.bounds.height, panel_height(1));
+
+        let click = |panel: &mut ShopPanel, col: i32, row: i32, button| {
+            panel.handle_event(&UiEvent::MouseClick {
+                x: 100 + PAD_X + col * CELL + 5,
+                y: 100 + PAD_TOP + row * CELL + 5,
+                button,
+                modifiers: crate::ui::widget::KeyModifiers {
+                    ctrl: false,
+                    shift: false,
+                    alt: false,
+                },
+            });
+            panel.take_actions()
+        };
+        let action_of = |actions: Vec<WidgetAction>| match actions.as_slice() {
+            [WidgetAction::ShopAction { action, .. }] => *action,
+            other => panic!("Expected one ShopAction, got {:?}", other),
+        };
+
+        assert_eq!(action_of(click(&mut panel, 0, 0, MouseButton::Left)), 5);
+        assert_eq!(action_of(click(&mut panel, 1, 0, MouseButton::Left)), 45);
+        assert_eq!(action_of(click(&mut panel, 2, 0, MouseButton::Left)), 61);
+        assert_eq!(
+            action_of(click(&mut panel, 1, 0, MouseButton::Right)),
+            45 + SHOP_SLOTS as i32
+        );
+        // Padding cell maps to the first empty slot, exactly like clicking it in the old grid.
+        assert_eq!(action_of(click(&mut panel, 3, 0, MouseButton::Left)), 0);
+        // Second row is no longer part of the grid.
+        assert!(click(&mut panel, 0, 1, MouseButton::Left).is_empty());
+
+        panel.controller_selected = Some(2);
+        panel.controller_activate();
+        assert_eq!(action_of(panel.take_actions()), 61);
+    }
+
+    #[test]
+    fn full_shop_shows_all_rows() {
+        let mut panel = make_panel();
+        let mut data = make_visible_data();
+        data.items = [1; SHOP_SLOTS];
+        panel.update_data(data);
+        assert_eq!(panel.rows, GRID_ROWS);
+        assert_eq!(panel.bounds.height, SHOP_PANEL_H);
+        assert_eq!(panel.order, std::array::from_fn(|i| i));
     }
 }

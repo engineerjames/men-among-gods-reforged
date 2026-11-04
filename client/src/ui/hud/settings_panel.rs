@@ -2427,6 +2427,13 @@ impl SettingsPanel {
         self.controller_focused = None;
     }
 
+    /// Opens the panel with the quit confirmation dialog showing.
+    pub fn show_quit_confirm(&mut self) {
+        self.visible = true;
+        self.quit_dialog.center_on(&self.bounds);
+        self.quit_dialog.show(ExitKind::Quit);
+    }
+
     /// Returns whether the panel is currently visible.
     ///
     /// # Returns
