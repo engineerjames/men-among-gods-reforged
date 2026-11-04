@@ -51,10 +51,10 @@ pub fn apply_global_settings_action(
         WidgetAction::SetShowPositions(v) => settings.show_positions = v,
         WidgetAction::SetMasterVolume(v) => settings.master_volume = v,
         WidgetAction::SetDisplayMode(m) => {
-            *display_command = Some(DisplayCommand::SetDisplayMode(m))
+            *display_command = Some(DisplayCommand::SetDisplayMode(m));
         }
         WidgetAction::SetPixelPerfectScaling(v) => {
-            *display_command = Some(DisplayCommand::SetPixelPerfectScaling(v))
+            *display_command = Some(DisplayCommand::SetPixelPerfectScaling(v));
         }
         WidgetAction::SetVSync(v) => *display_command = Some(DisplayCommand::SetVSync(v)),
         _ => return false,
