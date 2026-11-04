@@ -13,7 +13,7 @@ use crate::{
         self, RenderContext,
         controller_nav::ControllerNavState,
         hud::settings_panel::{PREGAME_SETTINGS_PANEL_H, SettingsPanel, SettingsPanelData},
-        widget::{EventResponse, KeyModifiers, UiEvent, Widget},
+        widget::{EventResponse, KeyModifiers, UiEvent, Widget, WidgetAction},
         widgets::button::CircularImageButton,
     },
 };
@@ -134,6 +134,9 @@ impl PregameSettings {
 
         let mut changed = false;
         for action in self.panel.take_actions() {
+            if let WidgetAction::SetMasterVolume(v) = action {
+                app_state.sfx_cache.set_music_volume(v);
+            }
             changed |= apply_global_settings_action(
                 &mut app_state.settings,
                 &mut app_state.display_command,

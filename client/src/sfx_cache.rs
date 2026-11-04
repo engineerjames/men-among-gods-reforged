@@ -225,15 +225,34 @@ impl SoundCache {
     ///
     /// # Arguments
     /// * `track` - The [`MusicTrack`] to play.
-    pub fn play_music(&self, track: MusicTrack) {
+    /// * `master_volume` - 0.0–1.0 master volume applied to the music channel.
+    pub fn play_music(&self, track: MusicTrack, master_volume: f32) {
         if self.disabled {
             return;
         }
+        self.set_music_volume(master_volume);
         if let Some(chunk) = self.music_cache.get(&track)
             && let Err(e) = Channel(LOGIN_MUSIC_CHANNEL).play(chunk, -1)
         {
             log::warn!("Failed to play music: {}", e);
         }
+    }
+
+    /// Applies the master volume to the dedicated music channel.
+    ///
+    /// # Arguments
+    /// * `master_volume` - 0.0–1.0 master volume.
+    pub fn set_music_volume(&self, master_volume: f32) {
+        if self.disabled {
+            return;
+        }
+        Channel(LOGIN_MUSIC_CHANNEL).set_volume(Self::master_to_sdl_volume(master_volume));
+    }
+
+    /// Maps a 0.0–1.0 master volume onto SDL_mixer's 0–128 range using the
+    /// same perceptual curve as sound effects.
+    fn master_to_sdl_volume(master_volume: f32) -> i32 {
+        Self::convert_server_volume(0, master_volume) * 128 / 127
     }
 
     /// Stops any currently playing music on the dedicated music channel.
@@ -259,6 +278,12 @@ mod tests {
     fn full_volume_passes_through_unchanged() {
         // At master=1.0 and server vol=0 (loudest), SDL volume must be 128.
         assert_eq!(sdl_vol(0, 1.0), 128);
+    }
+
+    #[test]
+    fn music_volume_spans_full_sdl_range() {
+        assert_eq!(SoundCache::master_to_sdl_volume(1.0), 128);
+        assert_eq!(SoundCache::master_to_sdl_volume(0.0), 0);
     }
 
     #[test]

@@ -115,8 +115,6 @@ impl PlatformProfile {
                 settings.display_mode = DisplayMode::Fullscreen;
                 settings.vsync_enabled = true;
                 settings.pixel_perfect_scaling = false;
-                // A sensible non-zero starting volume.
-                settings.master_volume = 0.5;
             }
             Platform::Linux | Platform::MacOS | Platform::Windows => {
                 // Desktop defaults are already correct via Settings::default().
@@ -190,7 +188,7 @@ mod tests {
         assert_eq!(settings.display_mode, DisplayMode::Fullscreen);
         assert!(settings.vsync_enabled);
         assert!(!settings.pixel_perfect_scaling);
-        assert!((settings.master_volume - 0.5).abs() < f32::EPSILON);
+        assert!((settings.master_volume - 1.0).abs() < f32::EPSILON);
     }
 
     #[test]

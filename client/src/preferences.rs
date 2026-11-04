@@ -185,7 +185,7 @@ pub struct Settings {
     #[serde(default = "default_weather_intensity")]
     pub weather_intensity: f32,
     /// Master volume (0.0–1.0).
-    #[serde(default)]
+    #[serde(default = "default_master_volume")]
     pub master_volume: f32,
     /// Wall-hiding toggle.
     #[serde(default)]
@@ -221,7 +221,7 @@ impl Default for Settings {
             spell_effects_enabled: true,
             weather_enabled: true,
             weather_intensity: 1.0,
-            master_volume: 0.0,
+            master_volume: default_master_volume(),
             hide: false,
             show_names: true,
             show_proz: true,
@@ -269,6 +269,11 @@ impl Default for ProfileStorage {
 /// Serde helper: returns `true` for default values of new boolean fields.
 fn default_true() -> bool {
     true
+}
+
+/// Serde helper: returns the default master volume (full).
+fn default_master_volume() -> f32 {
+    1.0
 }
 
 /// Serde helper: returns the default weather intensity multiplier.

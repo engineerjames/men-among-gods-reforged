@@ -98,7 +98,9 @@ impl LoginScene {
         app_state.settings.music_enabled = settings.music_enabled;
 
         if app_state.settings.music_enabled {
-            app_state.sfx_cache.play_music(MusicTrack::LoginTheme);
+            app_state
+                .sfx_cache
+                .play_music(MusicTrack::LoginTheme, app_state.settings.master_volume);
         } else {
             app_state.sfx_cache.stop_music();
         }
@@ -366,7 +368,9 @@ impl Scene for LoginScene {
                 LoginFormAction::ToggleMusic(enabled) => {
                     app_state.settings.music_enabled = enabled;
                     if enabled {
-                        app_state.sfx_cache.play_music(MusicTrack::LoginTheme);
+                        app_state
+                            .sfx_cache
+                            .play_music(MusicTrack::LoginTheme, app_state.settings.master_volume);
                     } else {
                         app_state.sfx_cache.stop_music();
                     }
