@@ -1211,7 +1211,17 @@ impl GameScene {
                     crate::platform::open_directory_in_file_manager(&log_dir);
                 }
                 WidgetAction::StartProfiler => {
+                    self.settings_panel.close();
                     self.perf_profiler.start();
+                    if let Some(ps) = app_state.player_state.as_mut() {
+                        ps.tlog(
+                            1,
+                            format!(
+                                "Performance profiling started ({}s)...",
+                                self.perf_profiler.remaining_secs()
+                            ),
+                        );
+                    }
                 }
                 WidgetAction::SendClientLogs => {
                     if self.settings_panel.is_visible() {
@@ -2427,7 +2437,13 @@ impl Scene for GameScene {
         }
         self.mode_button.update(dt);
         self.shop_panel.update(dt);
-        self.perf_profiler.check_expired();
+        if let Some(lines) = self.perf_profiler.check_expired()
+            && let Some(ps) = app_state.player_state.as_mut()
+        {
+            for line in lines {
+                ps.tlog(1, line);
+            }
+        }
         self.poll_network_test_result(app_state);
 
         // --- Right-side HUD button fade ---

@@ -934,6 +934,8 @@ impl DiagnosticsSubPanel {
                     }
                     Some(1) => {
                         self.pending_actions.push(WidgetAction::StartProfiler);
+                        self.visible = false;
+                        self.controller_focused = None;
                     }
                     Some(2) => {
                         self.pending_actions.push(WidgetAction::OpenLogDir);
@@ -984,6 +986,8 @@ impl DiagnosticsSubPanel {
 
         if self.btn_profiler.handle_event(event) == EventResponse::Consumed {
             self.pending_actions.push(WidgetAction::StartProfiler);
+            self.visible = false;
+            self.controller_focused = None;
             return EventResponse::Consumed;
         }
         if self.btn_log_dir.handle_event(event) == EventResponse::Consumed {

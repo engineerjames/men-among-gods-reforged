@@ -185,13 +185,19 @@ impl PerfProfiler {
 
     /// Call once per frame (e.g. at the start of `update`) to check whether
     /// the capture window has elapsed. If so, logs the summary and deactivates.
-    pub fn check_expired(&mut self) {
+    ///
+    /// # Returns
+    ///
+    /// * `Some(lines)` with a short player-facing summary when the window just
+    ///   finished, otherwise `None`.
+    pub fn check_expired(&mut self) -> Option<Vec<String>> {
         if self.active
             && let Some(start) = self.start_time
             && start.elapsed() >= self.duration
         {
-            self.finish();
+            return Some(self.finish());
         }
+        None
     }
 
     // ── Per-frame API ───────────────────────────────────────────────────
@@ -241,19 +247,22 @@ impl PerfProfiler {
 
     // ── Internal ────────────────────────────────────────────────────────
 
-    fn finish(&mut self) {
+    fn finish(&mut self) -> Vec<String> {
         self.active = false;
-        self.log_summary();
+        let lines = self.log_summary();
         self.frame_start = None;
         self.pending_sample = None;
         self.current_times.clear();
+        lines
     }
 
-    fn log_summary(&self) {
+    /// Writes the full summary to the log file and returns a short
+    /// player-facing version of it.
+    fn log_summary(&self) -> Vec<String> {
         let n = self.frame_samples.len();
         if n == 0 {
             log::info!("Performance profiling finished — no frames captured.");
-            return;
+            return vec!["Performance profile finished: no frames captured.".to_owned()];
         }
 
         let elapsed_secs = self
@@ -298,12 +307,16 @@ impl PerfProfiler {
             "%Budget"
         );
 
+        let mut slowest: Option<(PerfLabel, Duration)> = None;
         for (i, label) in PerfLabel::ALL.iter().enumerate() {
             let durations = &mut per_label[i];
             if durations.is_empty() {
                 continue;
             }
             let stats = compute_stats(durations);
+            if slowest.is_none_or(|(_, avg)| stats.avg > avg) {
+                slowest = Some((*label, stats.avg));
+            }
             log::info!(
                 "{:<40} {:>8} {:>8} {:>8} {:>8} {:>7.1}%",
                 label.as_str(),
@@ -333,6 +346,32 @@ impl PerfProfiler {
             frames_over as f64 / n as f64 * 100.0,
         );
         log::info!("=== End Performance Profile ===");
+
+        let mut lines = vec![
+            format!(
+                "Performance Profile: {} frames in {:.1}s ({:.0} FPS)",
+                n,
+                elapsed_secs,
+                n as f64 / elapsed_secs.max(f64::EPSILON)
+            ),
+            format!(
+                "Frame time: avg={} p95={} max={} | over budget: {}/{} ({:.1}%)",
+                format_duration(total_stats.avg),
+                format_duration(total_stats.p95),
+                format_duration(total_stats.max),
+                frames_over,
+                n,
+                frames_over as f64 / n as f64 * 100.0,
+            ),
+        ];
+        if let Some((label, avg)) = slowest {
+            lines.push(format!(
+                "Slowest: {} avg={}. Full details in the client log.",
+                label.as_str(),
+                format_duration(avg)
+            ));
+        }
+        lines
     }
 }
 
@@ -589,8 +628,22 @@ mod tests {
     #[test]
     fn check_expired_noop_when_inactive() {
         let mut p = PerfProfiler::new();
-        p.check_expired(); // Must not panic.
+        assert!(p.check_expired().is_none());
         assert!(!p.is_active());
+    }
+
+    #[test]
+    fn check_expired_returns_player_summary_when_window_elapses() {
+        let mut p = PerfProfiler::new();
+        p.start_with_duration(Duration::ZERO);
+        p.begin_frame();
+        p.begin_sample(PerfLabel::DrawWorld);
+        p.end_sample(PerfLabel::DrawWorld);
+        p.end_frame();
+        let lines = p.check_expired().expect("summary expected");
+        assert!(!p.is_active());
+        assert_eq!(lines.len(), 3);
+        assert!(lines[2].contains("draw_world"));
     }
 
     // ── PerfProfiler — frame / sample lifecycle ──────────────────────────
