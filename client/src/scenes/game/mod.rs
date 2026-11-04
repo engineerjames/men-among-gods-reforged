@@ -1008,20 +1008,6 @@ impl GameScene {
         let last_rtt = app_state.network.as_ref().and_then(|net| net.last_rtt_ms);
 
         SettingsPanelData {
-            shadows_enabled: app_state.settings.shadows_enabled,
-            spell_effects_enabled: app_state.settings.spell_effects_enabled,
-            weather_enabled: app_state.settings.weather_enabled,
-            weather_intensity: app_state.settings.weather_intensity,
-            show_names: app_state.settings.show_names,
-            show_health_pct: app_state.settings.show_proz,
-            show_danger_glyphs: app_state.settings.show_danger_glyphs,
-            hide_walls: app_state.settings.hide,
-            show_helper_text: app_state.settings.show_helper_text,
-            show_positions: app_state.settings.show_positions,
-            master_volume: app_state.settings.master_volume,
-            display_mode: app_state.settings.display_mode,
-            pixel_perfect_scaling: app_state.settings.pixel_perfect_scaling,
-            vsync_enabled: app_state.settings.vsync_enabled,
             last_rtt_ms: last_rtt,
             profiler_active: self.perf_profiler.is_active(),
             profiler_remaining_secs: if self.perf_profiler.is_active() {
@@ -1029,11 +1015,7 @@ impl GameScene {
             } else {
                 None
             },
-            key_bindings: app_state.settings.character.key_bindings.clone(),
-            controller_bindings: app_state.settings.character.controller_bindings.clone(),
-            mouse_modifier_bindings: app_state.settings.character.mouse_modifier_bindings.clone(),
-            autoloot_enabled: app_state.settings.character.auto_loot_graves,
-            autoloot: app_state.settings.character.autoloot,
+            ..SettingsPanelData::from_settings(&app_state.settings)
         }
     }
 
@@ -1194,47 +1176,15 @@ impl GameScene {
         let mut profile_changed = false;
 
         for action in self.settings_panel.take_actions() {
+            if crate::state::apply_global_settings_action(
+                &mut app_state.settings,
+                &mut app_state.display_command,
+                &action,
+            ) {
+                profile_changed = true;
+                continue;
+            }
             match action {
-                WidgetAction::SetShadows(v) => {
-                    app_state.settings.shadows_enabled = v;
-                    profile_changed = true;
-                }
-                WidgetAction::SetSpellEffects(v) => {
-                    app_state.settings.spell_effects_enabled = v;
-                    profile_changed = true;
-                }
-                WidgetAction::SetWeather(v) => {
-                    app_state.settings.weather_enabled = v;
-                    profile_changed = true;
-                }
-                WidgetAction::SetWeatherIntensity(v) => {
-                    app_state.settings.weather_intensity = v.clamp(0.0, 1.0);
-                    profile_changed = true;
-                }
-                WidgetAction::SetShowNames(v) => {
-                    app_state.settings.show_names = v;
-                    profile_changed = true;
-                }
-                WidgetAction::SetShowHealthPct(v) => {
-                    app_state.settings.show_proz = v;
-                    profile_changed = true;
-                }
-                WidgetAction::SetShowDangerGlyphs(v) => {
-                    app_state.settings.show_danger_glyphs = v;
-                    profile_changed = true;
-                }
-                WidgetAction::SetHideWalls(v) => {
-                    app_state.settings.hide = v;
-                    profile_changed = true;
-                }
-                WidgetAction::SetShowHelperText(v) => {
-                    app_state.settings.show_helper_text = v;
-                    profile_changed = true;
-                }
-                WidgetAction::SetShowPositions(v) => {
-                    app_state.settings.show_positions = v;
-                    profile_changed = true;
-                }
                 WidgetAction::SetAutolootEnabled(v) => {
                     app_state.settings.character.auto_loot_graves = v;
                     self.autoloot_visited.clear();
@@ -1246,19 +1196,6 @@ impl GameScene {
                     // Let adjacent graves be re-scanned with the new categories.
                     self.autoloot_visited.clear();
                     profile_changed = true;
-                }
-                WidgetAction::SetMasterVolume(v) => {
-                    app_state.settings.master_volume = v;
-                    profile_changed = true;
-                }
-                WidgetAction::SetDisplayMode(m) => {
-                    app_state.display_command = Some(DisplayCommand::SetDisplayMode(m));
-                }
-                WidgetAction::SetPixelPerfectScaling(v) => {
-                    app_state.display_command = Some(DisplayCommand::SetPixelPerfectScaling(v));
-                }
-                WidgetAction::SetVSync(v) => {
-                    app_state.display_command = Some(DisplayCommand::SetVSync(v));
                 }
                 WidgetAction::Disconnect => {
                     scene_change = Some(SceneType::CharacterSelection);

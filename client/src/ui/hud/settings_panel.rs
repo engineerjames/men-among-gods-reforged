@@ -13,7 +13,7 @@ use sdl2::render::BlendMode;
 use mag_core::autoloot::AutolootConfig;
 
 use crate::font_cache;
-use crate::preferences::DisplayMode;
+use crate::preferences::{DisplayMode, Settings};
 use crate::types::controller::{CONTROLLER_BIND_SLOTS, ControllerBindings, ControllerButton};
 use crate::types::mouse::{ExtraMouseButton, MouseModifier, MouseModifierBindings};
 use crate::ui::RenderContext;
@@ -59,6 +59,13 @@ const Y_RETURN_BTN: i32 = Y_SESSION_BTNS + BTN_H as i32 + 6;
 
 /// Total panel height needed to fit all main-panel controls.
 pub const SETTINGS_PANEL_H: u32 = (Y_RETURN_BTN + BTN_H as i32 + 8) as u32;
+
+// Pre-game layout: Display button, volume slider, Close button.
+const PG_Y_VOLUME: i32 = Y_DIAG_BTN + 4;
+const PG_Y_CLOSE: i32 = PG_Y_VOLUME + ROW_H + 10;
+
+/// Panel height of the reduced pre-game settings panel.
+pub const PREGAME_SETTINGS_PANEL_H: u32 = (PG_Y_CLOSE + BTN_H as i32 + 8) as u32;
 
 // ---------------------------------------------------------------------------
 // Layout constants — Display sub-panel
@@ -2148,6 +2155,45 @@ pub struct SettingsPanelData {
     pub autoloot: AutolootConfig,
 }
 
+impl SettingsPanelData {
+    /// Builds a snapshot from persisted settings, with no live diagnostics
+    /// (ping/profiler) data.
+    ///
+    /// # Arguments
+    ///
+    /// * `settings` - Current user settings.
+    ///
+    /// # Returns
+    ///
+    /// * A snapshot suitable for [`SettingsPanel::sync_state`].
+    pub fn from_settings(settings: &Settings) -> Self {
+        Self {
+            shadows_enabled: settings.shadows_enabled,
+            spell_effects_enabled: settings.spell_effects_enabled,
+            weather_enabled: settings.weather_enabled,
+            weather_intensity: settings.weather_intensity,
+            show_names: settings.show_names,
+            show_health_pct: settings.show_proz,
+            show_danger_glyphs: settings.show_danger_glyphs,
+            hide_walls: settings.hide,
+            show_helper_text: settings.show_helper_text,
+            show_positions: settings.show_positions,
+            master_volume: settings.master_volume,
+            display_mode: settings.display_mode,
+            pixel_perfect_scaling: settings.pixel_perfect_scaling,
+            vsync_enabled: settings.vsync_enabled,
+            last_rtt_ms: None,
+            profiler_active: false,
+            profiler_remaining_secs: None,
+            key_bindings: settings.character.key_bindings.clone(),
+            controller_bindings: settings.character.controller_bindings.clone(),
+            mouse_modifier_bindings: settings.character.mouse_modifier_bindings.clone(),
+            autoloot_enabled: settings.character.auto_loot_graves,
+            autoloot: settings.character.autoloot,
+        }
+    }
+}
+
 // ===========================================================================
 // SettingsPanel (main panel)
 // ===========================================================================
@@ -2202,6 +2248,8 @@ pub struct SettingsPanel {
     /// `true` when the controller is actively adjusting the volume slider
     /// (entered via NavConfirm on index 6, exited via NavConfirm or NavBack).
     volume_adjusting: bool,
+    /// Reduced pre-game mode: only Display, Volume and Close are available.
+    pregame: bool,
 }
 
 impl SettingsPanel {
@@ -2329,7 +2377,30 @@ impl SettingsPanel {
 
             controller_focused: None,
             volume_adjusting: false,
+            pregame: false,
         }
+    }
+
+    /// Creates the reduced pre-game settings panel (Display, Volume, Close)
+    /// used before a character is in the world.
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - Left edge of the panel.
+    /// * `y` - Top edge of the panel.
+    /// * `width` - Panel width.
+    /// * `bg_color` - Semi-transparent background color.
+    ///
+    /// # Returns
+    ///
+    /// A new pre-game `SettingsPanel`, initially hidden.
+    pub fn new_pregame(x: i32, y: i32, width: u32, bg_color: Color) -> Self {
+        let mut panel = Self::new(Bounds::new(x, y, width, PREGAME_SETTINGS_PANEL_H), bg_color);
+        panel.pregame = true;
+        panel.sld_volume.set_position(x + H_INSET, y + PG_Y_VOLUME);
+        panel.btn_return.set_position(x + H_INSET, y + PG_Y_CLOSE);
+        panel.btn_return.set_label("Close");
+        panel
     }
 
     /// Toggles the panel's visibility.
@@ -2493,8 +2564,39 @@ impl SettingsPanel {
         }
     }
 
-    /// Number of focusable elements on the main panel.
-    const MAIN_FOCUSABLE_COUNT: usize = 10;
+    /// Controller focus order for the full in-game panel.
+    const MAIN_FOCUS_ORDER: [usize; 10] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+    /// Controller focus order for the pre-game panel (Display, Volume, Close).
+    const PREGAME_FOCUS_ORDER: [usize; 3] = [0, 6, 9];
+
+    /// Returns the focus index one step forward or backward in the active
+    /// focus order.
+    ///
+    /// # Arguments
+    ///
+    /// * `forward` - `true` for next, `false` for previous.
+    ///
+    /// # Returns
+    ///
+    /// * The next focus index.
+    fn step_focus(&self, forward: bool) -> usize {
+        let order: &[usize] = if self.pregame {
+            &Self::PREGAME_FOCUS_ORDER
+        } else {
+            &Self::MAIN_FOCUS_ORDER
+        };
+        let n = order.len();
+        let pos = self
+            .controller_focused
+            .and_then(|f| order.iter().position(|&i| i == f));
+        let next = match (pos, forward) {
+            (None, true) => 0,
+            (None, false) => n - 1,
+            (Some(p), true) => (p + 1) % n,
+            (Some(p), false) => (p + n - 1) % n,
+        };
+        order[next]
+    }
 
     /// Applies controller focus highlighting to the main panel widgets.
     fn apply_controller_focus(&mut self) {
@@ -2655,20 +2757,13 @@ impl Widget for SettingsPanel {
         match event {
             UiEvent::NavNext => {
                 self.volume_adjusting = false;
-                self.controller_focused = Some(match self.controller_focused {
-                    None => 0,
-                    Some(i) => (i + 1) % Self::MAIN_FOCUSABLE_COUNT,
-                });
+                self.controller_focused = Some(self.step_focus(true));
                 self.apply_controller_focus();
                 return EventResponse::Consumed;
             }
             UiEvent::NavPrev => {
                 self.volume_adjusting = false;
-                self.controller_focused = Some(match self.controller_focused {
-                    None => Self::MAIN_FOCUSABLE_COUNT - 1,
-                    Some(0) => Self::MAIN_FOCUSABLE_COUNT - 1,
-                    Some(i) => i - 1,
-                });
+                self.controller_focused = Some(self.step_focus(false));
                 self.apply_controller_focus();
                 return EventResponse::Consumed;
             }
@@ -2747,45 +2842,47 @@ impl Widget for SettingsPanel {
             }
             return EventResponse::Consumed;
         }
-        if self.btn_diagnostics.handle_event(event) == EventResponse::Consumed {
-            if self.active_sub_panel == Some(SettingsSubPanel::Diagnostics) {
-                self.close_active_sub_panel();
-            } else {
-                self.open_sub_panel(SettingsSubPanel::Diagnostics);
+        if !self.pregame {
+            if self.btn_diagnostics.handle_event(event) == EventResponse::Consumed {
+                if self.active_sub_panel == Some(SettingsSubPanel::Diagnostics) {
+                    self.close_active_sub_panel();
+                } else {
+                    self.open_sub_panel(SettingsSubPanel::Diagnostics);
+                }
+                return EventResponse::Consumed;
             }
-            return EventResponse::Consumed;
-        }
-        if self.btn_controls.handle_event(event) == EventResponse::Consumed {
-            if self.active_sub_panel == Some(SettingsSubPanel::Controls) {
-                self.close_active_sub_panel();
-            } else {
-                self.open_sub_panel(SettingsSubPanel::Controls);
+            if self.btn_controls.handle_event(event) == EventResponse::Consumed {
+                if self.active_sub_panel == Some(SettingsSubPanel::Controls) {
+                    self.close_active_sub_panel();
+                } else {
+                    self.open_sub_panel(SettingsSubPanel::Controls);
+                }
+                return EventResponse::Consumed;
             }
-            return EventResponse::Consumed;
-        }
-        if self.btn_controller.handle_event(event) == EventResponse::Consumed {
-            if self.active_sub_panel == Some(SettingsSubPanel::Controller) {
-                self.close_active_sub_panel();
-            } else {
-                self.open_sub_panel(SettingsSubPanel::Controller);
+            if self.btn_controller.handle_event(event) == EventResponse::Consumed {
+                if self.active_sub_panel == Some(SettingsSubPanel::Controller) {
+                    self.close_active_sub_panel();
+                } else {
+                    self.open_sub_panel(SettingsSubPanel::Controller);
+                }
+                return EventResponse::Consumed;
             }
-            return EventResponse::Consumed;
-        }
-        if self.btn_mouse.handle_event(event) == EventResponse::Consumed {
-            if self.active_sub_panel == Some(SettingsSubPanel::Mouse) {
-                self.close_active_sub_panel();
-            } else {
-                self.open_sub_panel(SettingsSubPanel::Mouse);
+            if self.btn_mouse.handle_event(event) == EventResponse::Consumed {
+                if self.active_sub_panel == Some(SettingsSubPanel::Mouse) {
+                    self.close_active_sub_panel();
+                } else {
+                    self.open_sub_panel(SettingsSubPanel::Mouse);
+                }
+                return EventResponse::Consumed;
             }
-            return EventResponse::Consumed;
-        }
-        if self.btn_autoloot.handle_event(event) == EventResponse::Consumed {
-            if self.active_sub_panel == Some(SettingsSubPanel::Autoloot) {
-                self.close_active_sub_panel();
-            } else {
-                self.open_sub_panel(SettingsSubPanel::Autoloot);
+            if self.btn_autoloot.handle_event(event) == EventResponse::Consumed {
+                if self.active_sub_panel == Some(SettingsSubPanel::Autoloot) {
+                    self.close_active_sub_panel();
+                } else {
+                    self.open_sub_panel(SettingsSubPanel::Autoloot);
+                }
+                return EventResponse::Consumed;
             }
-            return EventResponse::Consumed;
         }
 
         // 5. Volume slider.
@@ -2795,14 +2892,16 @@ impl Widget for SettingsPanel {
         }
 
         // 6. Session buttons (beneath sub-panel overlay).
-        if self.btn_disconnect.handle_event(event) == EventResponse::Consumed {
-            self.pending_actions.push(WidgetAction::Disconnect);
-            return EventResponse::Consumed;
-        }
-        if self.btn_quit.handle_event(event) == EventResponse::Consumed {
-            self.quit_dialog.center_on(&self.bounds);
-            self.quit_dialog.show();
-            return EventResponse::Consumed;
+        if !self.pregame {
+            if self.btn_disconnect.handle_event(event) == EventResponse::Consumed {
+                self.pending_actions.push(WidgetAction::Disconnect);
+                return EventResponse::Consumed;
+            }
+            if self.btn_quit.handle_event(event) == EventResponse::Consumed {
+                self.quit_dialog.center_on(&self.bounds);
+                self.quit_dialog.show();
+                return EventResponse::Consumed;
+            }
         }
         if self.btn_return.handle_event(event) == EventResponse::Consumed {
             self.visible = false;
@@ -2848,26 +2947,30 @@ impl Widget for SettingsPanel {
 
         // Category buttons
         self.btn_display.render(ctx)?;
-        self.btn_diagnostics.render(ctx)?;
-        self.btn_controls.render(ctx)?;
-        self.btn_controller.render(ctx)?;
-        self.btn_mouse.render(ctx)?;
-        self.btn_autoloot.render(ctx)?;
+        if !self.pregame {
+            self.btn_diagnostics.render(ctx)?;
+            self.btn_controls.render(ctx)?;
+            self.btn_controller.render(ctx)?;
+            self.btn_mouse.render(ctx)?;
+            self.btn_autoloot.render(ctx)?;
+        }
 
         // Volume slider
         self.sld_volume.render(ctx)?;
 
-        // Separator line above session buttons
-        let sep_y = self.bounds.y + Y_SEPARATOR;
-        ctx.canvas.set_draw_color(Color::RGBA(120, 120, 140, 150));
-        ctx.canvas.draw_line(
-            sdl2::rect::Point::new(self.bounds.x + H_INSET, sep_y),
-            sdl2::rect::Point::new(self.bounds.x + self.bounds.width as i32 - H_INSET, sep_y),
-        )?;
+        if !self.pregame {
+            // Separator line above session buttons
+            let sep_y = self.bounds.y + Y_SEPARATOR;
+            ctx.canvas.set_draw_color(Color::RGBA(120, 120, 140, 150));
+            ctx.canvas.draw_line(
+                sdl2::rect::Point::new(self.bounds.x + H_INSET, sep_y),
+                sdl2::rect::Point::new(self.bounds.x + self.bounds.width as i32 - H_INSET, sep_y),
+            )?;
 
-        // Session buttons
-        self.btn_disconnect.render(ctx)?;
-        self.btn_quit.render(ctx)?;
+            // Session buttons
+            self.btn_disconnect.render(ctx)?;
+            self.btn_quit.render(ctx)?;
+        }
         self.btn_return.render(ctx)?;
 
         if self.active_sub_panel.is_some() {
@@ -3018,6 +3121,31 @@ mod tests {
         assert!(panel.sub_diagnostics.chk_show_positions.is_checked());
         // Volume on main panel.
         assert!((panel.sld_volume.value() - 0.75).abs() < 0.01);
+    }
+
+    #[test]
+    fn pregame_panel_only_exposes_display_volume_close() {
+        let mut panel = SettingsPanel::new_pregame(0, 0, 300, Color::RGBA(0, 0, 0, 180));
+        panel.toggle();
+
+        let order: Vec<_> = (0..4)
+            .map(|_| {
+                panel.handle_event(&UiEvent::NavNext);
+                panel.controller_focused.unwrap()
+            })
+            .collect();
+        assert_eq!(order, vec![0, 6, 9, 0]);
+
+        // Close (relabelled Return) hides the panel.
+        let close = *panel.btn_return.bounds();
+        panel.handle_event(&left_click(close.x + 2, close.y + 2));
+        assert!(!panel.is_visible());
+
+        // Hidden in-game buttons no longer react.
+        panel.toggle();
+        let quit = *panel.btn_quit.bounds();
+        panel.handle_event(&left_click(quit.x + 2, quit.y + 2));
+        assert!(!panel.quit_dialog.is_visible());
     }
 
     #[test]

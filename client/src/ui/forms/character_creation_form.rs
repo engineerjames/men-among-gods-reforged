@@ -324,15 +324,22 @@ impl CharacterCreationForm {
         self.name_input.set_value(name);
     }
 
-    /// Sets the busy / creating indicator.
+    /// Sets the busy / creating indicator. While busy the form ignores input
+    /// and renders its controls dimmed.
     ///
     /// # Arguments
     ///
-    /// * `busy` - `true` to show "Creating...", `false` to hide.
+    /// * `busy` - `true` to show "Creating..." and disable input, `false` to re-enable.
     pub fn set_busy(&mut self, busy: bool) {
         self.show_busy = busy;
         if busy {
             self.error_text = None;
+            self.controller_focused = None;
+            self.apply_controller_focus();
+            self.name_input.set_focused(false);
+            self.description_input.set_focused(false);
+        } else {
+            self.apply_focus();
         }
     }
 
@@ -485,6 +492,10 @@ impl Widget for CharacterCreationForm {
     }
 
     fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
+        if self.show_busy {
+            return EventResponse::Consumed;
+        }
+
         // ── Controller navigation ────────────────────────────────────────
         match event {
             UiEvent::NavNext => {
@@ -654,6 +665,7 @@ impl Widget for CharacterCreationForm {
         )?;
 
         let mut cursor_y = title_y + font_cache::BITMAP_GLYPH_H as i32 + 8;
+        let controls_top = cursor_y;
 
         // Name field.
         font_cache::draw_text(
@@ -783,6 +795,17 @@ impl Widget for CharacterCreationForm {
         self.create_button.render(ctx)?;
         self.back_button.render(ctx)?;
         cursor_y += BTN_H as i32 + 8;
+
+        if self.show_busy {
+            ctx.canvas.set_blend_mode(BlendMode::Blend);
+            ctx.canvas.set_draw_color(Color::RGBA(15, 15, 30, 170));
+            ctx.canvas.fill_rect(sdl2::rect::Rect::new(
+                self.bounds.x + 1,
+                controls_top,
+                self.bounds.width - 2,
+                (cursor_y - controls_top) as u32,
+            ))?;
+        }
 
         // Class description flavor text box.
         let flavor_desc = match self.selected_class {
@@ -923,5 +946,24 @@ mod tests {
         assert!(form.error_text.is_some());
         form.set_busy(true);
         assert!(form.error_text.is_none());
+    }
+
+    #[test]
+    fn busy_form_ignores_input_until_cleared() {
+        let mut form = make_form();
+        form.set_name("Hero");
+        form.set_busy(true);
+        let enter = UiEvent::KeyDown {
+            keycode: Keycode::Return,
+            modifiers: KeyModifiers::default(),
+        };
+        form.handle_event(&enter);
+        form.handle_event(&UiEvent::NavNext);
+        assert!(form.take_actions().is_empty());
+        assert!(form.controller_focused.is_none());
+
+        form.set_busy(false);
+        form.handle_event(&enter);
+        assert_eq!(form.take_actions().len(), 1);
     }
 }

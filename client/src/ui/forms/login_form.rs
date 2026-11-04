@@ -70,6 +70,10 @@ const FONT: usize = 1;
 /// Additional separation and bottom padding reserved when an error is shown.
 const ERROR_PANEL_PADDING: u32 = 8;
 
+/// Vertical space taken by the server label + combo box row.
+const SERVER_ROW_H: u32 =
+    font_cache::BITMAP_GLYPH_H + LABEL_INPUT_GAP as u32 + INPUT_H + FIELD_GAP as u32;
+
 // ---------------------------------------------------------------------------
 // Actions
 // ---------------------------------------------------------------------------
@@ -112,6 +116,8 @@ pub struct LoginForm {
     server_dropdown: Dropdown,
     /// Server host choices shown in the combo-box list.
     server_options: Vec<String>,
+    /// Whether the server row is shown (only for `cargo run`).
+    show_server: bool,
     /// Username input.
     username_input: TextInput,
     /// Password input (masked).
@@ -157,6 +163,7 @@ impl LoginForm {
     ///
     /// * `server_ip` - Initial server IP / hostname value.
     /// * `server_options` - Server IP / hostname choices for the combo box.
+    /// * `show_server` - Whether the server combo box is shown.
     /// * `username` - Initial username value (e.g. from saved preferences).
     /// * `music_enabled` - Initial state of the music checkbox.
     ///
@@ -166,6 +173,7 @@ impl LoginForm {
     pub fn new(
         server_ip: &str,
         server_options: &[String],
+        show_server: bool,
         username: &str,
         music_enabled: bool,
     ) -> Self {
@@ -281,10 +289,11 @@ impl LoginForm {
         )
         .with_label(DISCORD_INVITE, FONT);
 
-        Self {
+        let mut form = Self {
             bounds,
             server_dropdown,
             server_options,
+            show_server,
             username_input,
             password_input,
             music_checkbox,
@@ -302,7 +311,9 @@ impl LoginForm {
             show_submitting: false,
             error_text: None,
             controller_focused: None,
-        }
+        };
+        form.resize_for_error();
+        form
     }
 
     /// Returns a reference to the current server-IP value.
@@ -362,7 +373,8 @@ impl LoginForm {
             .as_deref()
             .map(|error| font_cache::measure_wrapped_bitmap(error, INPUT_W).1)
             .unwrap_or(0);
-        self.bounds.height = PANEL_H
+        let hidden_server_h = if self.show_server { 0 } else { SERVER_ROW_H };
+        self.bounds.height = PANEL_H - hidden_server_h
             + if error_height > 0 {
                 error_height + ERROR_PANEL_PADDING
             } else {
@@ -453,6 +465,33 @@ impl LoginForm {
     /// 6=reset, 7=quit, 8=Discord.
     const FOCUSABLE_COUNT: usize = 9;
 
+    /// Moves controller focus one step forward or backward, skipping the
+    /// hidden server row.
+    ///
+    /// # Arguments
+    ///
+    /// * `forward` - `true` for next, `false` for previous.
+    fn step_controller_focus(&mut self, forward: bool) {
+        let n = Self::FOCUSABLE_COUNT;
+        let step = |i: usize| {
+            if forward {
+                (i + 1) % n
+            } else {
+                (i + n - 1) % n
+            }
+        };
+        let mut next = match self.controller_focused {
+            None if forward => 0,
+            None => n - 1,
+            Some(i) => step(i),
+        };
+        if next == 0 && !self.show_server {
+            next = step(next);
+        }
+        self.controller_focused = Some(next);
+        self.apply_controller_focus();
+    }
+
     /// Applies the controller focus highlight to the appropriate child widget.
     fn apply_controller_focus(&mut self) {
         let focused = self.controller_focused;
@@ -515,20 +554,11 @@ impl Widget for LoginForm {
         // ── Controller navigation ────────────────────────────────────────
         match event {
             UiEvent::NavNext => {
-                self.controller_focused = Some(match self.controller_focused {
-                    None => 0,
-                    Some(i) => (i + 1) % Self::FOCUSABLE_COUNT,
-                });
-                self.apply_controller_focus();
+                self.step_controller_focus(true);
                 return EventResponse::Consumed;
             }
             UiEvent::NavPrev => {
-                self.controller_focused = Some(match self.controller_focused {
-                    None => Self::FOCUSABLE_COUNT - 1,
-                    Some(0) => Self::FOCUSABLE_COUNT - 1,
-                    Some(i) => i - 1,
-                });
-                self.apply_controller_focus();
+                self.step_controller_focus(false);
                 return EventResponse::Consumed;
             }
             UiEvent::NavConfirm => {
@@ -581,7 +611,7 @@ impl Widget for LoginForm {
 
         // Expanded combo box gets first chance at clicks so its option list
         // overlays the rest of the form cleanly.
-        if self.server_dropdown.is_expanded() {
+        if self.show_server && self.server_dropdown.is_expanded() {
             let response = self.server_dropdown.handle_event(event);
             if response == EventResponse::Consumed || !self.server_dropdown.is_expanded() {
                 return EventResponse::Consumed;
@@ -655,8 +685,7 @@ impl Widget for LoginForm {
             return EventResponse::Consumed;
         }
 
-        let server_resp = self.server_dropdown.handle_event(event);
-        if server_resp == EventResponse::Consumed {
+        if self.show_server && self.server_dropdown.handle_event(event) == EventResponse::Consumed {
             return EventResponse::Consumed;
         }
 
@@ -723,19 +752,21 @@ impl Widget for LoginForm {
         let mut cursor_y = title_y + font_cache::BITMAP_GLYPH_H as i32 + 8;
 
         // ── Server field ─────────────────────────────────────────────────
-        font_cache::draw_text(
-            ctx.canvas,
-            ctx.gfx,
-            FONT,
-            "Server Address",
-            self.bounds.x + PAD_X,
-            cursor_y,
-            font_cache::TextStyle::PLAIN,
-        )?;
-        cursor_y += font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
-        self.server_dropdown
-            .set_position(self.bounds.x + PAD_X, cursor_y);
-        cursor_y += INPUT_H as i32 + FIELD_GAP;
+        if self.show_server {
+            font_cache::draw_text(
+                ctx.canvas,
+                ctx.gfx,
+                FONT,
+                "Server Address",
+                self.bounds.x + PAD_X,
+                cursor_y,
+                font_cache::TextStyle::PLAIN,
+            )?;
+            cursor_y += font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
+            self.server_dropdown
+                .set_position(self.bounds.x + PAD_X, cursor_y);
+            cursor_y += INPUT_H as i32 + FIELD_GAP;
+        }
 
         // ── Username field ───────────────────────────────────────────────
         font_cache::draw_text(
@@ -872,7 +903,9 @@ impl Widget for LoginForm {
             )?;
         }
 
-        self.server_dropdown.render(ctx)?;
+        if self.show_server {
+            self.server_dropdown.render(ctx)?;
+        }
 
         Ok(())
     }
@@ -910,6 +943,7 @@ mod tests {
         LoginForm::new(
             "127.0.0.1",
             &["127.0.0.1".to_owned(), "menamonggods.ddns.net".to_owned()],
+            true,
             "testuser",
             false,
         )
@@ -1076,6 +1110,21 @@ mod tests {
 
         form.handle_event(&UiEvent::NavConfirm);
 
+        assert_eq!(form.server_ip(), "menamonggods.ddns.net");
+    }
+
+    #[test]
+    fn hidden_server_row_shrinks_panel_and_is_skipped_by_controller() {
+        let mut form = LoginForm::new("menamonggods.ddns.net", &[], false, "", false);
+        assert_eq!(form.bounds.height, PANEL_H - SERVER_ROW_H);
+
+        form.handle_event(&UiEvent::NavNext);
+        assert_eq!(form.controller_focused, Some(1));
+        form.handle_event(&UiEvent::NavPrev);
+        assert_eq!(
+            form.controller_focused,
+            Some(LoginForm::FOCUSABLE_COUNT - 1)
+        );
         assert_eq!(form.server_ip(), "menamonggods.ddns.net");
     }
 

@@ -68,6 +68,7 @@ impl LoginScene {
         let login_form = LoginForm::new(
             &crate::hosts::get_server_ip(),
             &crate::hosts::server_ip_options(),
+            crate::hosts::is_cargo_run(),
             &preferences::load_last_username().unwrap_or_default(),
             settings.music_enabled,
         );
