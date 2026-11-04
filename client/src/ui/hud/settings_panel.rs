@@ -17,7 +17,9 @@ use crate::preferences::{DisplayMode, Settings};
 use crate::types::controller::{CONTROLLER_BIND_SLOTS, ControllerBindings, ControllerButton};
 use crate::types::mouse::{ExtraMouseButton, MouseModifier, MouseModifierBindings};
 use crate::ui::RenderContext;
-use crate::ui::forms::quit_confirm_dialog::{QuitConfirmDialog, QuitConfirmDialogAction};
+use crate::ui::forms::quit_confirm_dialog::{
+    ExitKind, QuitConfirmDialog, QuitConfirmDialogAction,
+};
 use crate::ui::style::{Background, Border};
 use crate::ui::widget::{
     Bounds, EventResponse, GameAction, HudPanel, KeyBinding, KeyBindings, UiEvent, Widget,
@@ -2692,7 +2694,10 @@ impl Widget for SettingsPanel {
             for action in self.quit_dialog.take_actions() {
                 match action {
                     QuitConfirmDialogAction::Confirm => {
-                        self.pending_actions.push(WidgetAction::Quit);
+                        self.pending_actions.push(match self.quit_dialog.kind() {
+                            ExitKind::Quit => WidgetAction::Quit,
+                            ExitKind::Disconnect => WidgetAction::Disconnect,
+                        });
                     }
                     QuitConfirmDialogAction::Cancel => {
                         self.quit_dialog.hide();
@@ -2786,11 +2791,12 @@ impl Widget for SettingsPanel {
                         self.sld_volume.set_active(true);
                     }
                     Some(7) => {
-                        self.pending_actions.push(WidgetAction::Disconnect);
+                        self.quit_dialog.center_on(&self.bounds);
+                        self.quit_dialog.show(ExitKind::Disconnect);
                     }
                     Some(8) => {
                         self.quit_dialog.center_on(&self.bounds);
-                        self.quit_dialog.show();
+                        self.quit_dialog.show(ExitKind::Quit);
                     }
                     Some(9) => {
                         self.visible = false;
@@ -2898,12 +2904,13 @@ impl Widget for SettingsPanel {
         // 6. Session buttons (beneath sub-panel overlay).
         if !self.pregame {
             if self.btn_disconnect.handle_event(event) == EventResponse::Consumed {
-                self.pending_actions.push(WidgetAction::Disconnect);
+                self.quit_dialog.center_on(&self.bounds);
+                self.quit_dialog.show(ExitKind::Disconnect);
                 return EventResponse::Consumed;
             }
             if self.btn_quit.handle_event(event) == EventResponse::Consumed {
                 self.quit_dialog.center_on(&self.bounds);
-                self.quit_dialog.show();
+                self.quit_dialog.show(ExitKind::Quit);
                 return EventResponse::Consumed;
             }
         }
@@ -3379,11 +3386,19 @@ mod tests {
     }
 
     #[test]
-    fn disconnect_button_emits_action() {
+    fn disconnect_button_requires_confirmation() {
+        use crate::ui::widget::KeyModifiers;
         let mut panel = make_panel();
         panel.toggle();
         let btn_y = Y_SESSION_BTNS + 5;
         panel.handle_event(&left_click(15, btn_y));
+        assert!(panel.take_actions().is_empty());
+        assert!(panel.quit_dialog.is_visible());
+
+        panel.handle_event(&UiEvent::KeyDown {
+            keycode: sdl2::keyboard::Keycode::Return,
+            modifiers: KeyModifiers::default(),
+        });
         let actions = panel.take_actions();
         assert!(
             actions
@@ -3411,6 +3426,10 @@ mod tests {
         let mut panel = make_panel();
         panel.toggle();
         panel.handle_event(&left_click(15, Y_SESSION_BTNS + 5));
+        panel.handle_event(&UiEvent::KeyDown {
+            keycode: sdl2::keyboard::Keycode::Return,
+            modifiers: crate::ui::widget::KeyModifiers::default(),
+        });
         let first = panel.take_actions();
         assert!(!first.is_empty());
         let second = panel.take_actions();
