@@ -460,8 +460,9 @@ save 900 1
 ## Weather (`SV_WEATHER`, opcode 76)
 
 Per-player ambient overlay channel. The server picks a weather kind for each
-connected player every ~1 second (driven by `state::weather::weather_tick`)
-and only re-sends when the resolved state differs from the last cached value
+connected player every ~1 second (driven by `state::weather::weather_tick`),
+or immediately on an instant move (login, recall, teleport — any jump of more
+than one tile), and only re-sends when the resolved state differs from the last cached value
 on `ServerPlayer`. The kind is determined by:
 
 1. An admin override set via the `weather` admin command

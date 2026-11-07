@@ -236,11 +236,18 @@ pub fn weather_tick(gs: &mut GameState, nr: usize) {
 
     // Throttle: each player gets re-evaluated ~once per second, with the
     // player index used as a phase offset so updates spread across ticks.
+    // Instant moves (login, recall, teleport) bypass the throttle: `cpl` is
+    // the position last sent to the client, and characters act after that
+    // send, so a gap of more than one tile here means the player jumped.
     let ticker = gs.globals.ticker as u32;
     let phase = (nr as u32) % WEATHER_TICK_PERIOD;
-    if !ticker
-        .wrapping_sub(phase)
-        .is_multiple_of(WEATHER_TICK_PERIOD)
+    let cpl = &gs.players[nr].cpl;
+    let jumped = (i32::from(gs.characters[cn].x) - cpl.x).abs() > 1
+        || (i32::from(gs.characters[cn].y) - cpl.y).abs() > 1;
+    if !jumped
+        && !ticker
+            .wrapping_sub(phase)
+            .is_multiple_of(WEATHER_TICK_PERIOD)
     {
         return;
     }
@@ -575,6 +582,42 @@ mod tests {
                 gs.area_weather.iter().all(|r| r.active.is_none()),
                 "no area should have triggered"
             );
+        });
+    }
+
+    #[test]
+    fn weather_tick_bypasses_throttle_only_on_instant_move() {
+        with_test_gs(|gs| {
+            let (_cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            let cn = gs.players[nr].usnr;
+            let idx = weather_areas::area_weather_profile_index_for(550, 320)
+                .expect("Strange Forest profile");
+            gs.area_weather[idx].active = Some(ActiveAreaWeather {
+                kind: WeatherKind::Fireflies,
+                intensity: 64,
+                tint: [0; 4],
+                flags: 0,
+                expire_tick: 100_000,
+            });
+
+            // Off the throttle window for this player.
+            let phase = (nr as u32) % WEATHER_TICK_PERIOD;
+            gs.globals.ticker = (phase + 1) as i32;
+
+            // One-tile step into the area: still throttled.
+            gs.characters[cn].x = 550;
+            gs.characters[cn].y = 320;
+            gs.players[nr].cpl.x = 549;
+            gs.players[nr].cpl.y = 320;
+            weather_tick(gs, nr);
+            assert_eq!(gs.players[nr].weather_kind, WeatherKind::None as u8);
+
+            // Teleport into the area: evaluated immediately.
+            gs.players[nr].cpl.x = 100;
+            gs.players[nr].cpl.y = 100;
+            weather_tick(gs, nr);
+            assert_eq!(gs.players[nr].weather_kind, WeatherKind::Fireflies as u8);
         });
     }
 

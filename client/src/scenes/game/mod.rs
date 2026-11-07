@@ -2693,15 +2693,13 @@ impl Scene for GameScene {
         self.weather
             .set_intensity_scale(settings.weather_intensity.clamp(0.0, 1.0));
         if settings.weather_enabled {
-            let is_indoors = ps
-                .map()
-                .tile_at_xy(TILEX / 2, TILEY / 2)
-                .map(|t| (t.flags2 & MF_INDOORS) != 0)
-                .unwrap_or(false);
+            let center = ps.map().tile_at_xy(TILEX / 2, TILEY / 2);
+            let is_indoors = center.is_some_and(|t| (t.flags2 & MF_INDOORS) != 0);
             self.weather.update_auto(
                 TARGET_WIDTH_INT as i32,
                 TARGET_HEIGHT_INT as i32,
                 is_indoors,
+                center.map(|t| (t.x, t.y)),
             );
         } else {
             // Pause (not reset) so re-enabling resumes the same effect; the
