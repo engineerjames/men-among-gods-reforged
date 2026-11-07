@@ -177,10 +177,13 @@ impl ShopPanel {
 
     /// Recompute the compacted cell layout and panel height from slot contents.
     ///
+    /// Depots always show the full grid; shops and graves shrink to fit.
+    ///
     /// # Arguments
     ///
     /// * `items` - Item sprite per original server slot (0 = empty).
-    fn set_layout(&mut self, items: &[u16; SHOP_SLOTS]) {
+    /// * `is_depot` - `true` when the panel is showing a depot.
+    fn set_layout(&mut self, items: &[u16; SHOP_SLOTS], is_depot: bool) {
         let filled = items.iter().filter(|&&it| it != 0).count();
         let (mut f, mut e) = (0, filled);
         for (i, &it) in items.iter().enumerate() {
@@ -194,7 +197,11 @@ impl ShopPanel {
         }
         self.filled = filled;
         // Always keep one row so a carried item can be dropped into an empty shop/depot.
-        self.rows = filled.div_ceil(GRID_COLS).max(1);
+        self.rows = if is_depot {
+            GRID_ROWS
+        } else {
+            filled.div_ceil(GRID_COLS).max(1)
+        };
         self.bounds.height = panel_height(self.rows);
         let cells = self.cell_count();
         if let Some(sel) = self.controller_selected.as_mut() {
@@ -220,7 +227,7 @@ impl ShopPanel {
     ///
     /// * `data` - The latest shop state from `PlayerState`.
     pub fn update_data(&mut self, data: ShopPanelData) {
-        self.set_layout(&data.items);
+        self.set_layout(&data.items, (data.shop_nr & SHOP_NR_DEPOT_FLAG) != 0);
         self.data = Some(data);
     }
 
@@ -241,7 +248,7 @@ impl ShopPanel {
         match &mut self.data {
             Some(d) => d.visible = !d.visible,
             None => {
-                self.set_layout(&[0; SHOP_SLOTS]);
+                self.set_layout(&[0; SHOP_SLOTS], false);
                 self.data = Some(ShopPanelData {
                     items: [0; SHOP_SLOTS],
                     prices: [0; SHOP_SLOTS],
@@ -1022,5 +1029,17 @@ mod tests {
         assert_eq!(panel.rows, GRID_ROWS);
         assert_eq!(panel.bounds.height, SHOP_PANEL_H);
         assert_eq!(panel.order, std::array::from_fn(|i| i));
+    }
+
+    #[test]
+    fn sparse_depot_shows_all_rows() {
+        let mut panel = make_panel();
+        let mut data = make_visible_data();
+        data.items = [0; SHOP_SLOTS];
+        data.items[3] = 1;
+        data.shop_nr = SHOP_NR_DEPOT_FLAG | 1;
+        panel.update_data(data);
+        assert_eq!(panel.rows, GRID_ROWS);
+        assert_eq!(panel.bounds.height, SHOP_PANEL_H);
     }
 }
