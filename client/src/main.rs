@@ -286,7 +286,10 @@ fn main() -> Result<(), String> {
         measure!(
             "client.handle_events",
             for event in event_pump.poll_iter() {
-                if let sdl2::event::Event::Quit { .. } = event {
+                // The game scene shows a quit confirmation instead of exiting immediately.
+                if let sdl2::event::Event::Quit { .. } = event
+                    && scene_manager.get_scene() != SceneType::Game
+                {
                     scene_manager.request_scene_change(SceneType::Exit, &mut app_state);
                 }
 

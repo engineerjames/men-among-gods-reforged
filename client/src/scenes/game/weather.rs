@@ -97,6 +97,10 @@ pub struct WeatherState {
     /// and back toward 1 otherwise. Only affects rendered alpha; particle
     /// simulation and earthquake shake are unaffected.
     indoor_fade: f32,
+    /// World coordinates of the player's tile at the previous update. A jump
+    /// of more than one tile (login, recall, teleport) snaps `indoor_fade`
+    /// instead of ramping it.
+    last_center: Option<(u16, u16)>,
     /// Client-side intensity multiplier (0.0 = no effect, 1.0 = full
     /// server intensity). Controlled by the "Weather Intensity" setting.
     intensity_scale: f32,
@@ -132,6 +136,7 @@ impl WeatherState {
             last_update: None,
             needs_initial_fill: false,
             indoor_fade: 1.0,
+            last_center: None,
             intensity_scale: 1.0,
         }
     }
@@ -166,6 +171,7 @@ impl WeatherState {
         self.last_update = None;
         self.needs_initial_fill = false;
         self.indoor_fade = 1.0;
+        self.last_center = None;
         for p in self.particles.iter_mut() {
             *p = Particle::dead();
         }
@@ -184,6 +190,8 @@ impl WeatherState {
         self.lightning_flash = 0.0;
         self.shake_offset = (0, 0);
         self.last_update = None;
+        // The player may move while paused; resync the indoor fade on resume.
+        self.last_center = None;
         // Force the next update to pre-distribute a fresh pool so the
         // resumed effect appears as a steady stream rather than a wave.
         self.needs_initial_fill = self.kind != WeatherKind::None;
@@ -415,14 +423,49 @@ impl WeatherState {
     /// * `view_h` - Logical viewport height (px).
     /// * `is_indoors` - Whether the player's current tile is
     ///   [`mag_core::constants::MF_INDOORS`]; ramps the visual fade.
-    pub fn update_auto(&mut self, view_w: i32, view_h: i32, is_indoors: bool) {
+    /// * `center` - World coordinates of the player's tile, if known. When it
+    ///   jumps by more than one tile (or is first seen), the indoor fade snaps
+    ///   to its target so weather never flashes after a login or teleport.
+    pub fn update_auto(
+        &mut self,
+        view_w: i32,
+        view_h: i32,
+        is_indoors: bool,
+        center: Option<(u16, u16)>,
+    ) {
         let now = Instant::now();
         let dt = match self.last_update {
             Some(prev) => (now - prev).as_secs_f32().min(0.1),
             None => 0.016,
         };
         self.last_update = Some(now);
+        let jumped = match (self.last_center, center) {
+            (Some((px, py)), Some((cx, cy))) => px.abs_diff(cx) > 1 || py.abs_diff(cy) > 1,
+            _ => true,
+        };
+        self.last_center = center;
+        if jumped {
+            self.indoor_fade = self.indoor_fade_target(is_indoors);
+        }
         self.update(dt, view_w, view_h, is_indoors);
+    }
+
+    /// Fade level the indoor ramp converges to for the current packet flags.
+    ///
+    /// # Arguments
+    ///
+    /// * `is_indoors` - Whether the player's current tile is indoors.
+    ///
+    /// # Returns
+    ///
+    /// * `0.0` when the effect should be hidden indoors, otherwise `1.0`.
+    fn indoor_fade_target(&self, is_indoors: bool) -> f32 {
+        let ignore_indoor_fade = (self.flags & WeatherFlags::IgnoreIndoorFade.bits()) != 0;
+        if is_indoors && !ignore_indoor_fade {
+            0.0
+        } else {
+            1.0
+        }
     }
 
     /// Advance particles, lightning timing, and earthquake jitter by `dt`
@@ -440,12 +483,7 @@ impl WeatherState {
     ///   [`WeatherFlags::IgnoreIndoorFade`] (e.g. Pentagram quest rooms that
     ///   are flagged indoors but should still show their effect).
     pub fn update(&mut self, dt: f32, view_w: i32, view_h: i32, is_indoors: bool) {
-        let ignore_indoor_fade = (self.flags & WeatherFlags::IgnoreIndoorFade.bits()) != 0;
-        let fade_target = if is_indoors && !ignore_indoor_fade {
-            0.0
-        } else {
-            1.0
-        };
+        let fade_target = self.indoor_fade_target(is_indoors);
         let fade_rate_per_sec = 1.0; // ~1 second full fade in/out
         if self.indoor_fade < fade_target {
             self.indoor_fade = (self.indoor_fade + fade_rate_per_sec * dt).min(fade_target);
@@ -873,6 +911,29 @@ mod tests {
             w.update(0.05, 800, 600, false);
         }
         assert_eq!(w.indoor_fade, 1.0, "should fully fade back in outdoors");
+    }
+
+    #[test]
+    fn indoor_fade_snaps_on_position_jump_but_ramps_on_step() {
+        let mut w = WeatherState::new();
+        w.apply_packet(WeatherKind::Rain as u8, 200, 0, [0; 4], 0);
+        w.update_auto(800, 600, false, Some((100, 100)));
+        assert_eq!(w.indoor_fade, 1.0);
+
+        // Walking one tile indoors ramps instead of snapping.
+        w.update_auto(800, 600, true, Some((101, 100)));
+        assert!(w.indoor_fade > 0.0);
+
+        // Recall/teleport into an indoor tile hides weather immediately.
+        w.update_auto(800, 600, false, Some((101, 100)));
+        w.indoor_fade = 1.0;
+        w.update_auto(800, 600, true, Some((500, 500)));
+        assert_eq!(w.indoor_fade, 0.0);
+
+        // Resuming after a pause resyncs immediately too.
+        w.pause();
+        w.update_auto(800, 600, false, Some((500, 500)));
+        assert_eq!(w.indoor_fade, 1.0);
     }
 
     #[test]

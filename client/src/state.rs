@@ -7,6 +7,7 @@ use crate::{
     preferences::{DisplayMode, Settings},
     sfx_cache::SoundCache,
     ui::visuals::panning_background::PanningBackground,
+    ui::widget::WidgetAction,
 };
 
 /// A display-related change requested by a scene, to be applied by the main
@@ -16,6 +17,49 @@ pub enum DisplayCommand {
     SetDisplayMode(DisplayMode),
     SetPixelPerfectScaling(bool),
     SetVSync(bool),
+}
+
+/// Applies a global (non-character) settings action from a settings panel.
+///
+/// Display mode, pixel-perfect scaling and VSync are queued in
+/// `display_command` because only the main loop owns the window.
+///
+/// # Arguments
+///
+/// * `settings` - Settings to mutate.
+/// * `display_command` - Slot receiving any display change for the main loop.
+/// * `action` - Action drained from a settings panel.
+///
+/// # Returns
+///
+/// * `true` if the action was a global setting and was applied.
+pub fn apply_global_settings_action(
+    settings: &mut Settings,
+    display_command: &mut Option<DisplayCommand>,
+    action: &WidgetAction,
+) -> bool {
+    match *action {
+        WidgetAction::SetShadows(v) => settings.shadows_enabled = v,
+        WidgetAction::SetSpellEffects(v) => settings.spell_effects_enabled = v,
+        WidgetAction::SetWeather(v) => settings.weather_enabled = v,
+        WidgetAction::SetWeatherIntensity(v) => settings.weather_intensity = v.clamp(0.0, 1.0),
+        WidgetAction::SetShowNames(v) => settings.show_names = v,
+        WidgetAction::SetShowHealthPct(v) => settings.show_proz = v,
+        WidgetAction::SetShowDangerGlyphs(v) => settings.show_danger_glyphs = v,
+        WidgetAction::SetHideWalls(v) => settings.hide = v,
+        WidgetAction::SetShowHelperText(v) => settings.show_helper_text = v,
+        WidgetAction::SetShowPositions(v) => settings.show_positions = v,
+        WidgetAction::SetMasterVolume(v) => settings.master_volume = v,
+        WidgetAction::SetDisplayMode(m) => {
+            *display_command = Some(DisplayCommand::SetDisplayMode(m));
+        }
+        WidgetAction::SetPixelPerfectScaling(v) => {
+            *display_command = Some(DisplayCommand::SetPixelPerfectScaling(v));
+        }
+        WidgetAction::SetVSync(v) => *display_command = Some(DisplayCommand::SetVSync(v)),
+        _ => return false,
+    }
+    true
 }
 
 /// Holds the data needed to connect a character to the game server after
@@ -164,5 +208,37 @@ impl<'tc> AppState<'tc> {
             reset_username: None,
             platform,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn global_settings_action_applies_and_queues_display_changes() {
+        let mut settings = Settings::default();
+        let mut cmd = None;
+
+        assert!(apply_global_settings_action(
+            &mut settings,
+            &mut cmd,
+            &WidgetAction::SetShadows(false)
+        ));
+        assert!(!settings.shadows_enabled);
+        assert!(cmd.is_none());
+
+        assert!(apply_global_settings_action(
+            &mut settings,
+            &mut cmd,
+            &WidgetAction::SetVSync(false)
+        ));
+        assert!(matches!(cmd, Some(DisplayCommand::SetVSync(false))));
+
+        assert!(!apply_global_settings_action(
+            &mut settings,
+            &mut cmd,
+            &WidgetAction::Disconnect
+        ));
     }
 }

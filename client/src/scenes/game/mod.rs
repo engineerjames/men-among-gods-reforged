@@ -57,7 +57,7 @@ use crate::{
     player_state::PlayerState,
     preferences::{self, CharacterIdentity},
     scenes::scene::{Scene, SceneType},
-    state::{AppState, DisplayCommand},
+    state::{AppState, apply_global_settings_action},
     types::mouse::{
         ExtraMouseButton, FIRST_HIGH_RAW_BUTTON_INDEX, LAST_HIGH_RAW_BUTTON_INDEX, MouseModifier,
     },
@@ -1008,20 +1008,6 @@ impl GameScene {
         let last_rtt = app_state.network.as_ref().and_then(|net| net.last_rtt_ms);
 
         SettingsPanelData {
-            shadows_enabled: app_state.settings.shadows_enabled,
-            spell_effects_enabled: app_state.settings.spell_effects_enabled,
-            weather_enabled: app_state.settings.weather_enabled,
-            weather_intensity: app_state.settings.weather_intensity,
-            show_names: app_state.settings.show_names,
-            show_health_pct: app_state.settings.show_proz,
-            show_danger_glyphs: app_state.settings.show_danger_glyphs,
-            hide_walls: app_state.settings.hide,
-            show_helper_text: app_state.settings.show_helper_text,
-            show_positions: app_state.settings.show_positions,
-            master_volume: app_state.settings.master_volume,
-            display_mode: app_state.settings.display_mode,
-            pixel_perfect_scaling: app_state.settings.pixel_perfect_scaling,
-            vsync_enabled: app_state.settings.vsync_enabled,
             last_rtt_ms: last_rtt,
             profiler_active: self.perf_profiler.is_active(),
             profiler_remaining_secs: if self.perf_profiler.is_active() {
@@ -1029,11 +1015,7 @@ impl GameScene {
             } else {
                 None
             },
-            key_bindings: app_state.settings.character.key_bindings.clone(),
-            controller_bindings: app_state.settings.character.controller_bindings.clone(),
-            mouse_modifier_bindings: app_state.settings.character.mouse_modifier_bindings.clone(),
-            autoloot_enabled: app_state.settings.character.auto_loot_graves,
-            autoloot: app_state.settings.character.autoloot,
+            ..SettingsPanelData::from_settings(&app_state.settings)
         }
     }
 
@@ -1194,47 +1176,15 @@ impl GameScene {
         let mut profile_changed = false;
 
         for action in self.settings_panel.take_actions() {
+            if apply_global_settings_action(
+                &mut app_state.settings,
+                &mut app_state.display_command,
+                &action,
+            ) {
+                profile_changed = true;
+                continue;
+            }
             match action {
-                WidgetAction::SetShadows(v) => {
-                    app_state.settings.shadows_enabled = v;
-                    profile_changed = true;
-                }
-                WidgetAction::SetSpellEffects(v) => {
-                    app_state.settings.spell_effects_enabled = v;
-                    profile_changed = true;
-                }
-                WidgetAction::SetWeather(v) => {
-                    app_state.settings.weather_enabled = v;
-                    profile_changed = true;
-                }
-                WidgetAction::SetWeatherIntensity(v) => {
-                    app_state.settings.weather_intensity = v.clamp(0.0, 1.0);
-                    profile_changed = true;
-                }
-                WidgetAction::SetShowNames(v) => {
-                    app_state.settings.show_names = v;
-                    profile_changed = true;
-                }
-                WidgetAction::SetShowHealthPct(v) => {
-                    app_state.settings.show_proz = v;
-                    profile_changed = true;
-                }
-                WidgetAction::SetShowDangerGlyphs(v) => {
-                    app_state.settings.show_danger_glyphs = v;
-                    profile_changed = true;
-                }
-                WidgetAction::SetHideWalls(v) => {
-                    app_state.settings.hide = v;
-                    profile_changed = true;
-                }
-                WidgetAction::SetShowHelperText(v) => {
-                    app_state.settings.show_helper_text = v;
-                    profile_changed = true;
-                }
-                WidgetAction::SetShowPositions(v) => {
-                    app_state.settings.show_positions = v;
-                    profile_changed = true;
-                }
                 WidgetAction::SetAutolootEnabled(v) => {
                     app_state.settings.character.auto_loot_graves = v;
                     self.autoloot_visited.clear();
@@ -1246,19 +1196,6 @@ impl GameScene {
                     // Let adjacent graves be re-scanned with the new categories.
                     self.autoloot_visited.clear();
                     profile_changed = true;
-                }
-                WidgetAction::SetMasterVolume(v) => {
-                    app_state.settings.master_volume = v;
-                    profile_changed = true;
-                }
-                WidgetAction::SetDisplayMode(m) => {
-                    app_state.display_command = Some(DisplayCommand::SetDisplayMode(m));
-                }
-                WidgetAction::SetPixelPerfectScaling(v) => {
-                    app_state.display_command = Some(DisplayCommand::SetPixelPerfectScaling(v));
-                }
-                WidgetAction::SetVSync(v) => {
-                    app_state.display_command = Some(DisplayCommand::SetVSync(v));
                 }
                 WidgetAction::Disconnect => {
                     scene_change = Some(SceneType::CharacterSelection);
@@ -1274,7 +1211,17 @@ impl GameScene {
                     crate::platform::open_directory_in_file_manager(&log_dir);
                 }
                 WidgetAction::StartProfiler => {
+                    self.settings_panel.close();
                     self.perf_profiler.start();
+                    if let Some(ps) = app_state.player_state.as_mut() {
+                        ps.tlog(
+                            1,
+                            format!(
+                                "Performance profiling started ({}s)...",
+                                self.perf_profiler.remaining_secs()
+                            ),
+                        );
+                    }
                 }
                 WidgetAction::SendClientLogs => {
                     if self.settings_panel.is_visible() {
@@ -2267,6 +2214,12 @@ impl Scene for GameScene {
     ///
     /// `Some(SceneType)` to trigger a scene transition, or `None` to stay.
     fn handle_event(&mut self, app_state: &mut AppState<'_>, event: &Event) -> Option<SceneType> {
+        // Window close button: ask for confirmation like the in-game Quit button.
+        if let Event::Quit { .. } = event {
+            self.settings_panel.show_quit_confirm();
+            return None;
+        }
+
         // --- Escape key: always processed regardless of menu state ---
         if let Event::KeyDown {
             keycode: Some(Keycode::Escape),
@@ -2490,7 +2443,13 @@ impl Scene for GameScene {
         }
         self.mode_button.update(dt);
         self.shop_panel.update(dt);
-        self.perf_profiler.check_expired();
+        if let Some(lines) = self.perf_profiler.check_expired()
+            && let Some(ps) = app_state.player_state.as_mut()
+        {
+            for line in lines {
+                ps.tlog(1, line);
+            }
+        }
         self.poll_network_test_result(app_state);
 
         // --- Right-side HUD button fade ---
@@ -2734,15 +2693,13 @@ impl Scene for GameScene {
         self.weather
             .set_intensity_scale(settings.weather_intensity.clamp(0.0, 1.0));
         if settings.weather_enabled {
-            let is_indoors = ps
-                .map()
-                .tile_at_xy(TILEX / 2, TILEY / 2)
-                .map(|t| (t.flags2 & MF_INDOORS) != 0)
-                .unwrap_or(false);
+            let center = ps.map().tile_at_xy(TILEX / 2, TILEY / 2);
+            let is_indoors = center.is_some_and(|t| (t.flags2 & MF_INDOORS) != 0);
             self.weather.update_auto(
                 TARGET_WIDTH_INT as i32,
                 TARGET_HEIGHT_INT as i32,
                 is_indoors,
+                center.map(|t| (t.x, t.y)),
             );
         } else {
             // Pause (not reset) so re-enabling resumes the same effect; the

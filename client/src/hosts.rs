@@ -69,10 +69,21 @@ fn get_server_url() -> String {
         .unwrap_or_else(|| format!("https://{}", get_server_ip()))
 }
 
+/// Returns whether the client was launched via `cargo run`.
+///
+/// Cargo sets `CARGO_MANIFEST_DIR` for the child process at runtime, so this
+/// is `false` for installed/packaged binaries regardless of build profile.
+///
+/// # Returns
+///
+/// * `true` when running under cargo.
+pub fn is_cargo_run() -> bool {
+    std::env::var_os("CARGO_MANIFEST_DIR").is_some()
+}
+
 /// Returns the raw server IP address or hostname.
 ///
-/// Reads `MAG_SERVER_IP`. In debug builds the default is `127.0.0.1`;
-/// in release builds it defaults to `menamonggods.ddns.net`.
+/// Reads `MAG_SERVER_IP`, falling back to [`default_server_ip`].
 ///
 /// # Returns
 /// * A `String` containing the IP or hostname.
@@ -84,16 +95,16 @@ pub fn get_server_ip() -> String {
         .unwrap_or_else(|| default_server_ip().to_owned())
 }
 
-/// Returns the build-mode default server hostname.
+/// Returns the default server hostname.
 ///
-/// Debug builds default to localhost for local development; release builds
-/// default to the public game host.
+/// `cargo run` defaults to localhost for local development; everything else
+/// defaults to the public game host.
 ///
 /// # Returns
 ///
-/// * The default server IP or hostname for this build mode.
+/// * The default server IP or hostname.
 pub fn default_server_ip() -> &'static str {
-    if cfg!(debug_assertions) {
+    if is_cargo_run() {
         "127.0.0.1"
     } else {
         "menamonggods.ddns.net"
@@ -103,7 +114,7 @@ pub fn default_server_ip() -> &'static str {
 /// Returns server host choices for the login-screen combo box.
 ///
 /// The first entry is always [`get_server_ip`], so `MAG_SERVER_IP` and the
-/// debug/release default remain the initial login value. Local and production
+/// cargo/production default remain the initial login value. Local and production
 /// hosts are also included as alternate choices, with duplicates removed.
 ///
 /// # Returns

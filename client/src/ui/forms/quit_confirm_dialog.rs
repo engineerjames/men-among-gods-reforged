@@ -1,7 +1,8 @@
-//! Modal quit-confirmation dialog.
+//! Modal quit/disconnect confirmation dialog.
 //!
-//! Presents a simple "Are you sure you want to quit?" prompt with
-//! **Quit** and **Cancel** buttons.  The owning widget or scene reads
+//! Asks the player to confirm leaving the game and warns that leaving
+//! outside a tavern angers the gods. Offers **Quit**/**Disconnect** and
+//! **Cancel** buttons.  The owning widget or scene reads
 //! pending [`QuitConfirmDialogAction`]s via
 //! [`QuitConfirmDialog::take_actions`].
 
@@ -24,7 +25,10 @@ use crate::ui::widgets::title_bar::{TITLE_BAR_H, TitleBar};
 const DIALOG_W: u32 = 300;
 
 /// Dialog height in pixels (includes title bar).
-const DIALOG_H: u32 = 100 + TITLE_BAR_H as u32;
+const DIALOG_H: u32 = 130 + TITLE_BAR_H as u32;
+
+/// Warning shown for every exit kind.
+const TAVERN_WARNING: &str = "Leave only from a tavern! If you leave anywhere else, the gods will punish you. This could result in your player's death!";
 
 /// Horizontal padding inside the dialog.
 const PAD_X: i32 = 20;
@@ -51,6 +55,29 @@ pub enum QuitConfirmDialogAction {
     Cancel,
 }
 
+/// Which way of leaving the game the dialog is confirming.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExitKind {
+    /// Exit the application.
+    Quit,
+    /// Return to character selection.
+    Disconnect,
+}
+
+impl ExitKind {
+    /// Returns `(title, confirm_label, question)` for this exit kind.
+    fn texts(self) -> (&'static str, &'static str, &'static str) {
+        match self {
+            Self::Quit => ("Quit?", "Quit", "Are you sure you want to quit?"),
+            Self::Disconnect => (
+                "Disconnect?",
+                "Disconnect",
+                "Are you sure you want to disconnect?",
+            ),
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Widget
 // ---------------------------------------------------------------------------
@@ -70,6 +97,8 @@ pub struct QuitConfirmDialog {
     actions: Vec<QuitConfirmDialogAction>,
     /// Controller focus index: 0=confirm, 1=cancel.
     controller_focused: Option<usize>,
+    /// Exit kind currently being confirmed.
+    kind: ExitKind,
 }
 
 impl Default for QuitConfirmDialog {
@@ -126,12 +155,30 @@ impl QuitConfirmDialog {
             cancel_button,
             actions: Vec::new(),
             controller_focused: None,
+            kind: ExitKind::Quit,
         }
     }
 
-    /// Shows the dialog.
-    pub fn show(&mut self) {
+    /// Shows the dialog for the given exit kind.
+    ///
+    /// # Arguments
+    ///
+    /// * `kind` - Whether the player is quitting or disconnecting.
+    pub fn show(&mut self, kind: ExitKind) {
+        let (title, confirm_label, _) = kind.texts();
+        self.kind = kind;
+        self.title_bar = TitleBar::new_static(title, self.bounds.x, self.bounds.y, DIALOG_W);
+        self.confirm_button.set_label(confirm_label);
         self.visible = true;
+    }
+
+    /// Returns the exit kind the dialog was last shown for.
+    ///
+    /// # Returns
+    ///
+    /// * The current [`ExitKind`].
+    pub fn kind(&self) -> ExitKind {
+        self.kind
     }
 
     /// Centers the dialog on the given parent bounds.
@@ -310,13 +357,24 @@ impl Widget for QuitConfirmDialog {
         self.title_bar.render(ctx)?;
 
         // Confirmation message.
+        let text_y = self.bounds.y + TITLE_BAR_H + 12;
         font_cache::draw_text(
             ctx.canvas,
             ctx.gfx,
             FONT,
-            "Are you sure you want to quit?",
+            self.kind.texts().2,
             self.bounds.x + PAD_X,
-            self.bounds.y + TITLE_BAR_H + 12,
+            text_y,
+            font_cache::TextStyle::PLAIN,
+        )?;
+        font_cache::draw_wrapped_text(
+            ctx.canvas,
+            ctx.gfx,
+            FONT,
+            TAVERN_WARNING,
+            self.bounds.x + PAD_X,
+            text_y + 2 * font_cache::BITMAP_GLYPH_H as i32,
+            DIALOG_W - 2 * PAD_X as u32,
             font_cache::TextStyle::PLAIN,
         )?;
 
@@ -349,14 +407,15 @@ mod tests {
     #[test]
     fn show_makes_visible() {
         let mut dialog = make_dialog();
-        dialog.show();
+        dialog.show(ExitKind::Disconnect);
         assert!(dialog.is_visible());
+        assert_eq!(dialog.kind(), ExitKind::Disconnect);
     }
 
     #[test]
     fn hide_makes_invisible() {
         let mut dialog = make_dialog();
-        dialog.show();
+        dialog.show(ExitKind::Quit);
         dialog.hide();
         assert!(!dialog.is_visible());
     }
@@ -365,7 +424,7 @@ mod tests {
     fn escape_key_pushes_cancel() {
         use crate::ui::widget::KeyModifiers;
         let mut dialog = make_dialog();
-        dialog.show();
+        dialog.show(ExitKind::Quit);
         let resp = dialog.handle_event(&UiEvent::KeyDown {
             keycode: Keycode::Escape,
             modifiers: KeyModifiers::default(),
@@ -380,7 +439,7 @@ mod tests {
     fn enter_key_pushes_confirm() {
         use crate::ui::widget::KeyModifiers;
         let mut dialog = make_dialog();
-        dialog.show();
+        dialog.show(ExitKind::Quit);
         let resp = dialog.handle_event(&UiEvent::KeyDown {
             keycode: Keycode::Return,
             modifiers: KeyModifiers::default(),
@@ -406,7 +465,7 @@ mod tests {
     fn take_actions_drains_buffer() {
         use crate::ui::widget::KeyModifiers;
         let mut dialog = make_dialog();
-        dialog.show();
+        dialog.show(ExitKind::Quit);
         dialog.handle_event(&UiEvent::KeyDown {
             keycode: Keycode::Escape,
             modifiers: KeyModifiers::default(),

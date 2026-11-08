@@ -158,6 +158,8 @@ pub struct SceneManager {
     active_scene: SceneType,
     scenes: HashMap<SceneType, Box<dyn Scene>>,
     transition: SceneTransition,
+    /// Gear button + settings panel shown on all pre-game scenes.
+    pregame_settings: crate::scenes::pregame_settings::PregameSettings,
 }
 
 impl Default for SceneManager {
@@ -220,6 +222,7 @@ impl SceneManager {
             active_scene: SceneType::Login,
             scenes: scene_map,
             transition: SceneTransition::None,
+            pregame_settings: crate::scenes::pregame_settings::PregameSettings::new(),
         }
     }
 
@@ -246,6 +249,12 @@ impl SceneManager {
         // Ignore input while a fade transition is in progress so it can't
         // trigger another scene change mid-fade.
         if !matches!(self.transition, SceneTransition::None) {
+            return;
+        }
+
+        if self.active_scene != SceneType::Game
+            && self.pregame_settings.handle_event(app_state, event)
+        {
             return;
         }
 
@@ -318,6 +327,12 @@ impl SceneManager {
             .unwrap()
             .render_world(app_state, canvas)
             .unwrap_or_else(|err| log::error!("Error rendering world: {}", err));
+
+        if self.active_scene != SceneType::Game
+            && let Err(err) = self.pregame_settings.render(app_state, canvas)
+        {
+            log::error!("Error rendering settings: {}", err);
+        }
 
         let alpha = match &self.transition {
             SceneTransition::None => 0.0,

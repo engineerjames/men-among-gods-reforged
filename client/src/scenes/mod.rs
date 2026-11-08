@@ -5,5 +5,6 @@ pub mod exit;
 pub mod game;
 pub mod login;
 pub mod new_account;
+pub mod pregame_settings;
 pub mod request_reset;
 pub mod scene;

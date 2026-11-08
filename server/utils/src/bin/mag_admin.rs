@@ -2522,10 +2522,7 @@ fn format_flags(bits: u64, names: &[&'static str]) -> String {
 }
 
 fn format_global_flags(bits: i32) -> String {
-    let labels = [
-        (constants::GF_CAP, "Cap"),
-        (constants::GF_DIRTY, "Dirty"),
-    ];
+    let labels = [(constants::GF_CAP, "Cap"), (constants::GF_DIRTY, "Dirty")];
     let names: Vec<&'static str> = labels
         .iter()
         .filter_map(|(flag, label)| if bits & flag != 0 { Some(*label) } else { None })
