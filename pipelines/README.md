@@ -89,42 +89,78 @@ The package scripts expect the release build outputs to already exist and fail f
 
 The client is distributed on Steam without the Steamworks SDK (accounts are handled by our own API). The release workflow can upload the client packages to SteamPipe when dispatched with **steam_upload** checked.
 
+### Steamworks IDs
+
+| Item | ID |
+|---|---|
+| App | `4665990` |
+| Depot: Windows | `4665991` |
+| Depot: macOS | `4665992` |
+| Depot: Linux | `4665993` |
+| Package: Beta Testing (release override, use for friend/tester keys) | `1624405` |
+| Package: Developer Comp | `1624404` |
+| Package: Free on demand (public F2P, keep **Disabled** until launch) | `1624406` |
+| Package: CD Key | `1624407` |
+
 ### One-time setup
 
-1. In Steamworks, create one depot per platform (App Admin → SteamPipe → Depots), set each depot's OS, add the depots to the store package, and configure a launch option per OS:
-   - Windows: `men-among-gods-client.exe`
-   - macOS: `Men Among Gods - Reforged.app`
-   - Linux: `men-among-gods-client`
-
-   Then **Publish** the app configuration (Publish tab).
-2. Create a dedicated Steam builder account with Steam Guard enabled and grant it "Edit App Metadata" and "Publish App Changes To Steam" for the app.
-3. Cache the builder's credentials locally and export them:
+1. In Steamworks (App Admin → Edit Steamworks Settings):
+   - **SteamPipe → Depots**: one depot per platform with its Operating System set, then **Save**.
+   - Every package above must list all three depots under **Depots Included** (open the package from App Admin → All Associated Packages, DLC, Demos and Tools → **Add/Remove Depots**).
+   - **Installation → General Installation**: set the install folder and one launch option per OS:
+     - Windows: `men-among-gods-client.exe`
+     - macOS: `Men Among Gods - Reforged.app`
+     - Linux: `men-among-gods-client`
+   - **Publish → Prepare for Publishing → Publish to Steam**. Configuration changes do nothing until published.
+2. Create a dedicated Steam builder account with Steam Guard enabled. Invite it under Users & Permissions → Manage Users and grant it "Edit App Metadata" and "Publish App Changes To Steam" for the app.
+3. Set the GitHub Actions variables (requires admin on the repo; or use Settings → Secrets and variables → Actions → Variables):
 
    ```bash
-   steamcmd +login <builder_username> +quit   # enter password + Steam Guard code
-   base64 < ~/Library/Application\ Support/Steam/config/config.vdf   # macOS
-   base64 -w0 < ~/Steam/config/config.vdf                             # Linux (path may vary)
+   gh variable set STEAM_APP_ID --body 4665990
+   gh variable set STEAM_DEPOT_WINDOWS --body 4665991
+   gh variable set STEAM_DEPOT_MACOS --body 4665992
+   gh variable set STEAM_DEPOT_LINUX --body 4665993   # omit to skip Linux
+   gh variable list
    ```
 
-4. In GitHub (Settings → Secrets and variables → Actions) add:
-   - Secrets: `STEAM_USERNAME`, `STEAM_CONFIG_VDF` (the base64 output above).
-   - Variables: `STEAM_APP_ID`, and `STEAM_DEPOT_WINDOWS` / `STEAM_DEPOT_MACOS` / `STEAM_DEPOT_LINUX`. Leave a depot variable unset to skip that platform.
+4. Cache the builder's credentials locally, then store them as secrets. Run steamcmd with an isolated `HOME`: on macOS steamcmd otherwise shares `~/Library/Application Support/Steam` with the desktop Steam client, whose `config.vdf` contains your personal account's login cache and must not be uploaded. The secret is gzipped because the raw file can exceed GitHub's 48 KB secret limit.
 
-If the upload fails to log in, the cached credentials have expired; repeat step 3 and update `STEAM_CONFIG_VDF`.
+   ```bash
+   brew install --cask steamcmd
+   BUILDER_HOME=~/.mag-steam-builder
+   mkdir -p "$BUILDER_HOME"
+   HOME="$BUILDER_HOME" steamcmd +login <builder_username> +quit   # enter password + Steam Guard code
+   gh secret set STEAM_USERNAME --body <builder_username>
+   gzip -9c "$BUILDER_HOME/Library/Application Support/Steam/config/config.vdf" | base64 | gh secret set STEAM_CONFIG_VDF
+   ```
+
+If the upload fails to log in, the cached credentials have expired; repeat step 4.
+
+### Uploading a build
+
+```bash
+gh workflow run release.yml -f version=v0.1.0 -f steam_upload=true
+```
 
 ### Going live
 
-Steam does not allow build scripts to set the `default` branch live. Either set the build live from Steamworks (App Admin → SteamPipe → Builds), or pass a beta branch name in the workflow's **steam_branch** input. While the app is unreleased, only accounts holding a key (Request Steam Product Keys) can see and install it.
+Steam does not allow build scripts to set the `default` branch live. Either set the build live from Steamworks (SteamPipe → Builds → set live on `default` → Preview Change → Set Build Live Now), or pass a beta branch name in the workflow's **steam_branch** input.
+
+### Private beta access
+
+While the app is unreleased (do **not** press Release or set the store page to "Coming Soon"), only key holders can see and install it. Request keys for the **Beta Testing** package (`1624405`) via App Admin → Request Steam Product Keys; testers redeem them in Steam via Games → Activate a Product on Steam.
 
 ### Local usage
 
 Unzip the client packages, then:
 
 ```bash
-bash pipelines/steam_upload.sh --app-id 1234560 --description v0.1.0 \
-  --depot 1234561=dist/men-among-gods-client-v0.1.0-windows \
-  --depot 1234562=dist/men-among-gods-client-v0.1.0-macos \
+bash pipelines/steam_upload.sh --app-id 4665990 --description v0.1.0 \
+  --depot 4665991=dist/men-among-gods-client-v0.1.0-windows \
+  --depot 4665992=dist/men-among-gods-client-v0.1.0-macos \
   --username <builder_username>
 ```
+
+On macOS, prefix the command with `HOME=~/.mag-steam-builder` so steamcmd uses the builder's cached login (see step 4).
 
 Add `--dry-run` to print the generated SteamPipe build VDF without uploading.

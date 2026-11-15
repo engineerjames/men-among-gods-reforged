@@ -141,7 +141,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$HOME/Steam/config"
-          printf '%s' "$STEAM_CONFIG_VDF" | base64 -d > "$HOME/Steam/config/config.vdf"
+          # Stored gzipped: the raw file can exceed GitHub's 48 KB secret limit.
+          printf '%s' "$STEAM_CONFIG_VDF" | base64 -d | gunzip > "$HOME/Steam/config/config.vdf"
 
       - name: Upload to Steam
         shell: bash
