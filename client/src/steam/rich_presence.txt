@@ -1,0 +1,12 @@
+"lang"
+{
+  "english"
+  {
+    "tokens"
+    {
+      "#Status_Menu"          "Logging in"
+      "#Selecting_Character"  "Selecting character"
+      "#Status_Playing"       "Playing"
+    }
+  }
+}
