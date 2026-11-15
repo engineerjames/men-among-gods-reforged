@@ -276,7 +276,7 @@ fn main() -> Result<(), String> {
     }
 
     // Initialize Steam
-    let _steam_client = Steam::init();
+    let steam_client = Steam::init();
 
     'running: loop {
         let now = Instant::now();
@@ -530,6 +530,11 @@ fn main() -> Result<(), String> {
         }
 
         measure!("client.present", canvas.present());
+
+        // Run Steam callbacks
+        if steam_client.is_active() {
+            steam_client.run_callbacks();
+        }
 
         if !effective_vsync_enabled {
             fps_manager.delay();
