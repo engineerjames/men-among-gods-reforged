@@ -7,6 +7,16 @@ on:
         description: "Version/tag to release (e.g. v1.2.3)"
         required: true
         type: string
+      steam_upload:
+        description: "Also upload the client builds to Steam (see pipelines/README.md)"
+        required: false
+        type: boolean
+        default: false
+      steam_branch:
+        description: "Steam beta branch to set live (blank = set live manually in Steamworks)"
+        required: false
+        type: string
+        default: ""
 
 env:
   CARGO_TERM_COLOR: always
@@ -89,6 +99,74 @@ jobs:
           name: packages-${{ matrix.platform }}
           path: dist/*.zip
           if-no-files-found: error
+
+  upload-steam:
+    name: Upload client to Steam
+    if: inputs.steam_upload
+    runs-on: ubuntu-latest
+    needs: build-packages
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all package artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Unpack client packages
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          for platform in windows macos linux; do
+            unzip -q "artifacts/packages-${platform}/men-among-gods-client-${VERSION}-${platform}.zip" \
+              -d "steam-content/${platform}"
+          done
+
+      - name: Install steamcmd
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y lib32gcc-s1
+          mkdir -p "$HOME/Steam"
+          curl -fsSL https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz | tar -xz -C "$HOME/Steam"
+
+      - name: Restore Steam credentials
+        shell: bash
+        env:
+          STEAM_CONFIG_VDF: ${{ secrets.STEAM_CONFIG_VDF }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/Steam/config"
+          # Stored gzipped: the raw file can exceed GitHub's 48 KB secret limit.
+          printf '%s' "$STEAM_CONFIG_VDF" | base64 -d | gunzip > "$HOME/Steam/config/config.vdf"
+
+      - name: Upload to Steam
+        shell: bash
+        env:
+          STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
+          STEAM_APP_ID: ${{ vars.STEAM_APP_ID }}
+          STEAM_DEPOT_WINDOWS: ${{ vars.STEAM_DEPOT_WINDOWS }}
+          STEAM_DEPOT_MACOS: ${{ vars.STEAM_DEPOT_MACOS }}
+          STEAM_DEPOT_LINUX: ${{ vars.STEAM_DEPOT_LINUX }}
+          STEAM_BRANCH: ${{ inputs.steam_branch }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          args=()
+          # Platforms without a configured depot ID are skipped.
+          [[ -n "$STEAM_DEPOT_WINDOWS" ]] && args+=(--depot "${STEAM_DEPOT_WINDOWS}=steam-content/windows/men-among-gods-client-${VERSION}-windows")
+          [[ -n "$STEAM_DEPOT_MACOS" ]] && args+=(--depot "${STEAM_DEPOT_MACOS}=steam-content/macos/men-among-gods-client-${VERSION}-macos")
+          [[ -n "$STEAM_DEPOT_LINUX" ]] && args+=(--depot "${STEAM_DEPOT_LINUX}=steam-content/linux/men-among-gods-client-${VERSION}-linux")
+          bash pipelines/steam_upload.sh \
+            --app-id "$STEAM_APP_ID" \
+            --description "$VERSION" \
+            --branch "$STEAM_BRANCH" \
+            --steamcmd "$HOME/Steam/steamcmd.sh" \
+            "${args[@]}"
 
   create-github-release:
     name: Create GitHub release

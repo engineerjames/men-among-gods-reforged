@@ -146,6 +146,76 @@ without `--auto` opens the interactive menu, which reuses the same API calls as
 the scriptable commands. World actions execute on the running server and are
 pollable with `--wait`; destructive menu actions prompt for confirmation.
 
+### Template Search
+
+A CLI for finding item and character template IDs in a `.wsnap` snapshot
+(default `server/assets/world_seed.wsnap`), so IDs referenced from code can be
+verified against real world data. It can also bulk-edit templates in the
+snapshot file; edits are a dry run unless `--write` is given.
+
+**Usage:**
+```bash
+# Search item templates (name/reference/description substring, flags, IDs)
+cargo run --package server-utils --bin template-search -- --name potion
+cargo run --package server-utils --bin template-search -- --flag IF_MAGIC --flag IF_WEAPON
+cargo run --package server-utils --bin template-search -- --ids 101,102,127
+
+# Search character templates
+cargo run --package server-utils --bin template-search -- --chars --name ratling
+
+# Edit matched character templates (dry run, then save)
+cargo run --package server-utils --bin template-search -- --chars --ids 364-374 --clear-worn RHAND
+cargo run --package server-utils --bin template-search -- --chars --ids 364-374 --clear-worn RHAND --write
+
+# Run a batch of operations from YAML, saving once at the end
+cargo run --package server-utils --bin template-search -- --ops ops.yaml --write
+```
+
+Each `--ops` entry is a map of flags without the leading `--`; lists repeat a
+flag and `true` sets a switch:
+
+```yaml
+- ids: 501
+  set-wv: 2
+- chars: true
+  ids: 364-374,1094-1096
+  set-armor-bonus: 0
+```
+
+Run with `--help` for the full list of filters (`--desc`, `--not-flag`,
+`--driver`, `--placement`, `--area`, `--quest-items`, ...) and edits
+(`--set-armor-bonus`, `--set-weapon-bonus`, `--set-rank`, `--cap-attrib`,
+`--cap-skill`, `--restore-worn`, ...). Use `--output <path>` to write edits to
+a new file instead of overwriting `--snapshot`.
+
+### Template Sync
+
+Pushes item/character templates from a `.wsnap` file into live KeyDB. It
+prints which templates (and fields) differ, writes only the changed slots,
+bumps the template version counters, and asks the running server to
+hot-reload them. Only `game:titem:*` / `game:tchar:*` keys are touched.
+
+**Usage:**
+```bash
+# Preview differences against KeyDB without writing
+cargo run --package server-utils --bin template-sync -- --dry-run
+
+# Sync both kinds from the default server/assets/world_seed.wsnap
+cargo run --package server-utils --bin template-sync
+
+# Sync only character templates from a custom file
+cargo run --package server-utils --bin template-sync -- --file my_templates.wsnap --chars
+```
+
+**Optional args:**
+- `--file <path>` (source snapshot, default `server/assets/world_seed.wsnap`)
+- `--items` / `--chars` (limit to one template kind; default is both)
+- `--dry-run` (report differences only)
+- `--no-reload` (write to KeyDB without asking the server to reload)
+
+A typical template change is `template-search ... --write` to edit the
+snapshot, then `template-sync --dry-run` to review and `template-sync` to apply.
+
 ## Local Development Workflow
 
 Run the services in Docker, but run the viewers natively on the host:
