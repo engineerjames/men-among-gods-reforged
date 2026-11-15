@@ -12,7 +12,7 @@ Usage: steam_upload.sh --app-id <id> --description <text> --depot <depot_id>=<co
               'default' branch live from a build script; do that in Steamworks.
   --username  Steam builder account (or STEAM_USERNAME). Credentials must already be
               cached in steamcmd's config/config.vdf.
-  --dry-run   Print the generated app build VDF and exit without uploading.
+  --dry-run   Print the generated app and depot build VDFs and exit without uploading.
 EOF
 }
 
@@ -56,39 +56,53 @@ BUILD_DIR="$(mktemp -d)"
 trap 'rm -rf "${BUILD_DIR}"' EXIT
 VDF="${BUILD_DIR}/app_build_${APP_ID}.vdf"
 
+# SteamPipe requires LocalPath to be relative to a ContentRoot, so each depot
+# gets its own depot build file rooted at its content directory.
+DEPOT_ENTRIES=""
+for mapping in "${DEPOTS[@]}"; do
+  depot_id="${mapping%%=*}"
+  content_dir="${mapping#*=}"
+  if [[ ! "$depot_id" =~ ^[0-9]+$ || "$mapping" != *=* ]]; then
+    echo "Invalid --depot '${mapping}' (expected <depot_id>=<content_dir>)" >&2
+    exit 2
+  fi
+  if [[ ! -d "$content_dir" ]] || [[ -z "$(find "$content_dir" -type f -print -quit)" ]]; then
+    echo "Missing or empty content directory for depot ${depot_id}: ${content_dir}" >&2
+    exit 1
+  fi
+  content_dir="$(cd "$content_dir" && pwd)"
+  cat > "${BUILD_DIR}/depot_build_${depot_id}.vdf" <<EOF
+"DepotBuild"
 {
-  printf '"AppBuild"\n{\n'
-  printf '\t"AppID" "%s"\n' "$APP_ID"
-  printf '\t"Desc" "%s"\n' "$DESCRIPTION"
-  printf '\t"BuildOutput" "%s/output"\n' "$BUILD_DIR"
-  printf '\t"SetLive" "%s"\n' "$BRANCH"
-  printf '\t"Depots"\n\t{\n'
-  for mapping in "${DEPOTS[@]}"; do
-    depot_id="${mapping%%=*}"
-    content_dir="${mapping#*=}"
-    if [[ ! "$depot_id" =~ ^[0-9]+$ || "$mapping" != *=* ]]; then
-      echo "Invalid --depot '${mapping}' (expected <depot_id>=<content_dir>)" >&2
-      exit 2
-    fi
-    if [[ ! -d "$content_dir" ]] || [[ -z "$(find "$content_dir" -type f -print -quit)" ]]; then
-      echo "Missing or empty content directory for depot ${depot_id}: ${content_dir}" >&2
-      exit 1
-    fi
-    content_dir="$(cd "$content_dir" && pwd)"
-    printf '\t\t"%s"\n\t\t{\n' "$depot_id"
-    printf '\t\t\t"FileMapping"\n\t\t\t{\n'
-    printf '\t\t\t\t"LocalPath" "%s/*"\n' "$content_dir"
-    printf '\t\t\t\t"DepotPath" "."\n'
-    printf '\t\t\t\t"Recursive" "1"\n'
-    printf '\t\t\t}\n'
-    printf '\t\t\t"FileExclusion" "*.pdb"\n'
-    printf '\t\t}\n'
-  done
-  printf '\t}\n}\n'
-} > "$VDF"
+	"DepotID" "${depot_id}"
+	"ContentRoot" "${content_dir}"
+	"FileMapping"
+	{
+		"LocalPath" "*"
+		"DepotPath" "."
+		"Recursive" "1"
+	}
+	"FileExclusion" "*.pdb"
+}
+EOF
+  DEPOT_ENTRIES+=$'\t\t'"\"${depot_id}\" \"${BUILD_DIR}/depot_build_${depot_id}.vdf\""$'\n'
+done
+
+cat > "$VDF" <<EOF
+"AppBuild"
+{
+	"AppID" "${APP_ID}"
+	"Desc" "${DESCRIPTION}"
+	"BuildOutput" "${BUILD_DIR}/output"
+	"SetLive" "${BRANCH}"
+	"Depots"
+	{
+${DEPOT_ENTRIES}	}
+}
+EOF
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
-  cat "$VDF"
+  cat "$VDF" "${BUILD_DIR}"/depot_build_*.vdf
   exit 0
 fi
 

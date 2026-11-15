@@ -163,4 +163,4 @@ bash pipelines/steam_upload.sh --app-id 4665990 --description v0.1.0 \
 
 On macOS, prefix the command with `HOME=~/.mag-steam-builder` so steamcmd uses the builder's cached login (see step 4).
 
-Add `--dry-run` to print the generated SteamPipe build VDF without uploading.
+Add `--dry-run` to print the generated SteamPipe app and depot build VDFs without uploading.
