@@ -2,6 +2,9 @@
 use steamworks::Client;
 
 #[cfg(feature = "steam-integration")]
+use crate::steam::constants::MEN_AMONG_GODS_APP_ID;
+
+#[cfg(feature = "steam-integration")]
 pub type Steam = SteamClient;
 #[cfg(not(feature = "steam-integration"))]
 pub type Steam = NoSteam;
@@ -39,16 +42,19 @@ pub struct SteamClient {
 #[cfg(feature = "steam-integration")]
 impl SteamApi for SteamClient {
     fn init() -> Self {
-        let client = steamworks::Client::init()
+        let client = steamworks::Client::init_app(MEN_AMONG_GODS_APP_ID)
             .inspect_err(|e| log::info!("Steam unavailable: {e}"))
             .ok();
 
-        log::info!("Steam available, and rich presence enabled!");
+        if client.is_some() {
+            log::info!("Steam available, and rich presence enabled!");
+        }
+
         Self { client }
     }
 
     fn is_active(&self) -> bool {
-        true
+        self.client.is_some()
     }
 
     fn set_presence(&self, token: &str, name: Option<&str>) {
@@ -72,4 +78,61 @@ impl SteamApi for SteamClient {
 
 pub fn init() -> Steam {
     Steam::init()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_steam_is_never_active() {
+        assert!(!NoSteam::init().is_active());
+    }
+
+    #[test]
+    fn no_steam_calls_are_noops() {
+        let steam = NoSteam::init();
+        steam.set_presence("#Status_Playing", Some("Piltur"));
+        steam.set_presence("#Status_Menu", None);
+        steam.run_callbacks();
+        assert!(!steam.is_active());
+    }
+
+    #[cfg(not(feature = "steam-integration"))]
+    #[test]
+    fn init_without_feature_is_inactive() {
+        assert!(!init().is_active());
+    }
+
+    #[cfg(feature = "steam-integration")]
+    mod steam_client {
+        use super::*;
+
+        fn disconnected() -> SteamClient {
+            SteamClient { client: None }
+        }
+
+        #[test]
+        fn disconnected_client_is_inactive() {
+            assert!(!disconnected().is_active());
+        }
+
+        #[test]
+        fn disconnected_client_calls_are_noops() {
+            let steam = disconnected();
+            steam.set_presence("#Status_Playing", Some("Piltur"));
+            steam.set_presence("#Status_Menu", None);
+            steam.run_callbacks();
+            assert!(!steam.is_active());
+        }
+
+        #[test]
+        #[ignore = "requires a running Steam client"]
+        fn init_connects_when_steam_running() {
+            let steam = init();
+            assert!(steam.is_active());
+            steam.set_presence("#Status_Playing", Some("Test"));
+            steam.run_callbacks();
+        }
+    }
 }
