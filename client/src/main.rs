@@ -19,6 +19,7 @@ use client::preferences::DisplayMode;
 use client::scenes::scene::SceneType;
 use client::sfx_cache::SoundCache;
 use client::state::{ApiTokenState, AppState, DisplayCommand};
+use client::steam::integration::{Steam, SteamApi};
 use client::ui::visuals::panning_background::PanningBackground;
 use client::ui::widget::Bounds;
 use client::{constants, dpi_scaling, filepaths, hosts, preferences, scenes};
@@ -273,6 +274,9 @@ fn main() -> Result<(), String> {
         log::error!("Failed to get video subsystem");
         process::exit(1);
     }
+
+    // Initialize Steam
+    let _steam_client = Steam::init();
 
     'running: loop {
         let now = Instant::now();

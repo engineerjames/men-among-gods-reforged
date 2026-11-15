@@ -43,6 +43,7 @@ impl SteamApi for SteamClient {
             .inspect_err(|e| log::info!("Steam unavailable: {e}"))
             .ok();
 
+        log::info!("Steam available, and rich presence enabled!");
         Self { client }
     }
 
