@@ -121,6 +121,7 @@ jobs:
         run: |
           set -euo pipefail
           for platform in windows macos linux; do
+            mkdir -p "steam-content/${platform}"
             unzip -q "artifacts/packages-${platform}/men-among-gods-client-${VERSION}-${platform}.zip" \
               -d "steam-content/${platform}"
           done
