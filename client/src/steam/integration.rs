@@ -4,12 +4,17 @@ use steamworks::Client;
 #[cfg(feature = "steam-integration")]
 use crate::steam::constants::MEN_AMONG_GODS_APP_ID;
 
+use mag_core::area::AREAS;
+
+use crate::scenes::scene::SceneType;
+
 #[cfg(feature = "steam-integration")]
 pub type Steam = SteamClient;
 #[cfg(not(feature = "steam-integration"))]
 pub type Steam = NoSteam;
 
 /// Rich presence states, mapped to tokens in `rich_presence.txt`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Presence {
     /// In the main menu.
     StatusMenu,
@@ -33,6 +38,42 @@ impl From<&Presence> for &'static str {
             Presence::StatusArea(_) => "#Status_Area",
             Presence::Unset => "",
         }
+    }
+}
+
+/// Derives the rich presence that should be shown for the current client state.
+///
+/// In-game, the area is the first [`AREAS`] entry containing the player's
+/// tile. The table lists broad regions (e.g. "Aston") before the places
+/// nested inside them, so this yields a stable, coarse location.
+///
+/// # Arguments
+///
+/// * `scene` - The active scene.
+/// * `center` - World coordinates of the player's (center) tile, if known.
+/// * `hide_area` - Show a generic playing status instead of the area.
+///
+/// # Returns
+///
+/// * The [`Presence`] to display.
+pub fn presence_for(scene: SceneType, center: Option<(u16, u16)>, hide_area: bool) -> Presence {
+    match scene {
+        SceneType::Login
+        | SceneType::NewAccount
+        | SceneType::RequestReset
+        | SceneType::EnterResetCode => Presence::StatusMenu,
+        SceneType::CharacterSelection | SceneType::CharacterCreation => {
+            Presence::SelectingCharacter
+        }
+        SceneType::Game => center
+            .filter(|_| !hide_area)
+            .and_then(|(x, y)| {
+                AREAS
+                    .iter()
+                    .find(|a| a.contains(i32::from(x), i32::from(y)))
+            })
+            .map_or(Presence::StatusPlaying, |a| Presence::StatusArea(a.name)),
+        SceneType::Exit => Presence::Unset,
     }
 }
 
@@ -132,6 +173,45 @@ mod tests {
         assert_eq!(token(Presence::SelectingCharacter), "#Selecting_Character");
         assert_eq!(token(Presence::StatusPlaying), "#Status_Playing");
         assert_eq!(token(Presence::StatusArea("Aston")), "#Status_Area");
+    }
+
+    #[test]
+    fn presence_for_menu_and_selection_scenes() {
+        for scene in [
+            SceneType::Login,
+            SceneType::NewAccount,
+            SceneType::RequestReset,
+            SceneType::EnterResetCode,
+        ] {
+            assert_eq!(presence_for(scene, None, false), Presence::StatusMenu);
+        }
+        for scene in [SceneType::CharacterSelection, SceneType::CharacterCreation] {
+            assert_eq!(
+                presence_for(scene, None, false),
+                Presence::SelectingCharacter
+            );
+        }
+        assert_eq!(presence_for(SceneType::Exit, None, false), Presence::Unset);
+    }
+
+    #[test]
+    fn presence_for_game_uses_broad_area() {
+        // Inside the Leather Armor Shop, which is nested inside Aston.
+        assert_eq!(
+            presence_for(SceneType::Game, Some((525, 530)), false),
+            Presence::StatusArea("Aston")
+        );
+    }
+
+    #[test]
+    fn presence_for_game_falls_back_to_playing() {
+        let playing = Presence::StatusPlaying;
+        assert_eq!(presence_for(SceneType::Game, None, false), playing);
+        assert_eq!(presence_for(SceneType::Game, Some((0, 0)), false), playing);
+        assert_eq!(
+            presence_for(SceneType::Game, Some((525, 530)), true),
+            playing
+        );
     }
 
     #[test]
