@@ -9,20 +9,29 @@ pub type Steam = SteamClient;
 #[cfg(not(feature = "steam-integration"))]
 pub type Steam = NoSteam;
 
-pub enum PresenceKey {
+/// Rich presence states, mapped to tokens in `rich_presence.txt`.
+pub enum Presence {
+    /// In the main menu.
     StatusMenu,
+    /// Selecting a character to play as.
     SelectingCharacter,
+    /// Generic playing status, not tied to any specific area.
     StatusPlaying,
+    /// Playing in the named area (fills the `%area%` substitution).
     StatusArea(&'static str),
+    /// Clears all rich presence keys.
+    Unset,
 }
 
-impl Into<&str> for PresenceKey {
-    fn into(self) -> &'static str {
-        match self {
-            PresenceKey::StatusMenu => "#Status_Menu",
-            PresenceKey::SelectingCharacter => "#Selecting_Character",
-            PresenceKey::StatusPlaying => "#Status_Playing",
-            PresenceKey::StatusArea(_) => "#Status_Area",
+impl From<&Presence> for &'static str {
+    /// Returns the `steam_display` localization token for `presence`.
+    fn from(presence: &Presence) -> Self {
+        match presence {
+            Presence::StatusMenu => "#Status_Menu",
+            Presence::SelectingCharacter => "#Selecting_Character",
+            Presence::StatusPlaying => "#Status_Playing",
+            Presence::StatusArea(_) => "#Status_Area",
+            Presence::Unset => "",
         }
     }
 }
@@ -33,7 +42,7 @@ impl Into<&str> for PresenceKey {
 pub trait SteamApi {
     fn init() -> Self;
     fn is_active(&self) -> bool;
-    fn set_presence(&self, _token: &str, _name: Option<&str>);
+    fn set_presence(&self, presence: Presence);
     fn run_callbacks(&self);
 }
 
@@ -47,7 +56,7 @@ impl SteamApi for NoSteam {
         false
     }
 
-    fn set_presence(&self, _token: &str, _name: Option<&str>) {}
+    fn set_presence(&self, _presence: Presence) {}
 
     fn run_callbacks(&self) {}
 }
@@ -75,11 +84,20 @@ impl SteamApi for SteamClient {
         self.client.is_some()
     }
 
-    fn set_presence(&self, token: &str, name: Option<&str>) {
+    fn set_presence(&self, presence: Presence) {
         if let Some(ref client) = self.client {
             let f = client.friends();
-            f.set_rich_presence("name", name);
-            f.set_rich_presence("steam_display", Some(token));
+            match presence {
+                Presence::Unset => f.clear_rich_presence(),
+                _ => {
+                    let area = match presence {
+                        Presence::StatusArea(area) => Some(area),
+                        _ => None,
+                    };
+                    f.set_rich_presence("area", area);
+                    f.set_rich_presence("steam_display", Some((&presence).into()));
+                }
+            }
         } else {
             log::warn!("Unable to set presence, Steam client not connected.");
         }
@@ -108,10 +126,20 @@ mod tests {
     }
 
     #[test]
+    fn presence_maps_to_localization_tokens() {
+        let token = |p: Presence| -> &'static str { (&p).into() };
+        assert_eq!(token(Presence::StatusMenu), "#Status_Menu");
+        assert_eq!(token(Presence::SelectingCharacter), "#Selecting_Character");
+        assert_eq!(token(Presence::StatusPlaying), "#Status_Playing");
+        assert_eq!(token(Presence::StatusArea("Aston")), "#Status_Area");
+    }
+
+    #[test]
     fn no_steam_calls_are_noops() {
         let steam = NoSteam::init();
-        steam.set_presence("#Status_Playing", Some("Piltur"));
-        steam.set_presence("#Status_Menu", None);
+        steam.set_presence(Presence::StatusArea("Aston"));
+        steam.set_presence(Presence::StatusMenu);
+        steam.set_presence(Presence::Unset);
         steam.run_callbacks();
         assert!(!steam.is_active());
     }
@@ -138,8 +166,9 @@ mod tests {
         #[test]
         fn disconnected_client_calls_are_noops() {
             let steam = disconnected();
-            steam.set_presence("#Status_Playing", Some("Piltur"));
-            steam.set_presence("#Status_Menu", None);
+            steam.set_presence(Presence::StatusArea("Aston"));
+            steam.set_presence(Presence::StatusMenu);
+            steam.set_presence(Presence::Unset);
             steam.run_callbacks();
             assert!(!steam.is_active());
         }
@@ -149,7 +178,7 @@ mod tests {
         fn init_connects_when_steam_running() {
             let steam = init();
             assert!(steam.is_active());
-            steam.set_presence("#Status_Playing", Some("Test"));
+            steam.set_presence(Presence::StatusPlaying);
             steam.run_callbacks();
         }
     }
