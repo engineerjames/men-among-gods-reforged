@@ -7,6 +7,7 @@
       "#Status_Menu"          "Logging in"
       "#Selecting_Character"  "Selecting character"
       "#Status_Playing"       "Playing"
+      "#Status_Area"          "Playing in %area%"
     }
   }
 }

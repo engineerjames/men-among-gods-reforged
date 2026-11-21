@@ -20,4 +20,5 @@ if [[ "$(rustc -vV | sed -n 's/^host: //p')" == "x86_64-pc-windows-msvc" ]]; the
     flags+=("-Clink-arg=/DEBUG:NONE")
 fi
 
-CARGO_ENCODED_RUSTFLAGS="$(IFS=$'\x1f'; printf '%s' "${flags[*]}")" cargo build --release
+# Extra args (e.g. `--features client/steam-integration`) are forwarded to cargo.
+CARGO_ENCODED_RUSTFLAGS="$(IFS=$'\x1f'; printf '%s' "${flags[*]}")" cargo build --release "$@"
