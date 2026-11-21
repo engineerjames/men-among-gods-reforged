@@ -9,6 +9,24 @@ pub type Steam = SteamClient;
 #[cfg(not(feature = "steam-integration"))]
 pub type Steam = NoSteam;
 
+pub enum PresenceKey {
+    StatusMenu,
+    SelectingCharacter,
+    StatusPlaying,
+    StatusArea(&'static str),
+}
+
+impl Into<&str> for PresenceKey {
+    fn into(self) -> &'static str {
+        match self {
+            PresenceKey::StatusMenu => "#Status_Menu",
+            PresenceKey::SelectingCharacter => "#Selecting_Character",
+            PresenceKey::StatusPlaying => "#Status_Playing",
+            PresenceKey::StatusArea(_) => "#Status_Area",
+        }
+    }
+}
+
 /// Trait that specifies the API expected of the SteamWorks Client
 /// object. This allows us to use compile-time type dispatching to
 /// keep the number of configuration checks to a minimum.
