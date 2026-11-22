@@ -9,7 +9,10 @@ use sdl2::{
 };
 
 use crate::{
+    account_api,
     constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT},
+    font_cache::{self, BITMAP_GLYPH_H, TextStyle},
+    server_status::ServerStatus,
     state::AppState,
     ui::widget::Bounds,
 };
@@ -18,6 +21,16 @@ use crate::{
 const SCENE_FADE_OUT: Duration = Duration::from_millis(120);
 /// Duration of the fade-from-black once the new scene becomes active.
 const SCENE_FADE_IN: Duration = Duration::from_millis(120);
+
+/// Build version shown in the pre-game footer. Release CI stamps the tag into
+/// the workspace version, so this matches the published version.
+const VERSION_TEXT: &str = concat!("Version ", env!("CARGO_PKG_VERSION"));
+/// Label preceding the server status value in the pre-game footer.
+const SERVER_STATUS_LABEL: &str = "Server status: ";
+/// Distance of the pre-game footer from the screen's left and bottom edges.
+const FOOTER_MARGIN: i32 = 8;
+/// Bitmap font used by the pre-game footer.
+const FOOTER_FONT: usize = 1;
 
 /// Tracks an in-progress fade transition between two scenes.
 enum SceneTransition {
@@ -160,6 +173,8 @@ pub struct SceneManager {
     transition: SceneTransition,
     /// Gear button + settings panel shown on all pre-game scenes.
     pregame_settings: crate::scenes::pregame_settings::PregameSettings,
+    /// Game server live status shown in the pre-game footer.
+    server_status: ServerStatus,
 }
 
 impl Default for SceneManager {
@@ -223,6 +238,7 @@ impl SceneManager {
             scenes: scene_map,
             transition: SceneTransition::None,
             pregame_settings: crate::scenes::pregame_settings::PregameSettings::new(),
+            server_status: ServerStatus::new(),
         }
     }
 
@@ -278,6 +294,11 @@ impl SceneManager {
             return;
         }
 
+        if self.active_scene != SceneType::Game {
+            self.server_status
+                .update(&app_state.api.base_url, account_api::server_is_live);
+        }
+
         // Advance any in-progress fade transition. While fading out, the
         // outgoing scene is still updated (frozen visuals aside) so timers
         // and animations don't jump once the fade completes.
@@ -328,10 +349,13 @@ impl SceneManager {
             .render_world(app_state, canvas)
             .unwrap_or_else(|err| log::error!("Error rendering world: {}", err));
 
-        if self.active_scene != SceneType::Game
-            && let Err(err) = self.pregame_settings.render(app_state, canvas)
-        {
-            log::error!("Error rendering settings: {}", err);
+        if self.active_scene != SceneType::Game {
+            if let Err(err) = self.render_footer(app_state, canvas) {
+                log::error!("Error rendering footer: {}", err);
+            }
+            if let Err(err) = self.pregame_settings.render(app_state, canvas) {
+                log::error!("Error rendering settings: {}", err);
+            }
         }
 
         let alpha = match &self.transition {
@@ -351,6 +375,60 @@ impl SceneManager {
             let _ = canvas.fill_rect(Rect::new(0, 0, TARGET_WIDTH_INT, TARGET_HEIGHT_INT));
             canvas.set_blend_mode(prev_blend_mode);
         }
+    }
+
+    /// Draws the server status and build version in the bottom-left corner.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state (provides the font cache).
+    /// * `canvas` - SDL2 canvas to draw onto.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` on success, or an SDL2 error string.
+    fn render_footer(
+        &self,
+        app_state: &mut AppState<'_>,
+        canvas: &mut Canvas<Window>,
+    ) -> Result<(), String> {
+        let gfx = &mut app_state.gfx_cache;
+        let version_y = TARGET_HEIGHT_INT as i32 - FOOTER_MARGIN - BITMAP_GLYPH_H as i32;
+        let status_y = version_y - BITMAP_GLYPH_H as i32 - 4;
+        let grey = TextStyle::tinted(Color::RGB(170, 170, 170));
+
+        let (value, color) = match self.server_status.live() {
+            None => ("CHECKING...", Color::RGB(170, 170, 170)),
+            Some(true) => ("LIVE", Color::RGB(80, 220, 80)),
+            Some(false) => ("DOWN", Color::RGB(255, 80, 80)),
+        };
+        font_cache::draw_text(
+            canvas,
+            gfx,
+            FOOTER_FONT,
+            SERVER_STATUS_LABEL,
+            FOOTER_MARGIN,
+            status_y,
+            grey,
+        )?;
+        font_cache::draw_text(
+            canvas,
+            gfx,
+            FOOTER_FONT,
+            value,
+            FOOTER_MARGIN + font_cache::text_width(SERVER_STATUS_LABEL) as i32,
+            status_y,
+            TextStyle::tinted(color),
+        )?;
+        font_cache::draw_text(
+            canvas,
+            gfx,
+            FOOTER_FONT,
+            VERSION_TEXT,
+            FOOTER_MARGIN,
+            version_y,
+            grey,
+        )
     }
 
     /// Externally requests a scene transition (e.g. from the main loop on quit).

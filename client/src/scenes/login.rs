@@ -393,6 +393,14 @@ impl Scene for LoginScene {
         app_state.panning_background.update(dt);
         self.login_form.update(dt);
 
+        // Keep the API URL tracking the server combo box so the pre-game
+        // server status (and any non-login flow) targets the selected host.
+        if let Some(url) = crate::hosts::build_api_base_url(self.login_form.server_ip())
+            && url != app_state.api.base_url
+        {
+            app_state.api.base_url = url;
+        }
+
         // Poll async login result.
         if self.is_submitting {
             let result = if let Some(receiver) = &self.api_result_rx {

@@ -34,6 +34,24 @@ pub fn is_unauthorized(error: &str) -> bool {
     error.contains("(401)")
 }
 
+/// Checks whether the game server behind `base_url` is live.
+///
+/// Uses the public `/world/time` endpoint, which answers `503` once the game
+/// server stops refreshing its short-TTL live-status snapshot. Any transport
+/// error or non-success status is treated as down.
+///
+/// # Arguments
+/// * `base_url` - API base URL.
+///
+/// # Returns
+/// * `true` if the API reports the game server as live.
+pub fn server_is_live(base_url: &str) -> bool {
+    let url = format!("{}/world/time", base_url.trim_end_matches('/'));
+    cert_trust::build_reqwest_client_with_timeout(Duration::from_secs(5))
+        .and_then(|client| client.get(&url).send().map_err(|e| e.to_string()))
+        .is_ok_and(|resp| resp.status().is_success())
+}
+
 /// Hashes a password into Argon2 PHC format using a deterministic salt.
 ///
 /// # Arguments
