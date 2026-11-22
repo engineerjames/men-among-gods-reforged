@@ -19,12 +19,14 @@ path = "src/bin/font_integration.rs"
 [features]
 # Enables `mag_core::measure!` timing rows (target `perf`) in the main loop.
 measure-time = []
+steam-integration = ["dep:steamworks"]
 
 [dependencies]
 mag_core = { path = "../core", package = "core" }
 # SDL2 is sourced via cargo-vcpkg and statically linked on all platforms –
 # no system SDL2 installation required.
 sdl2 = { version = "0.38.0", default-features = false, features = ["gfx", "image", "mixer", "ttf", "use-vcpkg", "static-link"] }
+steamworks = {version="0.13.0", optional = true}
 log.workspace = true
 log4rs.workspace = true
 zip.workspace = true
@@ -33,9 +35,7 @@ reqwest.workspace = true
 base64.workspace = true
 argon2 = "0.5.3"
 rustls = { workspace = true, default-features = true }
-rustls-pemfile.workspace = true
 sha2 = "0.10"
-webpki-roots = "0.26"
 serde.workspace = true
 serde_json.workspace = true
 rand.workspace = true

@@ -577,14 +577,9 @@ impl GameState {
         }
 
         let map_item_idx = self.map[m].it as usize;
-        if map_item_idx != 0
+        !(map_item_idx != 0
             && map_item_idx < self.items.len()
-            && self.items[map_item_idx].flags & ItemFlags::IF_MOVEBLOCK.bits() != 0
-        {
-            return false;
-        }
-
-        true
+            && self.items[map_item_idx].flags & ItemFlags::IF_MOVEBLOCK.bits() != 0)
     }
 
     /// Port of `close_vis_go(x,y,value)` from original helper code.

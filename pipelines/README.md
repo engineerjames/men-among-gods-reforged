@@ -9,7 +9,7 @@ This folder contains small scripts used by GitHub Actions workflows, and runnabl
 - `install_macos_deps.sh`
   - Installs macOS build dependencies for SDL2 (intended for `macos-latest`).
 - `build_release.sh`
-  - Builds release binaries for the workspace.
+  - Builds release binaries for the workspace. Extra args are forwarded to `cargo build` (CI passes `--features client/steam-integration`).
 - `package.sh`
   - Creates release `.zip` packages on Linux/macOS.
   - Produces `dist/men-among-gods-{server,client}-<version>-<platform>.zip`.
@@ -87,7 +87,7 @@ The package scripts expect the release build outputs to already exist and fail f
 
 ## Steam uploads
 
-The client is distributed on Steam without the Steamworks SDK (accounts are handled by our own API). The release workflow can upload the client packages to SteamPipe when dispatched with **steam_upload** checked.
+Accounts are handled by our own API; Steamworks is used only for rich presence. The release workflow builds with `--features client/steam-integration`, and the package scripts copy the Steamworks runtime library (`libsteam_api.dylib`/`.so` or `steam_api64.dll`) next to the client binary. Without Steam running, the client starts normally with rich presence disabled. The release workflow can upload the client packages to SteamPipe when dispatched with **steam_upload** checked.
 
 ### Steamworks IDs
 

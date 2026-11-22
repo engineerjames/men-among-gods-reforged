@@ -196,15 +196,10 @@ impl PathFinder {
         }
 
         let item_idx = map[m].it as usize;
-        if item_idx != 0
+        !(item_idx != 0
             && item_idx < core::constants::MAXITEM
             && (items[item_idx].flags & ItemFlags::IF_MOVEBLOCK.bits()) != 0
-            && items[item_idx].driver != 2
-        {
-            return false;
-        }
-
-        true
+            && items[item_idx].driver != 2)
     }
 
     /// Add a node to the search

@@ -1,0 +1,1 @@
+pub const MEN_AMONG_GODS_APP_ID: u32 = 4665990;

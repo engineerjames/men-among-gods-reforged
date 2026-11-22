@@ -60,5 +60,12 @@ Copy-Item -Recurse -Force 'client/assets/*' (Join-Path $clientPackageDir 'assets
 Assert-DirNonEmpty (Join-Path $clientPackageDir 'assets/journal')
 Copy-RequiredFile -Source 'target/release/men-among-gods-client.exe' -Destination (Join-Path $clientPackageDir 'men-among-gods-client.exe')
 
+# Steamworks runtime DLL, present only when built with `client/steam-integration`.
+$steamDll = Get-ChildItem -Path 'target/release/build/steamworks-sys-*/out/steam_api64.dll' -ErrorAction SilentlyContinue |
+  Sort-Object LastWriteTime -Descending | Select-Object -First 1
+if ($steamDll) {
+  Copy-Item -Force $steamDll.FullName $clientPackageDir
+}
+
 Compress-Archive -Force -Path $serverPackageDir -DestinationPath "dist/$serverDir.zip"
 Compress-Archive -Force -Path $clientPackageDir -DestinationPath "dist/$clientDir.zip"
