@@ -63,6 +63,9 @@ SERVER_DIR="men-among-gods-server-${VERSION}-${PLATFORM}"
 CLIENT_DIR="men-among-gods-client-${VERSION}-${PLATFORM}"
 BUNDLE_VERSION="${VERSION#v}"
 
+# Steamworks runtime library, present only when built with `client/steam-integration`.
+STEAM_LIB="$(ls -t target/release/build/steamworks-sys-*/out/libsteam_api.{dylib,so} 2>/dev/null | head -n 1 || true)"
+
 rm -rf dist
 mkdir -p "dist/${SERVER_DIR}"
 
@@ -92,6 +95,8 @@ if [[ "$PLATFORM" == "macos" ]]; then
 
   copy_required_file "target/release/men-among-gods-client" "${MACOS_DIR}/men-among-gods-client"
   chmod +x "${MACOS_DIR}/men-among-gods-client"
+  # libsteam_api.dylib's install name is @loader_path, so it must sit next to the binary.
+  if [[ -n "$STEAM_LIB" ]]; then cp "$STEAM_LIB" "${MACOS_DIR}/"; fi
 
   # Bundle a proper macOS app icon.
   ICON_SRC="client/assets/gfx/mag_logo.png"
@@ -169,6 +174,8 @@ else
   cp -R client/assets/. "dist/${CLIENT_DIR}/assets/"
   require_dir_nonempty "dist/${CLIENT_DIR}/assets/journal"
   copy_required_file "target/release/men-among-gods-client" "dist/${CLIENT_DIR}/men-among-gods-client"
+  # Found via the client's $ORIGIN rpath (see client/build.rs).
+  if [[ -n "$STEAM_LIB" ]]; then cp "$STEAM_LIB" "dist/${CLIENT_DIR}/"; fi
 fi
 
 (cd dist && zip -r "${SERVER_DIR}.zip" "${SERVER_DIR}")

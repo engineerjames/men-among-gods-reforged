@@ -6,6 +6,12 @@ fn main() {
     // Embed the Windows app icon into the final .exe at build time.
     // This is required for the correct icon to show in Explorer/taskbar shortcuts.
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+
+    // Let packaged Linux builds load libsteam_api.so from the executable's directory.
+    if target_os == "linux" && std::env::var_os("CARGO_FEATURE_STEAM_INTEGRATION").is_some() {
+        println!("cargo:rustc-link-arg-bins=-Wl,-rpath,$ORIGIN");
+    }
+
     if target_os == "windows" {
         embed_resource::compile("icon.rc", embed_resource::NONE);
 

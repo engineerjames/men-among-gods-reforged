@@ -75,10 +75,7 @@ pub(crate) fn apply_parasitic_dot(
     // spread, preventing repeat spreads within the same combat round.
     item.data[1] = 0;
 
-    if add_spell(gs, co, in_idx) == 0 {
-        return false;
-    }
-    true
+    add_spell(gs, co, in_idx) != 0
 }
 
 /// Active spell: infest the target with parasites that drain HP over time and

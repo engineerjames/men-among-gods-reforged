@@ -23,5 +23,6 @@ pub mod scenes;
 pub mod server_status;
 pub mod sfx_cache;
 pub mod state;
+pub mod steam;
 pub mod types;
 pub mod ui;

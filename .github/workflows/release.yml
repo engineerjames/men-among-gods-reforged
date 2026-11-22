@@ -75,7 +75,7 @@ jobs:
 
       - name: Build (release)
         shell: bash
-        run: bash pipelines/build_release.sh
+        run: bash pipelines/build_release.sh --features client/steam-integration
 
       - name: Package (linux/macos)
         if: matrix.os != 'windows-latest'

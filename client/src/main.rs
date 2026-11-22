@@ -19,10 +19,13 @@ use client::preferences::DisplayMode;
 use client::scenes::scene::SceneType;
 use client::sfx_cache::SoundCache;
 use client::state::{ApiTokenState, AppState, DisplayCommand};
+use client::steam::integration::{Presence, Steam, SteamApi, presence_for};
 use client::ui::visuals::panning_background::PanningBackground;
 use client::ui::widget::Bounds;
 use client::{constants, dpi_scaling, filepaths, hosts, preferences, scenes};
+use mag_core::constants::{TILEX, TILEY};
 use mag_core::measure;
+use mag_core::traits::KIN_PURPLE;
 
 /// Application entry point.
 ///
@@ -273,6 +276,10 @@ fn main() -> Result<(), String> {
         log::error!("Failed to get video subsystem");
         process::exit(1);
     }
+
+    // Initialize Steam
+    let steam_client = Steam::init();
+    let mut last_presence: Option<Presence> = None;
 
     'running: loop {
         let now = Instant::now();
@@ -526,6 +533,22 @@ fn main() -> Result<(), String> {
         }
 
         measure!("client.present", canvas.present());
+
+        // Run Steam callbacks
+        if steam_client.is_active() {
+            let ps = app_state.player_state.as_ref();
+            let center = ps
+                .and_then(|p| p.map().tile_at_xy(TILEX / 2, TILEY / 2))
+                .map(|t| (t.x, t.y));
+            // TODO: also hide gods; the client isn't sent the God flag yet.
+            let hide_area = ps.is_some_and(|p| p.character_info().kindred as u32 & KIN_PURPLE != 0);
+            let presence = presence_for(scene_manager.get_scene(), center, hide_area);
+            if last_presence != Some(presence) {
+                steam_client.set_presence(presence);
+                last_presence = Some(presence);
+            }
+            steam_client.run_callbacks();
+        }
 
         if !effective_vsync_enabled {
             fps_manager.delay();
