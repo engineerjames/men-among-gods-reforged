@@ -64,7 +64,12 @@ CLIENT_DIR="men-among-gods-client-${VERSION}-${PLATFORM}"
 BUNDLE_VERSION="${VERSION#v}"
 
 # Steamworks runtime library, present only when built with `client/steam-integration`.
-STEAM_LIB="$(ls -t target/release/build/steamworks-sys-*/out/libsteam_api.{dylib,so} 2>/dev/null | head -n 1 || true)"
+# Cargo's build-script dir is `steamworks-sys-<hash>` on older toolchains, `steamworks-sys/<hash>` on newer.
+STEAM_LIB="$(ls -t target/release/build/steamworks-sys{-*,/*}/out/libsteam_api.{dylib,so} 2>/dev/null | head -n 1 || true)"
+if [[ -z "$STEAM_LIB" ]] && grep -q libsteam_api target/release/men-among-gods-client 2>/dev/null; then
+  echo "Client links libsteam_api but the Steamworks runtime library was not found under target/release/build" >&2
+  exit 1
+fi
 
 rm -rf dist
 mkdir -p "dist/${SERVER_DIR}"
