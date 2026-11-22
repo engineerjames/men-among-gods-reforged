@@ -1,7 +1,7 @@
 # Copilot Instructions for men-among-gods-reforged
 
 ## Big picture architecture
-- This is a Rust workspace with five crates: `core`, `server`, `client`, `api`, `server/utils`, plus `client/utils`.
+- This is a Rust workspace with seven crates: `core`, `server`, `server/utils`, `client`, `client/utils`, `api`, and `loadtest`.
 - `core` is the shared protocol/types layer used by both `server` and `client`.
 - `server` is the real-time game loop (target 36 TPS) and loads world data into memory. Persistence is via KeyDB; the background saver thread writes data back on a rotating ~12 minute schedule for crash resilience.
 - `api` is a separate Axum auth/account service backed by KeyDB/Redis.
@@ -11,21 +11,22 @@
 ## Service boundaries and data flow
 - API (`:5554`) stores account/character metadata in KeyDB via keys like `account:*`, `character:*`.
 - Server (`:5555`) loads gameplay state into memory from KeyDB. A background saver thread writes data back on a rotating ~12 minute schedule for crash resilience.
-- Integration bridge is login tickets: API writes one-time `game_login_ticket:{ticket}` keys; server consumes them atomically (`server/src/keydb.rs`).
+- Integration bridge is login tickets: API writes one-time `game_login_ticket:{ticket}` keys; server consumes them atomically (`server/src/keydb/connection.rs`).
+- Game server liveness: the server publishes `game:live:status` with a 60s TTL; the API's public `/world/*` routes (e.g. `GET /world/time`) return `503 server_offline` when it has expired. The client uses this for the pre-game server status (`account_api::server_is_live`).
 - Character ownership/management is enforced in API routes; game world state persistence is via `server/src/keydb/store.rs`.
 
 ## Required runtime assumptions
 - Server always uses KeyDB for persistence. No `MAG_STORAGE_BACKEND` env var is needed.
-- KeyDB mode: game data must be seeded first via `cargo run -p server --bin world-snapshot -- import --input server/assets/world_seed.wsnap`. The background saver thread writes data back every ~2 minutes per data type.
+- KeyDB mode: game data must be seeded first via `cargo run -p server --bin world-snapshot -- import --input server/assets/world_seed.wsnap`. The background saver runs one save job every ~2 minutes, rotating through six data slices, so each data type is written once per ~12 minute rotation (`server/src/keydb/background_saver.rs`).
 - Key env vars:
   - `MAG_KEYDB_URL` (used by both API and server)
-  - `API_JWT_SECRET` (API refuses to start without it)
-  - `API_BIND_ADDR`, `API_PORT`, `MAG_API_BASE_URL`, `MAG_ASSETS_DIR`, `MAG_LOG_DIR`
-  - `MAG_TICK_WORKERS` (server; per-player update worker threads, default = available CPUs - 1 capped at 8, `1` = serial)
+  - API: `API_JWT_SECRET` and `API_TLS_CERT`/`API_TLS_KEY` (API refuses to start without them; TLS is mandatory), `API_BIND_ADDR`, `API_PORT`
+  - Server: `MAG_LOG_DIR`, `MAG_TICK_WORKERS` (per-player update worker threads, default = available CPUs - 1 capped at 8, `1` = serial)
+  - Client: `MAG_SERVER_IP`, `MAG_BASE_URL`, `MAG_API_URL` (`client/src/hosts.rs`)
 
 ## Code patterns to preserve
 - Networking split is intentional: `csend` for immediate control packets vs `xsend` for batched tick payloads (`compress_ticks` flow in `server/src/server.rs` and `docs/server/DESIGN.md`).
-- API request limits are strict (global 1 req/sec governor). Client-side code already handles 429 retries with ~1.1s backoff (`client/src/account_api.rs`); preserve this behavior.
+- API rate limiting is per client IP and KeyDB-backed (`api/src/rate_limit.rs`): 30 req/sec on public routes, plus a `/login` lockout (10 failures in 15 min → 10 min lockout). Client helpers in `client/src/account_api.rs` retry 429s with a short backoff; preserve this behavior.
 - Account passwords sent to API are Argon2 PHC strings produced client-side (deterministic salt from username), not plaintext (`client/src/account_api.rs`).
 
 ## Code quality standards
@@ -67,11 +68,11 @@ Every public function, struct, enum, trait, and constant **must** have a `///` d
 
 ## High-value files by area
 - Tick loop and network batching: `server/src/server.rs`, `docs/server/DESIGN.md`
-- Persistence and dirty-flag lifecycle: `server/src/repository.rs`, `server/src/main.rs`
+- Persistence and dirty-flag lifecycle: `server/src/game_state.rs`, `server/src/main.rs`, `server/src/keydb/mod.rs`
 - KeyDB game-data persistence: `server/src/keydb/store.rs`, `server/src/keydb/background_saver.rs`
 - Auth/account routes and key schema assumptions: `api/src/routes.rs`, `api/src/pipelines.rs`, `api/README.md`
 - Client state machine and scene management: `client/src/main.rs`, `client/src/network/mod.rs`
-- Client text rendering (legacy bitmap + new TrueType): `client/src/font_cache.rs`, `client/src/text/mod.rs`
+- Client text rendering (legacy bitmap + TrueType `TextEngine`): `client/src/font_cache.rs`
 - Release packaging/CI: `.github/workflows/rust.yml`, `.github/workflows/release.yml`, `pipelines/README.md`
 - World snapshot tool: `server/src/bin/world_snapshot.rs`, `server/src/keydb/snapshot.rs`
 
