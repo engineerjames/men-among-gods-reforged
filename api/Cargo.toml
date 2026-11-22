@@ -21,7 +21,5 @@ rustls = { workspace = true, features = ["ring"] }
 serde.workspace = true
 subtle = "2.6"
 tokio = { version = "1.49.0", features = ["full"] }
-tower = "0.4"
-tower-http = { version = "0.5" }
 bincode.workspace = true
 flate2.workspace = true

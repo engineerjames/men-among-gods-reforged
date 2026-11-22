@@ -359,14 +359,9 @@ fn check_map_see(world: &WorldView, is_monster: bool, x: i32, y: i32) -> bool {
     }
 
     let item_idx = tile.it as usize;
-    if item_idx != 0
+    !(item_idx != 0
         && item_idx < world.items.len()
-        && world.items[item_idx].flags & ItemFlags::IF_SIGHTBLOCK.bits() != 0
-    {
-        return false;
-    }
-
-    true
+        && world.items[item_idx].flags & ItemFlags::IF_SIGHTBLOCK.bits() != 0)
 }
 
 /// Fill `vis` with a line-of-sight map centred on `(fx, fy)`.

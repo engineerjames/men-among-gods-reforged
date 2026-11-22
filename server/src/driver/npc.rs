@@ -1608,17 +1608,12 @@ pub fn npc_check_target(gs: &GameState, x: usize, y: usize) -> bool {
     }
 
     let map_item = map_item.unwrap();
-    if gs.map[m].flags
+    !(gs.map[m].flags
         & (u64::from(core::constants::MF_MOVEBLOCK) | u64::from(core::constants::MF_NOMONST))
         != 0
         || gs.map[m].ch != 0
         || gs.map[m].to_ch != 0
-        || (map_item.flags & ItemFlags::IF_MOVEBLOCK.bits() != 0 && map_item.driver != 2)
-    {
-        return false;
-    }
-
-    true
+        || (map_item.flags & ItemFlags::IF_MOVEBLOCK.bits() != 0 && map_item.driver != 2))
 }
 
 /// Handles the legacy `npc_is_stunned` NPC driver hook.
