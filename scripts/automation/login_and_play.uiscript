@@ -16,7 +16,7 @@ wait_scene char_select 90
 wait 2
 screenshot ${MAG_AUTO_RUN_DIR}/screens/01-char-select.png
 
-click @char_select.continue
+click @char_select.play
 wait_scene game 90
 wait 5
 screenshot ${MAG_AUTO_RUN_DIR}/screens/02-in-game.png

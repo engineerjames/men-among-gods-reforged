@@ -57,8 +57,8 @@ const FONT: usize = 1;
 pub enum CharacterSelectionFormAction {
     /// User wants to create a new character.
     CreateNew,
-    /// User wants to continue to the game with the selected character.
-    ContinueToGame {
+    /// User wants to play (enter the game with) the selected character.
+    Play {
         /// Selected character ID.
         character_id: u64,
     },
@@ -82,10 +82,10 @@ pub struct CharacterSelectionForm {
     bounds: Bounds,
     /// Scrollable character list.
     character_list: ScrollableList,
+    /// "Play" button (enters the game with the selected character).
+    play_button: RectButton,
     /// "Create new character" button.
     create_button: RectButton,
-    /// "Continue to game" button.
-    continue_button: RectButton,
     /// "Log out" button.
     logout_button: RectButton,
     /// "Delete character" button.
@@ -101,7 +101,7 @@ pub struct CharacterSelectionForm {
     /// Cached character names keyed by ID (for delete dialog).
     character_names: Vec<(u64, String)>,
     /// Controller focus index, if any.
-    /// Slots 0..N = list rows, N..N+4 = create/continue/logout/delete.
+    /// Slots 0..N = list rows, N..N+4 = play/create/logout/delete.
     controller_focused: Option<usize>,
 }
 
@@ -141,18 +141,24 @@ impl CharacterSelectionForm {
             width: 1,
         };
 
+        let play_bg = Background::SolidColor(Color::RGBA(30, 100, 40, 220));
+        let play_border = Border {
+            color: Color::RGBA(80, 200, 90, 220),
+            width: 1,
+        };
+
         let mut btn_y = list_y + LIST_H as i32 + 12;
+
+        let play_button =
+            RectButton::new(Bounds::new(panel_x + PAD_X, btn_y, BTN_W, BTN_H), play_bg)
+                .with_border(play_border)
+                .with_label("Play", FONT);
+        btn_y += BTN_H as i32 + BTN_GAP;
 
         let create_button =
             RectButton::new(Bounds::new(panel_x + PAD_X, btn_y, BTN_W, BTN_H), btn_bg)
                 .with_border(btn_border)
                 .with_label("Create new character", FONT);
-        btn_y += BTN_H as i32 + BTN_GAP;
-
-        let continue_button =
-            RectButton::new(Bounds::new(panel_x + PAD_X, btn_y, BTN_W, BTN_H), btn_bg)
-                .with_border(btn_border)
-                .with_label("Continue to game", FONT);
         btn_y += BTN_H as i32 + BTN_GAP;
 
         let logout_button =
@@ -170,7 +176,7 @@ impl CharacterSelectionForm {
             bounds,
             character_list,
             create_button,
-            continue_button,
+            play_button,
             logout_button,
             delete_button,
             actions: Vec::new(),
@@ -289,7 +295,7 @@ impl CharacterSelectionForm {
         const ROW_NAMES: [&str; 3] = ["row0", "row1", "row2"];
         let mut targets = vec![
             ("create", *self.create_button.bounds()),
-            ("continue", *self.continue_button.bounds()),
+            ("play", *self.play_button.bounds()),
             ("logout", *self.logout_button.bounds()),
             ("delete", *self.delete_button.bounds()),
         ];
@@ -334,8 +340,8 @@ impl CharacterSelectionForm {
         }
 
         // Buttons.
-        self.create_button.set_hovered(focused == Some(list_len));
-        self.continue_button
+        self.play_button.set_hovered(focused == Some(list_len));
+        self.create_button
             .set_hovered(focused == Some(list_len + 1));
         self.logout_button
             .set_hovered(focused == Some(list_len + 2));
@@ -381,15 +387,13 @@ impl Widget for CharacterSelectionForm {
                         self.character_list.confirm_controller_cursor();
                     }
                     Some(i) if i == list_len => {
-                        self.actions.push(CharacterSelectionFormAction::CreateNew);
-                    }
-                    Some(i) if i == list_len + 1 => {
                         if let Some(id) = self.character_list.selected_id() {
                             self.actions
-                                .push(CharacterSelectionFormAction::ContinueToGame {
-                                    character_id: id,
-                                });
+                                .push(CharacterSelectionFormAction::Play { character_id: id });
                         }
+                    }
+                    Some(i) if i == list_len + 1 => {
+                        self.actions.push(CharacterSelectionFormAction::CreateNew);
                     }
                     Some(i) if i == list_len + 2 => {
                         self.actions.push(CharacterSelectionFormAction::LogOut);
@@ -425,10 +429,10 @@ impl Widget for CharacterSelectionForm {
             self.actions.push(CharacterSelectionFormAction::CreateNew);
             return EventResponse::Consumed;
         }
-        if self.continue_button.handle_event(event) == EventResponse::Consumed {
+        if self.play_button.handle_event(event) == EventResponse::Consumed {
             if let Some(id) = self.character_list.selected_id() {
                 self.actions
-                    .push(CharacterSelectionFormAction::ContinueToGame { character_id: id });
+                    .push(CharacterSelectionFormAction::Play { character_id: id });
             }
             return EventResponse::Consumed;
         }
@@ -556,14 +560,14 @@ impl Widget for CharacterSelectionForm {
         cursor_y += LIST_H as i32 + 12;
 
         // Buttons.
+        self.play_button
+            .set_position(self.bounds.x + PAD_X, cursor_y);
+        self.play_button.render(ctx)?;
+        cursor_y += BTN_H as i32 + BTN_GAP;
+
         self.create_button
             .set_position(self.bounds.x + PAD_X, cursor_y);
         self.create_button.render(ctx)?;
-        cursor_y += BTN_H as i32 + BTN_GAP;
-
-        self.continue_button
-            .set_position(self.bounds.x + PAD_X, cursor_y);
-        self.continue_button.render(ctx)?;
         cursor_y += BTN_H as i32 + BTN_GAP;
 
         self.logout_button

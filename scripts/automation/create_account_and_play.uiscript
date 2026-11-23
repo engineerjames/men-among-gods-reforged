@@ -61,7 +61,7 @@ wait 3
 screenshot ${MAG_AUTO_RUN_DIR}/screens/04-char-select.png
 
 # --- Enter the world ----------------------------------------------------------
-click @char_select.continue
+click @char_select.play
 wait_scene game 90
 wait 5
 screenshot ${MAG_AUTO_RUN_DIR}/screens/05-in-game.png

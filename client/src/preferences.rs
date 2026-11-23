@@ -188,7 +188,7 @@ pub struct Settings {
     #[serde(default = "default_master_volume")]
     pub master_volume: f32,
     /// Wall-hiding toggle.
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub hide: bool,
     /// Overhead player name display toggle.
     #[serde(default = "default_true")]
@@ -222,7 +222,7 @@ impl Default for Settings {
             weather_enabled: true,
             weather_intensity: 1.0,
             master_volume: default_master_volume(),
-            hide: false,
+            hide: true,
             show_names: true,
             show_proz: true,
             show_danger_glyphs: true,
@@ -749,7 +749,7 @@ mod tests {
         let s = Settings::default();
         assert!(s.show_names);
         assert!(s.show_proz);
-        assert!(!s.hide);
+        assert!(s.hide);
         assert!(s.show_helper_text);
         assert!(!s.show_positions);
         assert!(s.spell_effects_enabled);

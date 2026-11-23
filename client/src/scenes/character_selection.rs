@@ -23,7 +23,7 @@ use crate::{
 /// Scene that lists the player's characters and lets them pick one to enter the game.
 ///
 /// On enter, character summaries are loaded from the API on a background thread.
-/// After the player selects a character and clicks "Continue", a game-login
+/// After the player selects a character and clicks "Play", a game-login
 /// ticket is created (also on a background thread) and the scene transitions
 /// to `SceneType::Game`.
 pub struct CharacterSelectionScene {
@@ -318,7 +318,7 @@ impl Scene for CharacterSelectionScene {
                     self.last_error = None;
                     self.pending_scene = Some(SceneType::CharacterCreation);
                 }
-                CharacterSelectionFormAction::ContinueToGame { character_id } => {
+                CharacterSelectionFormAction::Play { character_id } => {
                     if self.logging_in || Self::is_thread_running(&self.login_thread) {
                         self.form
                             .set_error(Some("Login already in progress".to_owned()));
