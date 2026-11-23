@@ -39,6 +39,7 @@ use client::gfx_cache::GraphicsCache;
 use client::types::log_message::{LogMessage, LogMessageColor};
 use client::ui::hud::button_bar::HudButtonBar;
 use client::ui::hud::chat_box::ChatBox;
+use client::ui::hud::compass::Compass;
 use client::ui::hud::inventory_panel::{InventoryPanel, InventoryPanelData};
 use client::ui::hud::look_panel::LookPanel;
 use client::ui::hud::minimap_widget::MinimapWidget;
@@ -239,6 +240,7 @@ fn main() -> Result<(), String> {
     });
 
     let mut mode_button = ModeButton::new(COL3_X + 30, 250, 18);
+    let mut compass = Compass::new(COL3_X + 30 - 18 - 28, 250);
 
     let mut minimap_widget = MinimapWidget::new(
         HUD_BTN_CX,
@@ -626,6 +628,7 @@ fn main() -> Result<(), String> {
         timed_render(&mut status_panel, &mut ctx, &mut t_status_panel);
         timed_render(&mut hud_buttons, &mut ctx, &mut t_hud_buttons);
         timed_render(&mut skill_bar, &mut ctx, &mut t_skill_bar);
+        let _ = compass.render(&mut ctx);
         let t0 = Instant::now();
         let _ = spell_effect_icons.render(&mut ctx);
         t_spell_effect_icons.push(t0.elapsed().as_micros() as f32);

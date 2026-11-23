@@ -66,6 +66,7 @@ use crate::{
         forms::cert_dialog::CertDialog,
         hud::button_bar::HudButtonBar,
         hud::chat_box::ChatBox,
+        hud::compass::Compass,
         hud::inventory_panel::InventoryPanel,
         hud::journal_panel::{JOURNAL_PANEL_H, JOURNAL_PANEL_W, JournalPanel},
         hud::look_panel::LookPanel,
@@ -461,6 +462,13 @@ const MODE_BTN_CY: i32 = crate::constants::TARGET_HEIGHT_INT as i32 - 30;
 /// Radius of the circular speed-mode button.
 const MODE_BTN_RADIUS: u32 = 18;
 
+// ---- Compass (lower-right, left of the mode button) ---- //
+
+/// X center of the compass, just left of the speed-mode button.
+const COMPASS_CX: i32 = MODE_BTN_CX - MODE_BTN_RADIUS as i32 - 28;
+/// Y center of the compass, level with the speed-mode button.
+const COMPASS_CY: i32 = MODE_BTN_CY;
+
 // ---- Look panel (center-right) ---- //
 
 /// Width of the look panel.
@@ -640,6 +648,8 @@ pub struct GameScene {
     pub(super) settings_panel: SettingsPanel,
     pub(super) minimap_widget: MinimapWidget,
     pub(super) mode_button: ModeButton,
+    /// Static N/E/W/S compass in the lower-right corner.
+    pub(super) compass: Compass,
     pub(super) look_panel: LookPanel,
     pub(super) shop_panel: ShopPanel,
     pub(super) vitality_bars: VitalityChevrons,
@@ -873,6 +883,7 @@ impl GameScene {
             ),
             minimap_widget: MinimapWidget::new(MINIMAP_BTN_CX, MINIMAP_BTN_CY, MINIMAP_BTN_RADIUS),
             mode_button: ModeButton::new(MODE_BTN_CX, MODE_BTN_CY, MODE_BTN_RADIUS),
+            compass: Compass::new(COMPASS_CX, COMPASS_CY),
             vitality_bars: VitalityChevrons::new(VITALITY_BARS_X, VITALITY_BARS_Y),
             spell_effect_icons: SpellEffectIcons::new(
                 positive_start_x,
@@ -2865,6 +2876,7 @@ impl Scene for GameScene {
             self.hud_buttons.render(&mut ctx)?;
             self.minimap_widget.render(&mut ctx)?;
             self.mode_button.render(&mut ctx)?;
+            self.compass.render(&mut ctx)?;
             self.skill_bar.render(&mut ctx)?;
             self.weapon_armor_panel.render(&mut ctx)?;
             self.rank_progress_line.render(&mut ctx)?;
