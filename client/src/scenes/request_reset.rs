@@ -121,6 +121,10 @@ impl RequestResetScene {
 }
 
 impl Scene for RequestResetScene {
+    fn main_panel_bounds(&self) -> Option<crate::ui::widget::Bounds> {
+        Some(*self.form.bounds())
+    }
+
     fn handle_event(&mut self, app_state: &mut AppState<'_>, event: &Event) -> Option<SceneType> {
         if let Event::MouseMotion { x, y, .. } = event {
             self.mouse_x = *x;

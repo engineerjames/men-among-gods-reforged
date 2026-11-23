@@ -53,16 +53,18 @@ const Y_CONTROLLER_BTN: i32 = Y_CONTROLS_BTN + BTN_H as i32 + 6;
 const Y_MOUSE_BTN: i32 = Y_CONTROLLER_BTN + BTN_H as i32 + 6;
 const Y_AUTOLOOT_BTN: i32 = Y_MOUSE_BTN + BTN_H as i32 + 6;
 const Y_VOLUME: i32 = Y_AUTOLOOT_BTN + BTN_H as i32 + 10;
-const Y_SEPARATOR: i32 = Y_VOLUME + ROW_H + 8;
+const Y_MUSIC: i32 = Y_VOLUME + ROW_H + 4;
+const Y_SEPARATOR: i32 = Y_MUSIC + ROW_H + 8;
 const Y_SESSION_BTNS: i32 = Y_SEPARATOR + 10;
 const Y_RETURN_BTN: i32 = Y_SESSION_BTNS + BTN_H as i32 + 6;
 
 /// Total panel height needed to fit all main-panel controls.
 pub const SETTINGS_PANEL_H: u32 = (Y_RETURN_BTN + BTN_H as i32 + 8) as u32;
 
-// Pre-game layout: Display button, volume slider, Close button.
+// Pre-game layout: Display button, volume slider, music checkbox, Close button.
 const PG_Y_VOLUME: i32 = Y_DIAG_BTN + 4;
-const PG_Y_CLOSE: i32 = PG_Y_VOLUME + ROW_H + 10;
+const PG_Y_MUSIC: i32 = PG_Y_VOLUME + ROW_H + 4;
+const PG_Y_CLOSE: i32 = PG_Y_MUSIC + ROW_H + 10;
 
 /// Panel height of the reduced pre-game settings panel.
 pub const PREGAME_SETTINGS_PANEL_H: u32 = (PG_Y_CLOSE + BTN_H as i32 + 8) as u32;
@@ -2135,6 +2137,8 @@ pub struct SettingsPanelData {
     pub show_positions: bool,
     /// Master volume (0.0–1.0).
     pub master_volume: f32,
+    /// Whether background music is enabled.
+    pub music_enabled: bool,
     /// Current display mode.
     pub display_mode: DisplayMode,
     /// Whether pixel-perfect (integer) scaling is active.
@@ -2183,6 +2187,7 @@ impl SettingsPanelData {
             show_helper_text: settings.show_helper_text,
             show_positions: settings.show_positions,
             master_volume: settings.master_volume,
+            music_enabled: settings.music_enabled,
             display_mode: settings.display_mode,
             pixel_perfect_scaling: settings.pixel_perfect_scaling,
             vsync_enabled: settings.vsync_enabled,
@@ -2226,8 +2231,9 @@ pub struct SettingsPanel {
     btn_mouse: RectButton,
     btn_autoloot: RectButton,
 
-    // --- Inline volume ---
+    // --- Inline volume / music ---
     sld_volume: Slider,
+    chk_music: Checkbox,
 
     // --- Session buttons ---
     btn_disconnect: RectButton,
@@ -2247,7 +2253,8 @@ pub struct SettingsPanel {
 
     /// Controller focus index into the focusable elements list, if any.
     /// Order: 0=Display, 1=Diagnostics, 2=Controls, 3=Controller,
-    ///        4=Mouse, 5=Autoloot, 6=Volume, 7=Disconnect, 8=Quit, 9=Return.
+    ///        4=Mouse, 5=Autoloot, 6=Volume, 7=Disconnect, 8=Quit, 9=Return,
+    ///        10=Music.
     controller_focused: Option<usize>,
     /// `true` when the controller is actively adjusting the volume slider
     /// (entered via NavConfirm on index 6, exited via NavConfirm or NavBack).
@@ -2341,6 +2348,11 @@ impl SettingsPanel {
                 1.0,
                 0,
             ),
+            chk_music: Checkbox::new(
+                Bounds::new(x, bounds.y + Y_MUSIC, w, ROW_H as u32),
+                "Enable Music",
+                0,
+            ),
 
             btn_disconnect: RectButton::new(
                 Bounds::new(x, bounds.y + Y_SESSION_BTNS, half_w, BTN_H),
@@ -2385,7 +2397,7 @@ impl SettingsPanel {
         }
     }
 
-    /// Creates the reduced pre-game settings panel (Display, Volume, Close)
+    /// Creates the reduced pre-game settings panel (Display, Volume, Music, Close)
     /// used before a character is in the world.
     ///
     /// # Arguments
@@ -2402,6 +2414,7 @@ impl SettingsPanel {
         let mut panel = Self::new(Bounds::new(x, y, width, PREGAME_SETTINGS_PANEL_H), bg_color);
         panel.pregame = true;
         panel.sld_volume.set_position(x + H_INSET, y + PG_Y_VOLUME);
+        panel.chk_music.set_position(x + H_INSET, y + PG_Y_MUSIC);
         panel.btn_return.set_position(x + H_INSET, y + PG_Y_CLOSE);
         panel.btn_return.set_label("Close");
         panel
@@ -2451,6 +2464,7 @@ impl SettingsPanel {
     /// * `data` - Snapshot of current settings values.
     pub fn sync_state(&mut self, data: &SettingsPanelData) {
         self.sld_volume.set_value(data.master_volume);
+        self.chk_music.set_checked(data.music_enabled);
         self.sub_display.sync_state(data);
         self.sub_diagnostics.sync_state(data);
         self.sub_controls.sync_state(data);
@@ -2576,9 +2590,10 @@ impl SettingsPanel {
     }
 
     /// Controller focus order for the full in-game panel.
-    const MAIN_FOCUS_ORDER: [usize; 10] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-    /// Controller focus order for the pre-game panel (Display, Volume, Close).
-    const PREGAME_FOCUS_ORDER: [usize; 3] = [0, 6, 9];
+    const MAIN_FOCUS_ORDER: [usize; 11] = [0, 1, 2, 3, 4, 5, 6, 10, 7, 8, 9];
+    /// Controller focus order for the pre-game panel (Display, Volume, Music,
+    /// Close).
+    const PREGAME_FOCUS_ORDER: [usize; 4] = [0, 6, 10, 9];
 
     /// Returns the focus index one step forward or backward in the active
     /// focus order.
@@ -2620,6 +2635,7 @@ impl SettingsPanel {
         self.btn_autoloot.set_hovered(f == Some(5));
         self.sld_volume.set_hovered(f == Some(6));
         self.sld_volume.set_active(self.volume_adjusting);
+        self.chk_music.set_hovered(f == Some(10));
         self.btn_disconnect.set_hovered(f == Some(7));
         self.btn_quit.set_hovered(f == Some(8));
         self.btn_return.set_hovered(f == Some(9));
@@ -2633,11 +2649,15 @@ impl SettingsPanel {
         }
     }
 
-    /// Collects `WidgetAction`s from the volume slider.
+    /// Collects `WidgetAction`s from the volume slider and music checkbox.
     fn collect_main_actions(&mut self) {
         if self.sld_volume.was_changed() {
             self.pending_actions
                 .push(WidgetAction::SetMasterVolume(self.sld_volume.value()));
+        }
+        if self.chk_music.was_toggled() {
+            self.pending_actions
+                .push(WidgetAction::SetMusicEnabled(self.chk_music.is_checked()));
         }
     }
 
@@ -2675,6 +2695,7 @@ impl Widget for SettingsPanel {
         shift(&mut self.btn_mouse, dx, dy);
         shift(&mut self.btn_autoloot, dx, dy);
         shift(&mut self.sld_volume, dx, dy);
+        shift(&mut self.chk_music, dx, dy);
         shift(&mut self.btn_disconnect, dx, dy);
         shift(&mut self.btn_quit, dx, dy);
         shift(&mut self.btn_return, dx, dy);
@@ -2809,6 +2830,11 @@ impl Widget for SettingsPanel {
                         self.pending_actions
                             .push(WidgetAction::TogglePanel(HudPanel::Settings));
                     }
+                    Some(10) => {
+                        let v = !self.chk_music.is_checked();
+                        self.chk_music.set_checked(v);
+                        self.pending_actions.push(WidgetAction::SetMusicEnabled(v));
+                    }
                     _ => {}
                 }
                 return EventResponse::Consumed;
@@ -2905,6 +2931,10 @@ impl Widget for SettingsPanel {
             self.collect_main_actions();
             return EventResponse::Consumed;
         }
+        if self.chk_music.handle_event(event) == EventResponse::Consumed {
+            self.collect_main_actions();
+            return EventResponse::Consumed;
+        }
 
         // 6. Session buttons (beneath sub-panel overlay).
         if !self.pregame {
@@ -2971,8 +3001,9 @@ impl Widget for SettingsPanel {
             self.btn_autoloot.render(ctx)?;
         }
 
-        // Volume slider
+        // Volume slider and music toggle
         self.sld_volume.render(ctx)?;
+        self.chk_music.render(ctx)?;
 
         if !self.pregame {
             // Separator line above session buttons
@@ -3045,6 +3076,7 @@ mod tests {
             show_helper_text: true,
             show_positions: true,
             master_volume: 0.75,
+            music_enabled: true,
             display_mode: DisplayMode::Fullscreen,
             pixel_perfect_scaling: true,
             vsync_enabled: false,
@@ -3150,7 +3182,17 @@ mod tests {
                 panel.controller_focused.unwrap()
             })
             .collect();
-        assert_eq!(order, vec![0, 6, 9, 0]);
+        assert_eq!(order, vec![0, 6, 10, 9]);
+
+        // Music checkbox emits a global toggle.
+        let music = *panel.chk_music.bounds();
+        panel.handle_event(&left_click(music.x + 2, music.y + 2));
+        assert!(
+            panel
+                .take_actions()
+                .iter()
+                .any(|a| matches!(a, WidgetAction::SetMusicEnabled(true)))
+        );
 
         // Close (relabelled Return) hides the panel.
         let close = *panel.btn_return.bounds();

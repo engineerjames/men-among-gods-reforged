@@ -1,8 +1,7 @@
 //! Composite login form widget.
 //!
-//! Contains a server combo box, text inputs for username and password, a music
-//! checkbox, Login / Create-Account / Quit buttons, and optional status and
-//! error labels.  The owning scene reads pending [`LoginFormAction`]s via
+//! Contains a server combo box, text inputs for username and password,
+//! Login / Create-Account / Quit buttons, and optional status and error labels.  The owning scene reads pending [`LoginFormAction`]s via
 //! [`LoginForm::take_login_actions`].
 
 use std::time::Duration;
@@ -16,7 +15,6 @@ use crate::ui::RenderContext;
 use crate::ui::style::{Background, Border};
 use crate::ui::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget};
 use crate::ui::widgets::button::RectButton;
-use crate::ui::widgets::checkbox::Checkbox;
 use crate::ui::widgets::dropdown::Dropdown;
 use crate::ui::widgets::text_input::TextInput;
 
@@ -26,7 +24,7 @@ use crate::ui::widgets::text_input::TextInput;
 
 /// Panel dimensions.
 const PANEL_W: u32 = 350;
-const PANEL_H: u32 = 360;
+const PANEL_H: u32 = 334;
 
 /// Display size of the Discord invite QR code.
 const QR_SIZE: u32 = 96;
@@ -48,6 +46,10 @@ const PAD_X: i32 = 20;
 
 /// Full width of the server row and text input fields.
 const INPUT_W: u32 = PANEL_W - (PAD_X as u32) * 2;
+
+/// Wrap width of the error label, narrowed so text clears the pre-game
+/// settings gear drawn in the panel's lower-right corner.
+const ERROR_W: u32 = INPUT_W - 20;
 
 /// Height of each text input field.
 const INPUT_H: u32 = 16;
@@ -98,8 +100,6 @@ pub enum LoginFormAction {
     Quit,
     /// User activated the Discord invite QR code or link.
     OpenDiscord,
-    /// Music checkbox was toggled.
-    ToggleMusic(bool),
     /// Controller wants to open the on-screen keyboard for a text field.
     /// The `usize` is the text-field index (0 = username, 1 = password).
     OpenKeyboard(usize),
@@ -122,8 +122,6 @@ pub struct LoginForm {
     username_input: TextInput,
     /// Password input (masked).
     password_input: TextInput,
-    /// Music toggle checkbox.
-    music_checkbox: Checkbox,
     /// Login button.
     login_button: RectButton,
     /// Create-account button.
@@ -151,8 +149,8 @@ pub struct LoginForm {
     /// Optional error message text.
     error_text: Option<String>,
     /// Controller focus index into the focusable elements list, if any.
-    /// Order: 0=server, 1=username, 2=password, 3=music, 4=login, 5=create,
-    /// 6=reset, 7=quit, 8=Discord.
+    /// Order: 0=server, 1=username, 2=password, 3=login, 4=create, 5=reset,
+    /// 6=quit, 7=Discord.
     controller_focused: Option<usize>,
 }
 
@@ -165,7 +163,6 @@ impl LoginForm {
     /// * `server_options` - Server IP / hostname choices for the combo box.
     /// * `show_server` - Whether the server combo box is shown.
     /// * `username` - Initial username value (e.g. from saved preferences).
-    /// * `music_enabled` - Initial state of the music checkbox.
     ///
     /// # Returns
     ///
@@ -175,7 +172,6 @@ impl LoginForm {
         server_options: &[String],
         show_server: bool,
         username: &str,
-        music_enabled: bool,
     ) -> Self {
         let panel_x = (crate::constants::TARGET_WIDTH_INT - PANEL_W) as i32 / 2;
         let panel_y = (crate::constants::TARGET_HEIGHT_INT - PANEL_H) as i32 / 2;
@@ -232,14 +228,7 @@ impl LoginForm {
             border_normal,
             border_focused,
         );
-        cursor_y = pw_input_y + INPUT_H as i32 + FIELD_GAP;
-
-        // Music checkbox
-        let cb_w = font_cache::text_width("Enable Login Music") + 16;
-        let music_checkbox_bounds = Bounds::new(panel_x + PAD_X, cursor_y, cb_w, 14);
-        let mut music_checkbox = Checkbox::new(music_checkbox_bounds, "Enable Login Music", FONT);
-        music_checkbox.set_checked(music_enabled);
-        cursor_y += 14 + FIELD_GAP + 4;
+        cursor_y = pw_input_y + INPUT_H as i32 + FIELD_GAP + 2;
 
         // Buttons - laid out horizontally, evenly
         let total_btn_w = 4 * 75 + 3 * BTN_GAP as u32;
@@ -265,9 +254,12 @@ impl LoginForm {
 
         let quit_button = RectButton::new(
             Bounds::new(btn_start_x + 225 + BTN_GAP * 3, cursor_y, 75, BTN_H),
-            btn_bg,
+            Background::SolidColor(Color::RGBA(120, 30, 30, 220)),
         )
-        .with_border(btn_border)
+        .with_border(Border {
+            color: Color::RGBA(200, 80, 80, 220),
+            width: 1,
+        })
         .with_label("Quit", FONT);
 
         let qr_x = panel_x + (PANEL_W as i32 - QR_SIZE as i32) / 2;
@@ -296,7 +288,6 @@ impl LoginForm {
             show_server,
             username_input,
             password_input,
-            music_checkbox,
             login_button,
             create_button,
             reset_button,
@@ -313,6 +304,7 @@ impl LoginForm {
             controller_focused: None,
         };
         form.resize_for_error();
+        form.login_button.set_enabled(form.can_login());
         form
     }
 
@@ -371,7 +363,7 @@ impl LoginForm {
         let error_height = self
             .error_text
             .as_deref()
-            .map(|error| font_cache::measure_wrapped_bitmap(error, INPUT_W).1)
+            .map(|error| font_cache::measure_wrapped_bitmap(error, ERROR_W).1)
             .unwrap_or(0);
         let hidden_server_h = if self.show_server { 0 } else { SERVER_ROW_H };
         self.bounds.height = PANEL_H - hidden_server_h
@@ -403,7 +395,6 @@ impl LoginForm {
             ("server", *self.server_dropdown.bounds()),
             ("username", *self.username_input.bounds()),
             ("password", *self.password_input.bounds()),
-            ("music", *self.music_checkbox.bounds()),
             ("login", *self.login_button.bounds()),
             ("new_account", *self.create_button.bounds()),
             ("reset_password", *self.reset_button.bounds()),
@@ -411,8 +402,17 @@ impl LoginForm {
         ]
     }
 
-    /// Pushes a Login action with the current field values.
+    /// Returns whether both the username and password have been entered.
+    fn can_login(&self) -> bool {
+        !self.username_input.value().trim().is_empty() && !self.password_input.value().is_empty()
+    }
+
+    /// Pushes a Login action with the current field values, unless the
+    /// username or password is still empty.
     fn push_login_action(&mut self) {
+        if !self.can_login() {
+            return;
+        }
         self.actions.push(LoginFormAction::Login {
             ip: self.server_ip().to_owned(),
             username: self.username_input.value().to_owned(),
@@ -461,9 +461,9 @@ impl LoginForm {
     }
 
     /// Total number of controller-focusable elements.
-    /// 0=IP, 1=username, 2=password, 3=music_checkbox, 4=login, 5=create,
-    /// 6=reset, 7=quit, 8=Discord.
-    const FOCUSABLE_COUNT: usize = 9;
+    /// 0=IP, 1=username, 2=password, 3=login, 4=create, 5=reset, 6=quit,
+    /// 7=Discord.
+    const FOCUSABLE_COUNT: usize = 8;
 
     /// Moves controller focus one step forward or backward, skipping the
     /// hidden server row.
@@ -498,12 +498,11 @@ impl LoginForm {
         self.server_dropdown.set_hovered(focused == Some(0));
         self.username_input.set_hovered(focused == Some(1));
         self.password_input.set_hovered(focused == Some(2));
-        self.music_checkbox.set_hovered(focused == Some(3));
-        self.login_button.set_hovered(focused == Some(4));
-        self.create_button.set_hovered(focused == Some(5));
-        self.reset_button.set_hovered(focused == Some(6));
-        self.quit_button.set_hovered(focused == Some(7));
-        self.discord_button.set_hovered(focused == Some(8));
+        self.login_button.set_hovered(focused == Some(3));
+        self.create_button.set_hovered(focused == Some(4));
+        self.reset_button.set_hovered(focused == Some(5));
+        self.quit_button.set_hovered(focused == Some(6));
+        self.discord_button.set_hovered(focused == Some(7));
     }
 
     /// Injects a character into the currently focused text field.
@@ -570,17 +569,11 @@ impl Widget for LoginForm {
                         self.apply_focus();
                         self.actions.push(LoginFormAction::OpenKeyboard(i - 1));
                     }
-                    Some(3) => {
-                        // Toggle music checkbox.
-                        let new_val = !self.music_checkbox.is_checked();
-                        self.music_checkbox.set_checked(new_val);
-                        self.actions.push(LoginFormAction::ToggleMusic(new_val));
-                    }
-                    Some(4) => self.push_login_action(),
-                    Some(5) => self.actions.push(LoginFormAction::CreateAccount),
-                    Some(6) => self.actions.push(LoginFormAction::ResetPassword),
-                    Some(7) => self.actions.push(LoginFormAction::Quit),
-                    Some(8) => self.actions.push(LoginFormAction::OpenDiscord),
+                    Some(3) => self.push_login_action(),
+                    Some(4) => self.actions.push(LoginFormAction::CreateAccount),
+                    Some(5) => self.actions.push(LoginFormAction::ResetPassword),
+                    Some(6) => self.actions.push(LoginFormAction::Quit),
+                    Some(7) => self.actions.push(LoginFormAction::OpenDiscord),
                     _ => {}
                 }
                 return EventResponse::Consumed;
@@ -689,14 +682,6 @@ impl Widget for LoginForm {
             return EventResponse::Consumed;
         }
 
-        // Checkbox
-        let _cb_resp = self.music_checkbox.handle_event(event);
-        if self.music_checkbox.was_toggled() {
-            self.actions.push(LoginFormAction::ToggleMusic(
-                self.music_checkbox.is_checked(),
-            ));
-        }
-
         // Text inputs
         self.username_input.handle_event(event);
         self.password_input.handle_event(event);
@@ -719,6 +704,7 @@ impl Widget for LoginForm {
     fn update(&mut self, dt: Duration) {
         self.username_input.update(dt);
         self.password_input.update(dt);
+        self.login_button.set_enabled(self.can_login());
     }
 
     fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
@@ -798,13 +784,7 @@ impl Widget for LoginForm {
         self.password_input
             .set_position(self.bounds.x + PAD_X, cursor_y);
         self.password_input.render(ctx)?;
-        cursor_y += INPUT_H as i32 + FIELD_GAP;
-
-        // ── Music checkbox ───────────────────────────────────────────────
-        self.music_checkbox
-            .set_position(self.bounds.x + PAD_X, cursor_y);
-        self.music_checkbox.render(ctx)?;
-        cursor_y += 14 + FIELD_GAP + 2;
+        cursor_y += INPUT_H as i32 + FIELD_GAP + 2;
 
         // ── Buttons ──────────────────────────────────────────────────────
         let total_btn_w: i32 = 4 * 75 + 3 * BTN_GAP;
@@ -858,7 +838,7 @@ impl Widget for LoginForm {
                 Some(sdl2::rect::Rect::new(qr_x, cursor_y, QR_SIZE, QR_SIZE)),
             )?;
         }
-        if self.discord_qr_hovered || self.controller_focused == Some(8) {
+        if self.discord_qr_hovered || self.controller_focused == Some(7) {
             ctx.canvas.set_draw_color(Color::RGB(180, 180, 255));
             ctx.canvas.draw_rect(sdl2::rect::Rect::new(
                 qr_x - 1,
@@ -898,7 +878,7 @@ impl Widget for LoginForm {
                 err,
                 self.bounds.x + PAD_X,
                 cursor_y,
-                INPUT_W,
+                ERROR_W,
                 font_cache::TextStyle::tinted(Color::RGB(255, 80, 80)),
             )?;
         }
@@ -945,7 +925,6 @@ mod tests {
             &["127.0.0.1".to_owned(), "menamonggods.ddns.net".to_owned()],
             true,
             "testuser",
-            false,
         )
     }
 
@@ -955,7 +934,6 @@ mod tests {
         assert_eq!(form.server_ip(), "127.0.0.1");
         assert_eq!(form.username(), "testuser");
         assert_eq!(form.password(), "");
-        assert!(!form.music_checkbox.is_checked());
     }
 
     #[test]
@@ -988,12 +966,18 @@ mod tests {
     }
 
     #[test]
-    fn enter_pushes_login_action() {
+    fn enter_pushes_login_action_only_with_username_and_password() {
         let mut form = make_form();
-        form.handle_event(&UiEvent::KeyDown {
+        let enter = UiEvent::KeyDown {
             keycode: Keycode::Return,
             modifiers: KeyModifiers::default(),
-        });
+        };
+        form.handle_event(&enter);
+        assert!(form.take_login_actions().is_empty());
+
+        form.set_text_focus(1);
+        form.inject_char('x');
+        form.handle_event(&enter);
         let actions = form.take_login_actions();
         assert_eq!(actions.len(), 1);
         match &actions[0] {
@@ -1025,7 +1009,7 @@ mod tests {
     #[test]
     fn controller_can_activate_discord_invite() {
         let mut form = make_form();
-        form.controller_focused = Some(8);
+        form.controller_focused = Some(7);
         form.handle_event(&UiEvent::NavConfirm);
 
         assert!(matches!(
@@ -1115,7 +1099,7 @@ mod tests {
 
     #[test]
     fn hidden_server_row_shrinks_panel_and_is_skipped_by_controller() {
-        let mut form = LoginForm::new("menamonggods.ddns.net", &[], false, "", false);
+        let mut form = LoginForm::new("menamonggods.ddns.net", &[], false, "");
         assert_eq!(form.bounds.height, PANEL_H - SERVER_ROW_H);
 
         form.handle_event(&UiEvent::NavNext);

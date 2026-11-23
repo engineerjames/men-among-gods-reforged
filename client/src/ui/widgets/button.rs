@@ -26,6 +26,8 @@ pub struct RectButton {
     hovered: bool,
     /// Additive tint alpha applied on hover (0–255).
     hover_alpha: u8,
+    /// Whether the button accepts clicks. Disabled buttons render dimmed.
+    enabled: bool,
 }
 
 impl RectButton {
@@ -50,6 +52,7 @@ impl RectButton {
             label_offset_y: 0,
             hovered: false,
             hover_alpha: 96,
+            enabled: true,
         }
     }
 
@@ -128,6 +131,16 @@ impl RectButton {
     pub fn set_label(&mut self, text: &str) {
         self.label_text = Some(text.to_owned());
     }
+
+    /// Enables or disables the button. A disabled button renders dimmed and
+    /// ignores clicks.
+    ///
+    /// # Arguments
+    ///
+    /// * `enabled` - `true` to accept clicks, `false` to disable.
+    pub fn set_enabled(&mut self, enabled: bool) {
+        self.enabled = enabled;
+    }
 }
 
 impl Widget for RectButton {
@@ -152,7 +165,7 @@ impl Widget for RectButton {
                 button: MouseButton::Left,
                 ..
             } => {
-                if self.bounds.contains_point(*x, *y) {
+                if self.enabled && self.bounds.contains_point(*x, *y) {
                     EventResponse::Consumed
                 } else {
                     EventResponse::Ignored
@@ -199,12 +212,19 @@ impl Widget for RectButton {
                 text,
                 center_x,
                 center_y,
-                font_cache::TextStyle::centered(),
+                if self.enabled {
+                    font_cache::TextStyle::centered()
+                } else {
+                    font_cache::TextStyle {
+                        tint: Some(Color::RGB(110, 110, 110)),
+                        ..font_cache::TextStyle::centered()
+                    }
+                },
             )?;
         }
 
         // Hover highlight (additive blend, matching draw_ui_item_with_hover)
-        if self.hovered {
+        if self.hovered && self.enabled {
             ctx.canvas.set_blend_mode(BlendMode::Add);
             ctx.canvas
                 .set_draw_color(Color::RGBA(255, 255, 255, self.hover_alpha));

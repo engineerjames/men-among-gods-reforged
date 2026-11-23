@@ -345,6 +345,8 @@ pub enum WidgetAction {
     SetHideWalls(bool),
     /// Change the master volume (0.0 = muted, 1.0 = full).
     SetMasterVolume(f32),
+    /// Toggle background music globally.
+    SetMusicEnabled(bool),
     /// Change the display mode (windowed, fullscreen, borderless).
     SetDisplayMode(DisplayMode),
     /// Toggle pixel-perfect (integer-only) scaling.

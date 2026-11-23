@@ -50,6 +50,7 @@ pub fn apply_global_settings_action(
         WidgetAction::SetShowHelperText(v) => settings.show_helper_text = v,
         WidgetAction::SetShowPositions(v) => settings.show_positions = v,
         WidgetAction::SetMasterVolume(v) => settings.master_volume = v,
+        WidgetAction::SetMusicEnabled(v) => settings.music_enabled = v,
         WidgetAction::SetDisplayMode(m) => {
             *display_command = Some(DisplayCommand::SetDisplayMode(m));
         }

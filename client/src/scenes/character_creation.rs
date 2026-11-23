@@ -69,6 +69,10 @@ impl CharacterCreationScene {
 }
 
 impl Scene for CharacterCreationScene {
+    fn main_panel_bounds(&self) -> Option<crate::ui::widget::Bounds> {
+        Some(*self.form.bounds())
+    }
+
     fn automation_targets(&self) -> Vec<(&'static str, crate::ui::widget::Bounds)> {
         self.form.automation_targets()
     }

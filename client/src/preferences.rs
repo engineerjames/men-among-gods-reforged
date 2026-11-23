@@ -109,9 +109,9 @@ impl Default for CharacterSettings {
 /// Window display mode.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum DisplayMode {
-    #[default]
     Windowed,
     Fullscreen,
+    #[default]
     BorderlessFullscreen,
 }
 

@@ -70,6 +70,16 @@ pub trait Scene {
         canvas: &mut Canvas<Window>,
     ) -> Result<(), String>;
 
+    /// Returns the bounds of the scene's main UI box, used to anchor the
+    /// pre-game settings gear to its lower-right corner.
+    ///
+    /// # Returns
+    ///
+    /// * The panel bounds, or `None` to anchor the gear to the screen corner.
+    fn main_panel_bounds(&self) -> Option<Bounds> {
+        None
+    }
+
     /// Lists named, clickable regions for the UI automation driver.
     ///
     /// Names are scene-local (e.g. `username`, `login`) and are resolved by
@@ -242,6 +252,11 @@ impl SceneManager {
         }
     }
 
+    /// Returns the active scene's main UI box bounds, if it has one.
+    fn active_main_panel_bounds(&self) -> Option<Bounds> {
+        self.scenes.get(&self.active_scene)?.main_panel_bounds()
+    }
+
     /// Returns the currently active scene type.
     ///
     /// # Returns
@@ -269,7 +284,9 @@ impl SceneManager {
         }
 
         if self.active_scene != SceneType::Game
-            && self.pregame_settings.handle_event(app_state, event)
+            && self
+                .pregame_settings
+                .handle_event(app_state, event, self.active_main_panel_bounds())
         {
             return;
         }
@@ -353,7 +370,8 @@ impl SceneManager {
             if let Err(err) = self.render_footer(app_state, canvas) {
                 log::error!("Error rendering footer: {}", err);
             }
-            if let Err(err) = self.pregame_settings.render(app_state, canvas) {
+            let anchor = self.active_main_panel_bounds();
+            if let Err(err) = self.pregame_settings.render(app_state, canvas, anchor) {
                 log::error!("Error rendering settings: {}", err);
             }
         }

@@ -13,19 +13,20 @@ use crate::{
         self, RenderContext,
         controller_nav::ControllerNavState,
         hud::settings_panel::{PREGAME_SETTINGS_PANEL_H, SettingsPanel, SettingsPanelData},
-        widget::{EventResponse, KeyModifiers, UiEvent, Widget, WidgetAction},
+        widget::{Bounds, EventResponse, KeyModifiers, UiEvent, Widget, WidgetAction},
         widgets::button::CircularImageButton,
     },
 };
 
 /// Radius of the gear button.
 const GEAR_RADIUS: u32 = 14;
-/// Gap between the gear button and the screen edges.
-const GEAR_MARGIN: i32 = 8;
+/// Gap between the gear button and the edges of its anchor box.
+const GEAR_MARGIN: i32 = 6;
 /// Width of the settings panel.
 const PANEL_W: u32 = 300;
 
-/// Bottom-right gear button that opens a modal sound/graphics settings panel.
+/// Gear button, drawn in the lower-right corner of the active scene's main UI
+/// box, that opens a modal sound/graphics settings panel.
 pub struct PregameSettings {
     gear: CircularImageButton,
     panel: SettingsPanel,
@@ -47,11 +48,10 @@ impl PregameSettings {
     ///
     /// * A new `PregameSettings` with the panel closed.
     pub fn new() -> Self {
-        let r = GEAR_RADIUS as i32;
         Self {
             gear: CircularImageButton::new(
-                TARGET_WIDTH_INT as i32 - GEAR_MARGIN - r,
-                TARGET_HEIGHT_INT as i32 - GEAR_MARGIN - r,
+                0,
+                0,
                 GEAR_RADIUS,
                 filepaths::get_asset_directory()
                     .join("gfx")
@@ -70,6 +70,20 @@ impl PregameSettings {
         }
     }
 
+    /// Moves the gear into the lower-right corner of `anchor`.
+    ///
+    /// # Arguments
+    ///
+    /// * `anchor` - The active scene's main UI box, or `None` for the screen.
+    fn place_gear(&mut self, anchor: Option<Bounds>) {
+        let b = anchor.unwrap_or(Bounds::new(0, 0, TARGET_WIDTH_INT, TARGET_HEIGHT_INT));
+        let d = 2 * GEAR_RADIUS as i32;
+        self.gear.set_position(
+            b.x + b.width as i32 - GEAR_MARGIN - d,
+            b.y + b.height as i32 - GEAR_MARGIN - d,
+        );
+    }
+
     /// Handles an SDL event before the active scene sees it.
     ///
     /// The gear (mouse) or controller Back button opens the panel; while open
@@ -80,11 +94,18 @@ impl PregameSettings {
     ///
     /// * `app_state` - Shared application state whose settings are edited.
     /// * `event` - Raw SDL event.
+    /// * `anchor` - The active scene's main UI box the gear is drawn in.
     ///
     /// # Returns
     ///
     /// * `true` if the event was consumed and must not reach the scene.
-    pub fn handle_event(&mut self, app_state: &mut AppState<'_>, event: &Event) -> bool {
+    pub fn handle_event(
+        &mut self,
+        app_state: &mut AppState<'_>,
+        event: &Event,
+        anchor: Option<Bounds>,
+    ) -> bool {
+        self.place_gear(anchor);
         if let Event::MouseMotion { x, y, .. } = event {
             self.mouse_x = *x;
             self.mouse_y = *y;
@@ -155,6 +176,7 @@ impl PregameSettings {
     ///
     /// * `app_state` - Shared application state (graphics caches).
     /// * `canvas` - Target canvas.
+    /// * `anchor` - The active scene's main UI box the gear is drawn in.
     ///
     /// # Returns
     ///
@@ -163,7 +185,9 @@ impl PregameSettings {
         &mut self,
         app_state: &mut AppState<'_>,
         canvas: &mut Canvas<Window>,
+        anchor: Option<Bounds>,
     ) -> Result<(), String> {
+        self.place_gear(anchor);
         let AppState {
             gfx_cache,
             text_engine,

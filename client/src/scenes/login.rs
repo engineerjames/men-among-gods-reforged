@@ -21,7 +21,7 @@ use sdl2::{controller::Button as Btn, event::Event, keyboard::Mod, render::Canva
 
 /// Scene that presents the account login form.
 ///
-/// Displays IP, username and password fields plus an optional music toggle.
+/// Displays IP, username and password fields.
 /// Login is performed on a background thread; the result is polled in `update`.
 /// On success the scene transitions to `CharacterSelection`.
 pub struct LoginScene {
@@ -36,7 +36,8 @@ pub struct LoginScene {
     is_submitting: bool,
     api_result_rx: Option<std::sync::mpsc::Receiver<Result<String, String>>>,
     login_thread: Option<std::thread::JoinHandle<()>>,
-    music_initialized: bool,
+    /// Whether the login theme is currently playing.
+    music_playing: bool,
 
     // -- Mouse position for SDL-->UiEvent conversion --
     mouse_x: i32,
@@ -64,13 +65,11 @@ impl LoginScene {
     ///
     /// * A new instance configured by `new`.
     pub fn new() -> Self {
-        let settings = preferences::load_global_settings();
         let login_form = LoginForm::new(
             &crate::hosts::get_server_ip(),
             &crate::hosts::server_ip_options(),
             crate::hosts::is_cargo_run(),
             &preferences::load_last_username().unwrap_or_default(),
-            settings.music_enabled,
         );
 
         Self {
@@ -80,7 +79,7 @@ impl LoginScene {
             is_submitting: false,
             api_result_rx: None,
             login_thread: None,
-            music_initialized: false,
+            music_playing: false,
             mouse_x: 0,
             mouse_y: 0,
             controller_nav: ControllerNavState::new(),
@@ -88,33 +87,23 @@ impl LoginScene {
         }
     }
 
-    /// Lazily starts the login-screen music track if it hasn't been started yet.
-    fn ensure_music_initialized(&mut self, app_state: &mut AppState<'_>) {
-        if self.music_initialized {
+    /// Starts or stops the login theme so it matches the global music setting,
+    /// which can be toggled from the settings panel at any time.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state (settings and sound cache).
+    fn sync_music(&mut self, app_state: &mut AppState<'_>) {
+        if self.music_playing == app_state.settings.music_enabled {
             return;
         }
-
-        let settings = preferences::load_global_settings();
-        app_state.settings.music_enabled = settings.music_enabled;
-
-        if app_state.settings.music_enabled {
+        self.music_playing = app_state.settings.music_enabled;
+        if self.music_playing {
             app_state
                 .sfx_cache
                 .play_music(MusicTrack::LoginTheme, app_state.settings.master_volume);
         } else {
             app_state.sfx_cache.stop_music();
-        }
-
-        self.music_initialized = true;
-    }
-
-    /// Persists the music-enabled preference to disk.
-    fn save_music_setting(&self, enabled: bool) {
-        let mut settings = preferences::load_global_settings();
-        settings.music_enabled = enabled;
-
-        if let Err(err) = preferences::save_global_settings(&settings) {
-            log::warn!("Failed to save login music setting: {}", err);
         }
     }
 
@@ -193,12 +182,16 @@ impl LoginScene {
 }
 
 impl Scene for LoginScene {
+    fn main_panel_bounds(&self) -> Option<crate::ui::widget::Bounds> {
+        Some(*self.login_form.bounds())
+    }
+
     fn automation_targets(&self) -> Vec<(&'static str, crate::ui::widget::Bounds)> {
         self.login_form.automation_targets()
     }
 
     fn on_enter(&mut self, app_state: &mut AppState<'_>) {
-        self.ensure_music_initialized(app_state);
+        self.sync_music(app_state);
 
         if app_state.api.take_session_expired() {
             self.login_form.set_error(Some(
@@ -210,6 +203,7 @@ impl Scene for LoginScene {
     fn on_exit(&mut self, app_state: &mut AppState<'_>) {
         self.login_form.set_error(None);
         app_state.sfx_cache.stop_music();
+        self.music_playing = false;
     }
 
     fn handle_event(&mut self, app_state: &mut AppState<'_>, event: &Event) -> Option<SceneType> {
@@ -365,17 +359,6 @@ impl Scene for LoginScene {
                 LoginFormAction::OpenDiscord => {
                     crate::platform::open_url("https://discord.gg/PdvduwGPnW");
                 }
-                LoginFormAction::ToggleMusic(enabled) => {
-                    app_state.settings.music_enabled = enabled;
-                    if enabled {
-                        app_state
-                            .sfx_cache
-                            .play_music(MusicTrack::LoginTheme, app_state.settings.master_volume);
-                    } else {
-                        app_state.sfx_cache.stop_music();
-                    }
-                    self.save_music_setting(enabled);
-                }
                 LoginFormAction::OpenKeyboard(field_idx) => {
                     self.login_form.set_text_focus(field_idx);
                     self.keyboard.show();
@@ -387,7 +370,7 @@ impl Scene for LoginScene {
     }
 
     fn update(&mut self, app_state: &mut AppState<'_>, dt: Duration) -> Option<SceneType> {
-        self.ensure_music_initialized(app_state);
+        self.sync_music(app_state);
 
         // Animate background and form.
         app_state.panning_background.update(dt);
