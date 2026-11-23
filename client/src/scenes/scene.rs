@@ -13,6 +13,7 @@ use crate::{
     constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT},
     font_cache::{self, BITMAP_GLYPH_H, TextStyle},
     server_status::ServerStatus,
+    sfx_cache::MusicTrack,
     state::AppState,
     ui::widget::Bounds,
 };
@@ -185,6 +186,8 @@ pub struct SceneManager {
     pregame_settings: crate::scenes::pregame_settings::PregameSettings,
     /// Game server live status shown in the pre-game footer.
     server_status: ServerStatus,
+    /// Whether the pre-game music track is currently playing.
+    music_playing: bool,
 }
 
 impl Default for SceneManager {
@@ -249,6 +252,29 @@ impl SceneManager {
             transition: SceneTransition::None,
             pregame_settings: crate::scenes::pregame_settings::PregameSettings::new(),
             server_status: ServerStatus::new(),
+            music_playing: false,
+        }
+    }
+
+    /// Plays the login theme across all pre-game scenes while music is
+    /// enabled, and stops it once the game (or exit) scene is active.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state (settings and sound cache).
+    fn sync_music(&mut self, app_state: &mut AppState<'_>) {
+        let want = app_state.settings.music_enabled
+            && !matches!(self.active_scene, SceneType::Game | SceneType::Exit);
+        if want == self.music_playing {
+            return;
+        }
+        self.music_playing = want;
+        if want {
+            app_state
+                .sfx_cache
+                .play_music(MusicTrack::LoginTheme, app_state.settings.master_volume);
+        } else {
+            app_state.sfx_cache.stop_music();
         }
     }
 
@@ -307,6 +333,8 @@ impl SceneManager {
     /// * `app_state` - Value passed to `update`.
     /// * `dt` - Value passed to `update`.
     pub fn update(&mut self, app_state: &mut AppState<'_>, dt: Duration) {
+        self.sync_music(app_state);
+
         if self.active_scene == SceneType::Exit {
             return;
         }

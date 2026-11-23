@@ -6,7 +6,6 @@ use std::{
 use crate::{
     account_api, cert_trust, preferences,
     scenes::scene::{Scene, SceneType},
-    sfx_cache::MusicTrack,
     state::AppState,
     ui::{
         self, RenderContext,
@@ -36,8 +35,6 @@ pub struct LoginScene {
     is_submitting: bool,
     api_result_rx: Option<std::sync::mpsc::Receiver<Result<String, String>>>,
     login_thread: Option<std::thread::JoinHandle<()>>,
-    /// Whether the login theme is currently playing.
-    music_playing: bool,
 
     // -- Mouse position for SDL-->UiEvent conversion --
     mouse_x: i32,
@@ -79,31 +76,10 @@ impl LoginScene {
             is_submitting: false,
             api_result_rx: None,
             login_thread: None,
-            music_playing: false,
             mouse_x: 0,
             mouse_y: 0,
             controller_nav: ControllerNavState::new(),
             keyboard: OnScreenKeyboard::new(),
-        }
-    }
-
-    /// Starts or stops the login theme so it matches the global music setting,
-    /// which can be toggled from the settings panel at any time.
-    ///
-    /// # Arguments
-    ///
-    /// * `app_state` - Shared application state (settings and sound cache).
-    fn sync_music(&mut self, app_state: &mut AppState<'_>) {
-        if self.music_playing == app_state.settings.music_enabled {
-            return;
-        }
-        self.music_playing = app_state.settings.music_enabled;
-        if self.music_playing {
-            app_state
-                .sfx_cache
-                .play_music(MusicTrack::LoginTheme, app_state.settings.master_volume);
-        } else {
-            app_state.sfx_cache.stop_music();
         }
     }
 
@@ -191,8 +167,6 @@ impl Scene for LoginScene {
     }
 
     fn on_enter(&mut self, app_state: &mut AppState<'_>) {
-        self.sync_music(app_state);
-
         if app_state.api.take_session_expired() {
             self.login_form.set_error(Some(
                 "Your session expired. Please sign in again.".to_owned(),
@@ -200,10 +174,8 @@ impl Scene for LoginScene {
         }
     }
 
-    fn on_exit(&mut self, app_state: &mut AppState<'_>) {
+    fn on_exit(&mut self, _app_state: &mut AppState<'_>) {
         self.login_form.set_error(None);
-        app_state.sfx_cache.stop_music();
-        self.music_playing = false;
     }
 
     fn handle_event(&mut self, app_state: &mut AppState<'_>, event: &Event) -> Option<SceneType> {
@@ -370,8 +342,6 @@ impl Scene for LoginScene {
     }
 
     fn update(&mut self, app_state: &mut AppState<'_>, dt: Duration) -> Option<SceneType> {
-        self.sync_music(app_state);
-
         // Animate background and form.
         app_state.panning_background.update(dt);
         self.login_form.update(dt);
