@@ -83,7 +83,8 @@ const DS_Y_HEALTH: i32 = DS_Y_NAMES + DS_ROW_H;
 const DS_Y_DANGER: i32 = DS_Y_HEALTH + DS_ROW_H;
 const DS_Y_HELPER_TEXT: i32 = DS_Y_DANGER + DS_ROW_H;
 const DS_Y_WALLS: i32 = DS_Y_HELPER_TEXT + DS_ROW_H;
-const DS_Y_SEP: i32 = DS_Y_WALLS + DS_ROW_H + 4;
+const DS_Y_CHAT_AUTO_HIDE: i32 = DS_Y_WALLS + DS_ROW_H;
+const DS_Y_SEP: i32 = DS_Y_CHAT_AUTO_HIDE + DS_ROW_H + 4;
 const DS_Y_DISPLAY_MODE: i32 = DS_Y_SEP + 8;
 const DS_Y_PIXEL_PERFECT: i32 = DS_Y_DISPLAY_MODE + 20;
 const DS_Y_VSYNC: i32 = DS_Y_PIXEL_PERFECT + DS_ROW_H;
@@ -266,7 +267,7 @@ pub(super) fn draw_sub_panel_frame(
 /// Sub-panel for display/visual settings.
 ///
 /// Contains visual toggles (shadows, spell effects, names, health, helper
-/// text, hide walls) and display controls (mode, pixel-perfect scaling,
+/// text, hide walls, chat auto-hide) and display controls (mode, pixel-perfect scaling,
 /// VSync).
 struct DisplaySettingsSubPanel {
     bounds: Bounds,
@@ -279,6 +280,7 @@ struct DisplaySettingsSubPanel {
     chk_show_danger: Checkbox,
     chk_helper_text: Checkbox,
     chk_hide_walls: Checkbox,
+    chk_chat_auto_hide: Checkbox,
     drp_display_mode: Dropdown,
     chk_pixel_perfect: Checkbox,
     chk_vsync: Checkbox,
@@ -290,8 +292,9 @@ struct DisplaySettingsSubPanel {
     /// via controller navigation.
     weather_adjusting: bool,
     /// Controller focus index. 0=Shadows, 1=SpellEffects, 2=ShowNames,
-    /// 3=ShowHealth, 4=Danger, 5=HelperText, 6=HideWalls, 7=DisplayMode,
-    /// 8=PixelPerfect, 9=VSync, 10=Weather, 11=WeatherIntensity, 12=Close.
+    /// 3=ShowHealth, 4=Danger, 5=HelperText, 6=HideWalls, 7=ChatAutoHide,
+    /// 8=DisplayMode, 9=PixelPerfect, 10=VSync, 11=Weather,
+    /// 12=WeatherIntensity, 13=Close.
     controller_focused: Option<usize>,
 }
 
@@ -350,6 +353,11 @@ impl DisplaySettingsSubPanel {
                 "Hide Walls",
                 0,
             ),
+            chk_chat_auto_hide: Checkbox::new(
+                Bounds::new(x, origin_y + DS_Y_CHAT_AUTO_HIDE, w, DS_ROW_H as u32),
+                "Auto-Hide Chat",
+                0,
+            ),
             drp_display_mode: Dropdown::new(
                 Bounds::new(x, origin_y + DS_Y_DISPLAY_MODE, w, 16),
                 DisplayMode::ALL.iter().map(|m| m.to_string()).collect(),
@@ -389,7 +397,7 @@ impl DisplaySettingsSubPanel {
     }
 
     /// Number of focusable elements in the display sub-panel.
-    const FOCUSABLE_COUNT: usize = 13;
+    const FOCUSABLE_COUNT: usize = 14;
 
     /// Applies controller focus highlighting.
     fn apply_controller_focus(&mut self) {
@@ -401,14 +409,15 @@ impl DisplaySettingsSubPanel {
         self.chk_show_danger.set_hovered(f == Some(4));
         self.chk_helper_text.set_hovered(f == Some(5));
         self.chk_hide_walls.set_hovered(f == Some(6));
-        self.drp_display_mode.set_hovered(f == Some(7));
-        self.chk_pixel_perfect.set_hovered(f == Some(8));
-        self.chk_vsync.set_hovered(f == Some(9));
-        self.chk_weather.set_hovered(f == Some(10));
-        self.sld_weather_intensity.set_hovered(f == Some(11));
+        self.chk_chat_auto_hide.set_hovered(f == Some(7));
+        self.drp_display_mode.set_hovered(f == Some(8));
+        self.chk_pixel_perfect.set_hovered(f == Some(9));
+        self.chk_vsync.set_hovered(f == Some(10));
+        self.chk_weather.set_hovered(f == Some(11));
+        self.sld_weather_intensity.set_hovered(f == Some(12));
         self.sld_weather_intensity
-            .set_active(f == Some(11) && self.weather_adjusting);
-        self.btn_close.set_hovered(f == Some(12));
+            .set_active(f == Some(12) && self.weather_adjusting);
+        self.btn_close.set_hovered(f == Some(13));
     }
 
     /// Loads widget values from the data snapshot.
@@ -425,6 +434,7 @@ impl DisplaySettingsSubPanel {
         self.chk_show_danger.set_checked(data.show_danger_glyphs);
         self.chk_helper_text.set_checked(data.show_helper_text);
         self.chk_hide_walls.set_checked(data.hide_walls);
+        self.chk_chat_auto_hide.set_checked(data.chat_auto_hide);
         self.chk_pixel_perfect
             .set_checked(data.pixel_perfect_scaling);
         self.chk_vsync.set_checked(data.vsync_enabled);
@@ -467,6 +477,11 @@ impl DisplaySettingsSubPanel {
         if self.chk_hide_walls.was_toggled() {
             self.pending_actions
                 .push(WidgetAction::SetHideWalls(self.chk_hide_walls.is_checked()));
+        }
+        if self.chk_chat_auto_hide.was_toggled() {
+            self.pending_actions.push(WidgetAction::SetChatAutoHide(
+                self.chk_chat_auto_hide.is_checked(),
+            ));
         }
         if self.chk_helper_text.was_toggled() {
             self.pending_actions.push(WidgetAction::SetShowHelperText(
@@ -513,6 +528,7 @@ impl DisplaySettingsSubPanel {
         shift(&mut self.chk_show_danger, dx, dy);
         shift(&mut self.chk_helper_text, dx, dy);
         shift(&mut self.chk_hide_walls, dx, dy);
+        shift(&mut self.chk_chat_auto_hide, dx, dy);
         shift(&mut self.drp_display_mode, dx, dy);
         shift(&mut self.chk_pixel_perfect, dx, dy);
         shift(&mut self.chk_vsync, dx, dy);
@@ -612,6 +628,11 @@ impl DisplaySettingsSubPanel {
                         self.pending_actions.push(WidgetAction::SetHideWalls(v));
                     }
                     Some(7) => {
+                        let v = !self.chk_chat_auto_hide.is_checked();
+                        self.chk_chat_auto_hide.set_checked(v);
+                        self.pending_actions.push(WidgetAction::SetChatAutoHide(v));
+                    }
+                    Some(8) => {
                         // Cycle display mode dropdown.
                         let next =
                             (self.drp_display_mode.selected_index() + 1) % DisplayMode::ALL.len();
@@ -619,30 +640,30 @@ impl DisplaySettingsSubPanel {
                         self.pending_actions
                             .push(WidgetAction::SetDisplayMode(DisplayMode::ALL[next]));
                     }
-                    Some(8) => {
+                    Some(9) => {
                         let v = !self.chk_pixel_perfect.is_checked();
                         self.chk_pixel_perfect.set_checked(v);
                         self.pending_actions
                             .push(WidgetAction::SetPixelPerfectScaling(v));
                     }
-                    Some(9) => {
+                    Some(10) => {
                         let v = !self.chk_vsync.is_checked();
                         self.chk_vsync.set_checked(v);
                         self.pending_actions.push(WidgetAction::SetVSync(v));
                     }
-                    Some(10) => {
+                    Some(11) => {
                         let v = !self.chk_weather.is_checked();
                         self.chk_weather.set_checked(v);
                         self.sld_weather_intensity.set_enabled(v);
                         self.pending_actions.push(WidgetAction::SetWeather(v));
                     }
-                    Some(11) => {
+                    Some(12) => {
                         // Enter weather-intensity adjust mode if enabled.
                         if self.sld_weather_intensity.is_enabled() {
                             self.weather_adjusting = true;
                         }
                     }
-                    Some(12) => {
+                    Some(13) => {
                         self.visible = false;
                         self.controller_focused = None;
                     }
@@ -691,6 +712,7 @@ impl DisplaySettingsSubPanel {
             self.chk_show_danger.handle_event(event),
             self.chk_helper_text.handle_event(event),
             self.chk_hide_walls.handle_event(event),
+            self.chk_chat_auto_hide.handle_event(event),
             if !self.drp_display_mode.is_expanded() {
                 self.drp_display_mode.handle_event(event)
             } else {
@@ -735,6 +757,7 @@ impl DisplaySettingsSubPanel {
         self.chk_show_danger.render(ctx)?;
         self.chk_helper_text.render(ctx)?;
         self.chk_hide_walls.render(ctx)?;
+        self.chk_chat_auto_hide.render(ctx)?;
         self.chk_pixel_perfect.render(ctx)?;
         self.chk_vsync.render(ctx)?;
         self.chk_weather.render(ctx)?;
@@ -2131,6 +2154,8 @@ pub struct SettingsPanelData {
     pub show_danger_glyphs: bool,
     /// Whether walls are hidden.
     pub hide_walls: bool,
+    /// Whether the chat box fades out after a period of inactivity.
+    pub chat_auto_hide: bool,
     /// Whether context-sensitive helper text is shown near the cursor.
     pub show_helper_text: bool,
     /// Whether helper text is replaced with the cursor's logical screen position.
@@ -2184,6 +2209,7 @@ impl SettingsPanelData {
             show_health_pct: settings.show_proz,
             show_danger_glyphs: settings.show_danger_glyphs,
             hide_walls: settings.hide,
+            chat_auto_hide: settings.chat_auto_hide,
             show_helper_text: settings.show_helper_text,
             show_positions: settings.show_positions,
             master_volume: settings.master_volume,
@@ -3073,6 +3099,7 @@ mod tests {
             show_health_pct: true,
             show_danger_glyphs: true,
             hide_walls: false,
+            chat_auto_hide: true,
             show_helper_text: true,
             show_positions: true,
             master_volume: 0.75,
@@ -3161,6 +3188,7 @@ mod tests {
         assert!(panel.sub_display.chk_show_names.is_checked());
         assert!(panel.sub_display.chk_show_health.is_checked());
         assert!(!panel.sub_display.chk_hide_walls.is_checked());
+        assert!(panel.sub_display.chk_chat_auto_hide.is_checked());
         assert!(panel.sub_display.chk_helper_text.is_checked());
         assert_eq!(panel.sub_display.drp_display_mode.selected_index(), 1);
         assert!(panel.sub_display.chk_pixel_perfect.is_checked());

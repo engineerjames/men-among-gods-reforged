@@ -97,6 +97,8 @@ pub struct ChatBox {
     pending_actions: Vec<WidgetAction>,
 
     // -- Idle fade --
+    /// Whether the chat box fades out after [`IDLE_FADE_DELAY_SECS`] of inactivity.
+    auto_hide: bool,
     /// Seconds elapsed since the last user interaction or incoming message.
     idle_elapsed: f32,
     /// Seconds elapsed in the current caret blink cycle.
@@ -143,6 +145,7 @@ impl ChatBox {
             chat_prefix_history_index: None,
             focused: false,
             pending_actions: Vec::new(),
+            auto_hide: false,
             idle_elapsed: 0.0,
             caret_elapsed: 0.0,
             alpha: 255,
@@ -220,6 +223,15 @@ impl ChatBox {
             self.idle_elapsed = 0.0;
             self.reset_caret_blink();
         }
+    }
+
+    /// Enables or disables fading the chat box out after a period of inactivity.
+    ///
+    /// # Arguments
+    ///
+    /// * `auto_hide` - When `false`, the chat box stays fully visible.
+    pub fn set_auto_hide(&mut self, auto_hide: bool) {
+        self.auto_hide = auto_hide;
     }
 
     /// Injects a single character into the input buffer (for the on-screen
@@ -848,7 +860,9 @@ impl Widget for ChatBox {
 
     fn update(&mut self, dt: Duration) {
         self.caret_elapsed = (self.caret_elapsed + dt.as_secs_f32()) % CARET_BLINK_PERIOD_SECS;
-        if self.focused {
+        if self.focused || !self.auto_hide {
+            self.idle_elapsed = 0.0;
+            self.alpha = 255;
             self.idle_elapsed = 0.0;
             self.alpha = 255;
             return;
@@ -1656,9 +1670,19 @@ mod tests {
     // -- idle fade --
 
     #[test]
+    fn default_chat_never_fades() {
+        let mut cb = test_chat_box();
+        cb.update(Duration::from_secs_f32(
+            IDLE_FADE_DELAY_SECS + IDLE_FADE_DURATION_SECS + 1.0,
+        ));
+        assert_eq!(cb.alpha, 255);
+    }
+
+    #[test]
     fn update_no_fade_before_delay() {
         use std::time::Duration;
         let mut cb = test_chat_box();
+        cb.set_auto_hide(true);
         cb.update(Duration::from_secs_f32(IDLE_FADE_DELAY_SECS - 0.1));
         assert_eq!(cb.alpha, 255);
     }
@@ -1667,6 +1691,7 @@ mod tests {
     fn update_mid_fade() {
         use std::time::Duration;
         let mut cb = test_chat_box();
+        cb.set_auto_hide(true);
         cb.update(Duration::from_secs_f32(
             IDLE_FADE_DELAY_SECS + IDLE_FADE_DURATION_SECS * 0.5,
         ));
@@ -1677,6 +1702,7 @@ mod tests {
     fn update_fully_faded() {
         use std::time::Duration;
         let mut cb = test_chat_box();
+        cb.set_auto_hide(true);
         cb.update(Duration::from_secs_f32(
             IDLE_FADE_DELAY_SECS + IDLE_FADE_DURATION_SECS + 1.0,
         ));
@@ -1687,6 +1713,7 @@ mod tests {
     fn update_reset_on_text_input() {
         use std::time::Duration;
         let mut cb = test_chat_box();
+        cb.set_auto_hide(true);
         // Age the widget past the full fade threshold.
         cb.idle_elapsed = IDLE_FADE_DELAY_SECS + IDLE_FADE_DURATION_SECS + 1.0;
         cb.update(Duration::ZERO);
@@ -1704,6 +1731,7 @@ mod tests {
     fn update_reset_on_push_message() {
         use std::time::Duration;
         let mut cb = test_chat_box();
+        cb.set_auto_hide(true);
         cb.idle_elapsed = IDLE_FADE_DELAY_SECS + IDLE_FADE_DURATION_SECS + 1.0;
         cb.update(Duration::ZERO);
         assert_eq!(cb.alpha, 0);
@@ -1716,6 +1744,7 @@ mod tests {
     fn update_not_reset_on_click_inside() {
         use std::time::Duration;
         let mut cb = test_chat_box();
+        cb.set_auto_hide(true);
         cb.idle_elapsed = IDLE_FADE_DELAY_SECS + IDLE_FADE_DURATION_SECS + 1.0;
         cb.update(Duration::ZERO);
         assert_eq!(cb.alpha, 0);

@@ -2433,6 +2433,7 @@ impl Scene for GameScene {
         if let Some(scene) = self.poll_high_index_mouse_buttons(app_state) {
             return Some(scene);
         }
+        self.chat_box.set_auto_hide(app_state.settings.chat_auto_hide);
         self.chat_box.update(dt);
         self.weapon_armor_panel.update(dt);
         self.skills_panel.update(dt);

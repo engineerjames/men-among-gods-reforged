@@ -209,6 +209,9 @@ pub struct Settings {
     /// Whether helper text is replaced with the cursor's logical screen position.
     #[serde(default)]
     pub show_positions: bool,
+    /// Whether the chat box fades out after a period of inactivity.
+    #[serde(default)]
+    pub chat_auto_hide: bool,
     /// Per-character settings (skill keybinds and UI panel positions).
     #[serde(default)]
     pub character: CharacterSettings,
@@ -232,6 +235,7 @@ impl Default for Settings {
             show_danger_glyphs: true,
             show_helper_text: true,
             show_positions: false,
+            chat_auto_hide: false,
             character: CharacterSettings::default(),
         }
     }
@@ -307,6 +311,7 @@ fn global_settings_only(settings: &Settings) -> Settings {
         show_danger_glyphs: settings.show_danger_glyphs,
         show_helper_text: settings.show_helper_text,
         show_positions: settings.show_positions,
+        chat_auto_hide: settings.chat_auto_hide,
         character: CharacterSettings::default(),
     }
 }
@@ -632,6 +637,7 @@ mod tests {
         assert_eq!(deserialized.show_helper_text, defaults.show_helper_text);
         assert_eq!(deserialized.show_positions, defaults.show_positions);
         assert_eq!(deserialized.show_danger_glyphs, defaults.show_danger_glyphs);
+        assert!(!deserialized.chat_auto_hide, "chat must stay visible by default");
         assert_eq!(
             deserialized.character.skill_keybinds,
             defaults.character.skill_keybinds
