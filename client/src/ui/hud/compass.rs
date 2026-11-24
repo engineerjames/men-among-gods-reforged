@@ -6,7 +6,10 @@
 //! The player can reposition it by left-click dragging anywhere on it.
 //!
 //! When a target world tile is set, a needle points from the compass center
-//! in the on-screen direction the player must walk to reach it.
+//! in the on-screen direction the player must walk to reach it. A debug
+//! override target (set from the Diagnostics settings) takes precedence over
+//! the normal target without replacing it, so clearing the override restores
+//! whatever the normal target is at that point.
 
 use sdl2::pixels::Color;
 use sdl2::rect::Point;
@@ -47,6 +50,8 @@ pub struct Compass {
     drag_offset: Option<(i32, i32)>,
     /// World tile the needle points toward, if any.
     target: Option<(u16, u16)>,
+    /// Debug override that takes precedence over `target` while set.
+    debug_target: Option<(u16, u16)>,
     /// Local player's current world tile, if known.
     player_pos: Option<(u16, u16)>,
 }
@@ -72,6 +77,7 @@ impl Compass {
             ),
             drag_offset: None,
             target: None,
+            debug_target: None,
             player_pos: None,
         }
     }
@@ -83,6 +89,27 @@ impl Compass {
     /// * `target` - World tile `(x, y)` to point at, or `None` to hide the needle.
     pub fn set_target(&mut self, target: Option<(u16, u16)>) {
         self.target = target;
+    }
+
+    /// Sets or clears the debug override target.
+    ///
+    /// While set it takes precedence over [`Compass::set_target`]; clearing it
+    /// makes the needle point at the normal target again.
+    ///
+    /// # Arguments
+    ///
+    /// * `target` - Override world tile `(x, y)`, or `None` to clear it.
+    pub fn set_debug_target(&mut self, target: Option<(u16, u16)>) {
+        self.debug_target = target;
+    }
+
+    /// Returns the active debug override target, if any.
+    ///
+    /// # Returns
+    ///
+    /// * The override world tile, or `None` when no override is set.
+    pub fn debug_target(&self) -> Option<(u16, u16)> {
+        self.debug_target
     }
 
     /// Updates the local player's world tile used to aim the needle.
@@ -104,11 +131,12 @@ impl Compass {
     ///
     /// # Returns
     ///
-    /// * `None` when no target is set or the player position is unknown.
+    /// * `None` when no target (or debug override) is set or the player
+    ///   position is unknown.
     /// * `Some((0, 0))` when the player stands on the target tile.
     /// * Otherwise the `(dx, dy)` pixel offset of the needle tip.
     fn marker_offset(&self) -> Option<(i32, i32)> {
-        let (tx, ty) = self.target?;
+        let (tx, ty) = self.debug_target.or(self.target)?;
         let (px, py) = self.player_pos?;
         let dx = i32::from(tx) - i32::from(px);
         let dy = i32::from(ty) - i32::from(py);
@@ -278,6 +306,20 @@ mod tests {
         let (mx, my) = compass.marker_offset().unwrap();
         let (cx, cy) = compass.center();
         assert!(compass.bounds().contains_point(cx + mx, cy + my));
+    }
+
+    #[test]
+    fn debug_target_overrides_and_then_restores_normal_target() {
+        let mut compass = Compass::new(100, 50);
+        compass.set_player_position(Some((100, 100)));
+        compass.set_target(Some((110, 100)));
+        let normal = compass.marker_offset();
+
+        compass.set_debug_target(Some((100, 90)));
+        assert_eq!(compass.marker_offset(), Some((-10, 5)));
+
+        compass.set_debug_target(None);
+        assert_eq!(compass.marker_offset(), normal);
     }
 
     #[test]

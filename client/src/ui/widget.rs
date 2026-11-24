@@ -359,6 +359,8 @@ pub enum WidgetAction {
     SetShowPositions(bool),
     /// Toggle the helper window (control hints + next objectives).
     SetShowHelperWindow(bool),
+    /// Set (`Some`) or clear (`None`) the compass debug override target.
+    SetCompassDebugTarget(Option<(u16, u16)>),
     /// Toggle fading the chat box out after a period of inactivity.
     SetChatAutoHide(bool),
     /// Enable or disable grave auto-looting for the active character.

@@ -11,6 +11,7 @@ use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
 use mag_core::autoloot::AutolootConfig;
+use mag_core::constants::{SERVER_MAPX, SERVER_MAPY};
 
 use crate::font_cache;
 use crate::preferences::{DisplayMode, Settings};
@@ -28,6 +29,7 @@ use crate::ui::widgets::checkbox::Checkbox;
 use crate::ui::widgets::dropdown::Dropdown;
 use crate::ui::widgets::label::Label;
 use crate::ui::widgets::slider::Slider;
+use crate::ui::widgets::text_input::TextInput;
 use crate::ui::widgets::title_bar::{TITLE_BAR_H, TitleBar, clamp_to_viewport};
 
 use super::autoloot_settings_panel::{AL_PANEL_H, AutolootSettingsSubPanel};
@@ -103,7 +105,11 @@ const DG_Y_PROFILER_BTN: i32 = DG_Y_PING + ROW_H + 6;
 const DG_Y_LOGDIR_BTN: i32 = DG_Y_PROFILER_BTN + BTN_H as i32 + 6;
 const DG_Y_SEND_LOGS_BTN: i32 = DG_Y_LOGDIR_BTN + BTN_H as i32 + 6;
 const DG_Y_NETWORK_TEST_BTN: i32 = DG_Y_SEND_LOGS_BTN + BTN_H as i32 + 6;
-const DG_PANEL_H: u32 = (DG_Y_NETWORK_TEST_BTN + BTN_H as i32 + 10 + BTN_H as i32 + 8) as u32;
+const DG_Y_COMPASS_CHK: i32 = DG_Y_NETWORK_TEST_BTN + BTN_H as i32 + 8;
+const DG_Y_COMPASS_XY: i32 = DG_Y_COMPASS_CHK + ROW_H + 4;
+/// Gap between the compass override X and Y inputs.
+const DG_COMPASS_INPUT_GAP: u32 = 6;
+const DG_PANEL_H: u32 = (DG_Y_COMPASS_XY + BTN_H as i32 + 10 + BTN_H as i32 + 8) as u32;
 
 // ---------------------------------------------------------------------------
 // Layout constants — Controls sub-panel
@@ -805,7 +811,8 @@ impl DisplaySettingsSubPanel {
 /// Sub-panel for diagnostic tools.
 ///
 /// Contains the "Show Pixel Positions" toggle (moved from Visual), ping
-/// readout, profiler button, and log directory button.
+/// readout, profiler button, log directory button, and the compass debug
+/// target override (checkbox + X/Y inputs).
 struct DiagnosticsSubPanel {
     bounds: Bounds,
     visible: bool,
@@ -816,10 +823,13 @@ struct DiagnosticsSubPanel {
     btn_log_dir: RectButton,
     btn_send_logs: RectButton,
     btn_network_test: RectButton,
+    chk_compass_override: Checkbox,
+    inp_compass_x: TextInput,
+    inp_compass_y: TextInput,
     btn_close: RectButton,
     pending_actions: Vec<WidgetAction>,
     /// Controller focus index. 0=ShowPositions, 1=Profiler, 2=LogDir,
-    /// 3=SendLogs, 4=NetworkTest, 5=Close.
+    /// 3=SendLogs, 4=NetworkTest, 5=CompassOverride, 6=Close.
     controller_focused: Option<usize>,
 }
 
@@ -839,6 +849,18 @@ impl DiagnosticsSubPanel {
         let x = origin_x + H_INSET;
         let w = CONTROL_W.min(width.saturating_sub(H_INSET as u32 * 2));
         let close_y = origin_y + DG_PANEL_H as i32 - BTN_H as i32 - 8;
+        let input_w = (w - DG_COMPASS_INPUT_GAP) / 2;
+        let compass_input = |ix: i32, placeholder: &str| {
+            TextInput::new(
+                Bounds::new(ix, origin_y + DG_Y_COMPASS_XY, input_w, BTN_H),
+                placeholder,
+                0,
+                4,
+                false,
+                Color::RGBA(100, 100, 140, 200),
+                Color::RGBA(180, 180, 255, 255),
+            )
+        };
         Self {
             bounds: Bounds::new(origin_x, origin_y, width, DG_PANEL_H),
             visible: false,
@@ -873,6 +895,13 @@ impl DiagnosticsSubPanel {
             )
             .with_label("Network Test", 0)
             .with_border(btn_border()),
+            chk_compass_override: Checkbox::new(
+                Bounds::new(x, origin_y + DG_Y_COMPASS_CHK, w, ROW_H as u32),
+                "Override Compass Target (X, Y)",
+                0,
+            ),
+            inp_compass_x: compass_input(x, "X"),
+            inp_compass_y: compass_input(x + (input_w + DG_COMPASS_INPUT_GAP) as i32, "Y"),
             btn_close: RectButton::new(Bounds::new(x, close_y, w, BTN_H), btn_bg())
                 .with_label("Close", 0)
                 .with_border(btn_border()),
@@ -882,7 +911,7 @@ impl DiagnosticsSubPanel {
     }
 
     /// Number of focusable elements.
-    const FOCUSABLE_COUNT: usize = 6;
+    const FOCUSABLE_COUNT: usize = 7;
 
     /// Applies controller focus highlighting.
     fn apply_controller_focus(&mut self) {
@@ -892,7 +921,46 @@ impl DiagnosticsSubPanel {
         self.btn_log_dir.set_hovered(f == Some(2));
         self.btn_send_logs.set_hovered(f == Some(3));
         self.btn_network_test.set_hovered(f == Some(4));
-        self.btn_close.set_hovered(f == Some(5));
+        self.chk_compass_override.set_hovered(f == Some(5));
+        self.btn_close.set_hovered(f == Some(6));
+    }
+
+    /// Returns whether one of the compass override inputs has keyboard focus.
+    fn has_text_focus(&self) -> bool {
+        self.visible && (self.inp_compass_x.is_focused() || self.inp_compass_y.is_focused())
+    }
+
+    /// Emits the compass override for a toggle of the override checkbox.
+    ///
+    /// Enabling with invalid coordinates is refused (the box is unchecked
+    /// again); disabling clears the override so the normal target returns.
+    fn on_compass_override_toggled(&mut self) {
+        let target = if self.chk_compass_override.is_checked() {
+            let parsed =
+                parse_compass_target(self.inp_compass_x.value(), self.inp_compass_y.value());
+            if parsed.is_none() {
+                self.chk_compass_override.set_checked(false);
+            }
+            parsed
+        } else {
+            None
+        };
+        self.pending_actions
+            .push(WidgetAction::SetCompassDebugTarget(target));
+    }
+
+    /// Re-applies the override after an X/Y edit, if enabled and valid.
+    ///
+    /// Invalid intermediate input (e.g. an emptied field) keeps the last
+    /// applied override rather than switching it off mid-edit.
+    fn on_compass_input_changed(&mut self) {
+        if self.chk_compass_override.is_checked()
+            && let Some(target) =
+                parse_compass_target(self.inp_compass_x.value(), self.inp_compass_y.value())
+        {
+            self.pending_actions
+                .push(WidgetAction::SetCompassDebugTarget(Some(target)));
+        }
     }
 
     /// Loads widget values from the data snapshot.
@@ -903,6 +971,16 @@ impl DiagnosticsSubPanel {
     fn sync_state(&mut self, data: &SettingsPanelData) {
         self.chk_show_positions.set_checked(data.show_positions);
         self.update_ping(data.last_rtt_ms);
+        self.chk_compass_override
+            .set_checked(data.compass_debug_target.is_some());
+        // Keep the last typed values when no override is active so it can be
+        // re-enabled quickly.
+        if let Some((x, y)) = data.compass_debug_target {
+            self.inp_compass_x.set_value(&x.to_string());
+            self.inp_compass_y.set_value(&y.to_string());
+        }
+        self.inp_compass_x.set_focused(false);
+        self.inp_compass_y.set_focused(false);
     }
 
     /// Updates the ping readout label.
@@ -930,6 +1008,9 @@ impl DiagnosticsSubPanel {
         shift(&mut self.btn_log_dir, dx, dy);
         shift(&mut self.btn_send_logs, dx, dy);
         shift(&mut self.btn_network_test, dx, dy);
+        shift(&mut self.chk_compass_override, dx, dy);
+        shift(&mut self.inp_compass_x, dx, dy);
+        shift(&mut self.inp_compass_y, dx, dy);
         shift(&mut self.btn_close, dx, dy);
     }
 
@@ -999,6 +1080,11 @@ impl DiagnosticsSubPanel {
                         self.controller_focused = None;
                     }
                     Some(5) => {
+                        let v = !self.chk_compass_override.is_checked();
+                        self.chk_compass_override.set_checked(v);
+                        self.on_compass_override_toggled();
+                    }
+                    Some(6) => {
                         self.visible = false;
                         self.controller_focused = None;
                     }
@@ -1020,6 +1106,22 @@ impl DiagnosticsSubPanel {
 
         if self.btn_close.handle_event(event) == EventResponse::Consumed {
             self.visible = false;
+            return EventResponse::Consumed;
+        }
+
+        // Both inputs see every event so clicking one unfocuses the other.
+        let x_resp = self.inp_compass_x.handle_event(event);
+        let y_resp = self.inp_compass_y.handle_event(event);
+        if self.inp_compass_x.was_changed() | self.inp_compass_y.was_changed() {
+            self.on_compass_input_changed();
+        }
+        if x_resp == EventResponse::Consumed || y_resp == EventResponse::Consumed {
+            return EventResponse::Consumed;
+        }
+        if self.chk_compass_override.handle_event(event) == EventResponse::Consumed {
+            if self.chk_compass_override.was_toggled() {
+                self.on_compass_override_toggled();
+            }
             return EventResponse::Consumed;
         }
 
@@ -1072,6 +1174,9 @@ impl DiagnosticsSubPanel {
         self.btn_log_dir.render(ctx)?;
         self.btn_send_logs.render(ctx)?;
         self.btn_network_test.render(ctx)?;
+        self.chk_compass_override.render(ctx)?;
+        self.inp_compass_x.render(ctx)?;
+        self.inp_compass_y.render(ctx)?;
         self.btn_close.render(ctx)?;
 
         Ok(())
@@ -1081,6 +1186,22 @@ impl DiagnosticsSubPanel {
     fn take_actions(&mut self) -> Vec<WidgetAction> {
         std::mem::take(&mut self.pending_actions)
     }
+}
+
+/// Parses compass override X/Y input text into an on-map world tile.
+///
+/// # Arguments
+///
+/// * `x` - X input text.
+/// * `y` - Y input text.
+///
+/// # Returns
+///
+/// * `Some((x, y))` when both parse as integers inside the server map,
+///   otherwise `None`.
+fn parse_compass_target(x: &str, y: &str) -> Option<(u16, u16)> {
+    let parse = |s: &str, max: i32| s.trim().parse::<u16>().ok().filter(|&v| i32::from(v) < max);
+    Some((parse(x, SERVER_MAPX)?, parse(y, SERVER_MAPY)?))
 }
 
 // ===========================================================================
@@ -2211,6 +2332,8 @@ pub struct SettingsPanelData {
     pub autoloot_enabled: bool,
     /// Grave auto-loot category configuration for the active character.
     pub autoloot: AutolootConfig,
+    /// Active compass debug override target, if any.
+    pub compass_debug_target: Option<(u16, u16)>,
 }
 
 impl SettingsPanelData {
@@ -2251,6 +2374,7 @@ impl SettingsPanelData {
             mouse_modifier_bindings: settings.character.mouse_modifier_bindings.clone(),
             autoloot_enabled: settings.character.auto_loot_graves,
             autoloot: settings.character.autoloot,
+            compass_debug_target: None,
         }
     }
 }
@@ -2504,6 +2628,18 @@ impl SettingsPanel {
     /// * `true` when `is_visible` succeeds or the condition is met, otherwise `false`.
     pub fn is_visible(&self) -> bool {
         self.visible
+    }
+
+    /// Returns whether a settings text input currently has keyboard focus.
+    ///
+    /// # Returns
+    ///
+    /// * `true` while the user is typing into a visible settings field, in
+    ///   which case keyboard hotkeys must not fire.
+    pub fn has_text_focus(&self) -> bool {
+        self.visible
+            && self.active_sub_panel == Some(SettingsSubPanel::Diagnostics)
+            && self.sub_diagnostics.has_text_focus()
     }
 
     /// Loads all control values from the given data snapshot.
@@ -3142,6 +3278,7 @@ mod tests {
             mouse_modifier_bindings: MouseModifierBindings::default(),
             autoloot_enabled: true,
             autoloot: AutolootConfig::default(),
+            compass_debug_target: None,
         }
     }
 
@@ -3434,6 +3571,81 @@ mod tests {
 
         assert_eq!(panel.active_sub_panel, Some(SettingsSubPanel::Mouse));
         assert!(panel.sub_mouse.visible);
+    }
+
+    #[test]
+    fn compass_override_validates_applies_live_and_clears() {
+        let mut panel = make_panel();
+        panel.toggle();
+        panel.sync_state(&make_data());
+        panel.open_sub_panel(SettingsSubPanel::Diagnostics);
+        let center = |b: &Bounds| (b.x + 4, b.y + b.height as i32 / 2);
+        let chk = center(panel.sub_diagnostics.chk_compass_override.bounds());
+        let inp_x = center(panel.sub_diagnostics.inp_compass_x.bounds());
+        let inp_y = center(panel.sub_diagnostics.inp_compass_y.bounds());
+        let typed = |text: &str| UiEvent::TextInput { text: text.into() };
+        let targets = |panel: &mut SettingsPanel| -> Vec<Option<(u16, u16)>> {
+            panel
+                .take_actions()
+                .into_iter()
+                .filter_map(|a| match a {
+                    WidgetAction::SetCompassDebugTarget(t) => Some(t),
+                    _ => None,
+                })
+                .collect()
+        };
+
+        // Enabling without valid coordinates is refused.
+        panel.handle_event(&left_click(chk.0, chk.1));
+        assert_eq!(targets(&mut panel), vec![None]);
+        assert!(!panel.sub_diagnostics.chk_compass_override.is_checked());
+
+        // Typing into the inputs takes text focus (blocks game hotkeys).
+        panel.handle_event(&left_click(inp_x.0, inp_x.1));
+        assert!(panel.has_text_focus());
+        panel.handle_event(&typed("512"));
+        panel.handle_event(&left_click(inp_y.0, inp_y.1));
+        assert!(!panel.sub_diagnostics.inp_compass_x.is_focused());
+        panel.handle_event(&typed("498"));
+        assert!(
+            targets(&mut panel).is_empty(),
+            "nothing applies until enabled"
+        );
+
+        panel.handle_event(&left_click(chk.0, chk.1));
+        assert_eq!(targets(&mut panel), vec![Some((512, 498))]);
+        assert!(!panel.has_text_focus());
+
+        // Live edits apply only while valid; an emptied field keeps the override.
+        panel.handle_event(&left_click(inp_y.0, inp_y.1));
+        for _ in 0..3 {
+            panel.handle_event(&UiEvent::KeyDown {
+                keycode: Keycode::Backspace,
+                modifiers: KeyModifiers::default(),
+            });
+        }
+        // "49" and "4" are valid and apply; the final empty field does not.
+        assert_eq!(targets(&mut panel), vec![Some((512, 49)), Some((512, 4))]);
+        panel.handle_event(&typed("7"));
+        assert_eq!(targets(&mut panel), vec![Some((512, 7))]);
+
+        // Disabling clears the override so the normal target is restored.
+        panel.handle_event(&left_click(chk.0, chk.1));
+        assert_eq!(targets(&mut panel), vec![None]);
+
+        // Closing the settings panel releases text focus.
+        panel.handle_event(&left_click(inp_x.0, inp_x.1));
+        panel.toggle();
+        assert!(!panel.has_text_focus());
+    }
+
+    #[test]
+    fn parse_compass_target_requires_on_map_integers() {
+        assert_eq!(parse_compass_target(" 7 ", "8"), Some((7, 8)));
+        assert_eq!(parse_compass_target("1023", "1023"), Some((1023, 1023)));
+        assert_eq!(parse_compass_target("1024", "0"), None);
+        assert_eq!(parse_compass_target("abc", "1"), None);
+        assert_eq!(parse_compass_target("1", ""), None);
     }
 
     #[test]

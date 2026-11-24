@@ -19,7 +19,7 @@ impl GameScene {
     /// primary slots 0–8. When Shift is held the corresponding secondary slot
     /// is used instead (`skill_keybinds_secondary`).
     ///
-    /// Silently no-ops when chat is focused or no network/player-state is
+    /// Silently no-ops when a text field is focused or no network/player-state is
     /// available, so callers do not need to pre-check those conditions.
     ///
     /// # Arguments
@@ -27,7 +27,7 @@ impl GameScene {
     /// * `app_state` - Shared application state.
     /// * `kc` - The number keycode (`Num0`–`Num9`).
     pub(super) fn handle_num_hotkey(&mut self, app_state: &mut AppState<'_>, kc: Keycode) {
-        if self.chat_box.is_focused() {
+        if self.text_entry_focused() {
             return;
         }
         // Num0 → slot 9 (10th slot); Num1 → slot 0, …, Num9 → slot 8.

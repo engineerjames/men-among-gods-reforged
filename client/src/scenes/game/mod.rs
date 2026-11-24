@@ -1037,8 +1037,19 @@ impl GameScene {
             } else {
                 None
             },
+            compass_debug_target: self.compass.debug_target(),
             ..SettingsPanelData::from_settings(&app_state.settings)
         }
+    }
+
+    /// Returns whether a text field (chat or a settings input) has keyboard
+    /// focus, in which case keyboard hotkeys must not fire.
+    ///
+    /// # Returns
+    ///
+    /// * `true` while the player is typing into any text field.
+    pub(super) fn text_entry_focused(&self) -> bool {
+        self.chat_box.is_focused() || self.settings_panel.has_text_focus()
     }
 
     /// Returns whether Ctrl-like behavior is currently active.
@@ -1254,6 +1265,9 @@ impl GameScene {
                 WidgetAction::RunNetworkTest => {
                     self.settings_panel.close();
                     self.start_network_test(app_state);
+                }
+                WidgetAction::SetCompassDebugTarget(target) => {
+                    self.compass.set_debug_target(target);
                 }
                 WidgetAction::UpdateKeyBinding { action, binding } => {
                     app_state
@@ -2369,7 +2383,7 @@ impl Scene for GameScene {
             }
         }
 
-        // --- Keyboard bindings (suppressed when chat is focused, unless modifiers are held) ---
+        // --- Keyboard bindings (suppressed while typing in a text field, unless modifiers are held) ---
         if let Event::KeyDown {
             keycode: Some(kc),
             keymod,
@@ -2378,7 +2392,7 @@ impl Scene for GameScene {
         {
             let mods = KeyModifiers::from_sdl2(*keymod);
             let has_modifier = mods.ctrl || mods.alt;
-            if (has_modifier || !self.chat_box.is_focused())
+            if (has_modifier || !self.text_entry_focused())
                 && let Some(action) = app_state
                     .settings
                     .character
