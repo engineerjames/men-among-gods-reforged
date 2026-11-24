@@ -1,34 +1,37 @@
-//! Gear button and reduced settings panel overlaid on every pre-game scene.
+//! Settings (gear) button and reduced settings panel overlaid on every
+//! pre-game scene.
 
 use sdl2::{
-    controller::Button as Btn, event::Event, keyboard::Keycode, pixels::Color, render::Canvas,
-    video::Window,
+    controller::Button as Btn, event::Event, keyboard::Keycode, pixels::Color, rect::Point,
+    render::Canvas, video::Window,
 };
 
 use crate::{
     constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT},
-    filepaths, preferences,
+    preferences,
     state::{AppState, apply_global_settings_action},
     ui::{
         self, RenderContext,
         controller_nav::ControllerNavState,
         hud::settings_panel::{PREGAME_SETTINGS_PANEL_H, SettingsPanel, SettingsPanelData},
         widget::{Bounds, EventResponse, KeyModifiers, UiEvent, Widget, WidgetAction},
-        widgets::button::CircularImageButton,
+        widgets::button::CircleButton,
     },
 };
 
-/// Radius of the gear button.
-const GEAR_RADIUS: u32 = 14;
-/// Gap between the gear button and the edges of its anchor box.
-const GEAR_MARGIN: i32 = 6;
+/// Radius of the settings button.
+const BUTTON_RADIUS: u32 = 14;
+/// Gap between the settings button and the edges of its anchor box.
+const BUTTON_MARGIN: i32 = 6;
+/// Color of the gear icon, matched to the yellow UI font.
+const ICON_COLOR: Color = Color::RGB(230, 215, 150);
 /// Width of the settings panel.
 const PANEL_W: u32 = 300;
 
-/// Gear button, drawn in the lower-right corner of the active scene's main UI
+/// Settings button, drawn in the lower-right corner of the active scene's main UI
 /// box, that opens a modal sound/graphics settings panel.
 pub struct PregameSettings {
-    gear: CircularImageButton,
+    button: CircleButton,
     panel: SettingsPanel,
     mouse_x: i32,
     mouse_y: i32,
@@ -42,22 +45,16 @@ impl Default for PregameSettings {
 }
 
 impl PregameSettings {
-    /// Creates the gear button and a hidden settings panel.
+    /// Creates the settings button and a hidden settings panel.
     ///
     /// # Returns
     ///
     /// * A new `PregameSettings` with the panel closed.
     pub fn new() -> Self {
         Self {
-            gear: CircularImageButton::new(
-                0,
-                0,
-                GEAR_RADIUS,
-                filepaths::get_asset_directory()
-                    .join("gfx")
-                    .join("buttons")
-                    .join("settings.png"),
-            ),
+            // Styled like the pre-game forms' rectangular buttons.
+            button: CircleButton::new(0, 0, BUTTON_RADIUS, Color::RGBA(50, 50, 80, 200))
+                .with_border_color(Color::RGBA(120, 120, 180, 200)),
             panel: SettingsPanel::new_pregame(
                 (TARGET_WIDTH_INT - PANEL_W) as i32 / 2,
                 (TARGET_HEIGHT_INT - PREGAME_SETTINGS_PANEL_H) as i32 / 2,
@@ -70,31 +67,31 @@ impl PregameSettings {
         }
     }
 
-    /// Moves the gear into the lower-right corner of `anchor`.
+    /// Moves the settings button into the lower-right corner of `anchor`.
     ///
     /// # Arguments
     ///
     /// * `anchor` - The active scene's main UI box, or `None` for the screen.
-    fn place_gear(&mut self, anchor: Option<Bounds>) {
+    fn place_button(&mut self, anchor: Option<Bounds>) {
         let b = anchor.unwrap_or(Bounds::new(0, 0, TARGET_WIDTH_INT, TARGET_HEIGHT_INT));
-        let d = 2 * GEAR_RADIUS as i32;
-        self.gear.set_position(
-            b.x + b.width as i32 - GEAR_MARGIN - d,
-            b.y + b.height as i32 - GEAR_MARGIN - d,
+        let d = 2 * BUTTON_RADIUS as i32;
+        self.button.set_position(
+            b.x + b.width as i32 - BUTTON_MARGIN - d,
+            b.y + b.height as i32 - BUTTON_MARGIN - d,
         );
     }
 
     /// Handles an SDL event before the active scene sees it.
     ///
-    /// The gear (mouse) or controller Back button opens the panel; while open
-    /// the panel is modal and swallows all input. Escape, Back or the gear
-    /// close it again.
+    /// The settings button (mouse) or controller Back button opens the panel;
+    /// while open the panel is modal and swallows all input. Escape, Back or
+    /// the settings button close it again.
     ///
     /// # Arguments
     ///
     /// * `app_state` - Shared application state whose settings are edited.
     /// * `event` - Raw SDL event.
-    /// * `anchor` - The active scene's main UI box the gear is drawn in.
+    /// * `anchor` - The active scene's main UI box the settings button is drawn in.
     ///
     /// # Returns
     ///
@@ -105,7 +102,7 @@ impl PregameSettings {
         event: &Event,
         anchor: Option<Bounds>,
     ) -> bool {
-        self.place_gear(anchor);
+        self.place_button(anchor);
         if let Event::MouseMotion { x, y, .. } = event {
             self.mouse_x = *x;
             self.mouse_y = *y;
@@ -119,20 +116,20 @@ impl PregameSettings {
                 ..
             }
         );
-        let gear_clicked = ui_event
+        let button_clicked = ui_event
             .as_ref()
-            .is_some_and(|e| self.gear.handle_event(e) == EventResponse::Consumed);
+            .is_some_and(|e| self.button.handle_event(e) == EventResponse::Consumed);
 
         if !self.panel.is_visible() {
-            if back_pressed || gear_clicked {
+            if back_pressed || button_clicked {
                 self.panel
                     .sync_state(&SettingsPanelData::from_settings(&app_state.settings));
                 self.panel.toggle();
                 return true;
             }
-            // Swallow presses on the gear so the scene underneath doesn't react.
+            // Swallow presses on the button so the scene underneath doesn't react.
             return matches!(ui_event, Some(UiEvent::MouseDown { x, y, .. })
-                if self.gear.bounds().contains_point(x, y));
+                if self.button.bounds().contains_point(x, y));
         }
 
         let escape = matches!(
@@ -142,7 +139,7 @@ impl PregameSettings {
                 ..
             }
         );
-        if back_pressed || gear_clicked || escape {
+        if back_pressed || button_clicked || escape {
             self.panel.close();
         } else {
             if let Some(nav) = self.controller_nav.process_event(event) {
@@ -170,13 +167,13 @@ impl PregameSettings {
         true
     }
 
-    /// Draws the gear button and, when open, the settings panel on top.
+    /// Draws the settings button and, when open, the settings panel on top.
     ///
     /// # Arguments
     ///
     /// * `app_state` - Shared application state (graphics caches).
     /// * `canvas` - Target canvas.
-    /// * `anchor` - The active scene's main UI box the gear is drawn in.
+    /// * `anchor` - The active scene's main UI box the settings button is drawn in.
     ///
     /// # Returns
     ///
@@ -187,7 +184,7 @@ impl PregameSettings {
         canvas: &mut Canvas<Window>,
         anchor: Option<Bounds>,
     ) -> Result<(), String> {
-        self.place_gear(anchor);
+        self.place_button(anchor);
         let AppState {
             gfx_cache,
             text_engine,
@@ -198,7 +195,61 @@ impl PregameSettings {
             gfx: gfx_cache,
             text: text_engine,
         };
-        self.gear.render(&mut ctx)?;
+        self.button.render(&mut ctx)?;
+        let b = *self.button.bounds();
+        let r = BUTTON_RADIUS as i32;
+        draw_gear(ctx.canvas, b.x + r, b.y + r)?;
         self.panel.render(&mut ctx)
     }
+}
+
+/// Pixel mask of the gear icon (`#` = lit), drawn centered on the button:
+/// eight square teeth around a solid body with a round center hole.
+const GEAR_MASK: [&str; 19] = [
+    "........###........",
+    "........###........",
+    "...##...###...##...",
+    "..###..#####..###..",
+    "..###############..",
+    "....###########....",
+    "....###########....",
+    "...#####...#####...",
+    "#######.....#######",
+    "#######.....#######",
+    "#######.....#######",
+    "...#####...#####...",
+    "....###########....",
+    "....###########....",
+    "..###############..",
+    "..###..#####..###..",
+    "...##...###...##...",
+    "........###........",
+    "........###........",
+];
+
+/// Draws the gear icon from [`GEAR_MASK`] centered on `(cx, cy)`.
+///
+/// # Arguments
+///
+/// * `canvas` - Target canvas.
+/// * `cx` - Icon center X in logical pixels.
+/// * `cy` - Icon center Y in logical pixels.
+///
+/// # Returns
+///
+/// * `Err` with the SDL error message if drawing fails.
+fn draw_gear(canvas: &mut Canvas<Window>, cx: i32, cy: i32) -> Result<(), String> {
+    let half = GEAR_MASK.len() as i32 / 2;
+    let points: Vec<Point> = GEAR_MASK
+        .iter()
+        .enumerate()
+        .flat_map(|(y, row)| {
+            row.bytes()
+                .enumerate()
+                .filter(|&(_, c)| c == b'#')
+                .map(move |(x, _)| Point::new(cx - half + x as i32, cy - half + y as i32))
+        })
+        .collect();
+    canvas.set_draw_color(ICON_COLOR);
+    canvas.draw_points(points.as_slice())
 }

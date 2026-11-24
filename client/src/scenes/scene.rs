@@ -72,11 +72,11 @@ pub trait Scene {
     ) -> Result<(), String>;
 
     /// Returns the bounds of the scene's main UI box, used to anchor the
-    /// pre-game settings gear to its lower-right corner.
+    /// pre-game settings button to its lower-right corner.
     ///
     /// # Returns
     ///
-    /// * The panel bounds, or `None` to anchor the gear to the screen corner.
+    /// * The panel bounds, or `None` to anchor the button to the screen corner.
     fn main_panel_bounds(&self) -> Option<Bounds> {
         None
     }
@@ -182,7 +182,7 @@ pub struct SceneManager {
     active_scene: SceneType,
     scenes: HashMap<SceneType, Box<dyn Scene>>,
     transition: SceneTransition,
-    /// Gear button + settings panel shown on all pre-game scenes.
+    /// Settings button + settings panel shown on all pre-game scenes.
     pregame_settings: crate::scenes::pregame_settings::PregameSettings,
     /// Game server live status shown in the pre-game footer.
     server_status: ServerStatus,

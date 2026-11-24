@@ -48,7 +48,7 @@ const PAD_X: i32 = 20;
 const INPUT_W: u32 = PANEL_W - (PAD_X as u32) * 2;
 
 /// Wrap width of the error label, narrowed so text clears the pre-game
-/// settings gear drawn in the panel's lower-right corner.
+/// settings button drawn in the panel's lower-right corner.
 const ERROR_W: u32 = INPUT_W - 20;
 
 /// Height of each text input field.
