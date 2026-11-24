@@ -648,7 +648,7 @@ pub struct GameScene {
     pub(super) settings_panel: SettingsPanel,
     pub(super) minimap_widget: MinimapWidget,
     pub(super) mode_button: ModeButton,
-    /// Static N/E/W/S compass in the lower-right corner.
+    /// N/E/W/S compass (lower-right by default; draggable, position persisted).
     pub(super) compass: Compass,
     pub(super) look_panel: LookPanel,
     pub(super) shop_panel: ShopPanel,

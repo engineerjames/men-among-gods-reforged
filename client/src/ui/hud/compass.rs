@@ -3,13 +3,15 @@
 //! Two crossed lines form an "X" with a bitmap-font letter at each end:
 //! N (top-left), E (top-right), W (bottom-left) and S (bottom-right), which
 //! matches how the isometric map's cardinal directions appear on screen.
+//! The player can reposition it by left-click dragging anywhere on it.
 
 use sdl2::pixels::Color;
 use sdl2::rect::Point;
 
 use crate::font_cache::{self, BITMAP_GLYPH_H, TextStyle};
 use crate::ui::RenderContext;
-use crate::ui::widget::{Bounds, EventResponse, UiEvent, Widget};
+use crate::ui::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget};
+use crate::ui::widgets::title_bar::clamp_to_viewport;
 
 /// Bitmap font used for the direction letters (yellow UI font).
 const FONT: usize = 1;
@@ -28,9 +30,11 @@ const HEIGHT: u32 = 26;
 /// Color of the crossed lines, matched to the yellow letter font.
 const LINE_COLOR: Color = Color::RGB(230, 215, 150);
 
-/// Display-only compass rose drawn in the HUD.
+/// Compass rose drawn in the HUD that the player can drag to reposition.
 pub struct Compass {
     bounds: Bounds,
+    /// Cursor offset from the top-left corner while a drag is in progress.
+    drag_offset: Option<(i32, i32)>,
 }
 
 impl Compass {
@@ -52,7 +56,17 @@ impl Compass {
                 WIDTH,
                 HEIGHT,
             ),
+            drag_offset: None,
         }
+    }
+
+    /// Returns whether the compass is currently being dragged.
+    ///
+    /// # Returns
+    ///
+    /// * `true` between a left mouse-down on the compass and the release.
+    pub fn is_dragging(&self) -> bool {
+        self.drag_offset.is_some()
     }
 
     /// Returns the compass center point.
@@ -74,8 +88,37 @@ impl Widget for Compass {
         self.bounds.y = y;
     }
 
-    fn handle_event(&mut self, _event: &UiEvent) -> EventResponse {
-        EventResponse::Ignored
+    fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
+        match (event, self.drag_offset) {
+            (
+                UiEvent::MouseDown {
+                    x,
+                    y,
+                    button: MouseButton::Left,
+                    ..
+                },
+                _,
+            ) if self.bounds.contains_point(*x, *y) => {
+                self.drag_offset = Some((*x - self.bounds.x, *y - self.bounds.y));
+                EventResponse::Consumed
+            }
+            (UiEvent::MouseMove { x, y }, Some((ox, oy))) => {
+                let (nx, ny) = clamp_to_viewport(*x - ox, *y - oy, WIDTH, HEIGHT);
+                self.set_position(nx, ny);
+                EventResponse::Consumed
+            }
+            (
+                UiEvent::MouseClick {
+                    button: MouseButton::Left,
+                    ..
+                },
+                Some(_),
+            ) => {
+                self.drag_offset = None;
+                EventResponse::Consumed
+            }
+            _ => EventResponse::Ignored,
+        }
     }
 
     fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
@@ -127,5 +170,46 @@ mod tests {
         assert!(b.contains_point(cx - LETTER_DX - half_glyph_w, cy - LETTER_DY - 5));
         assert!(b.contains_point(cx + LETTER_DX + half_glyph_w, cy + LETTER_DY + 4));
         assert!(LINE_DX < LETTER_DX && LINE_DY < LETTER_DY);
+    }
+
+    #[test]
+    fn drag_moves_compass_and_clamps_to_viewport() {
+        use crate::ui::widget::KeyModifiers;
+
+        let down = |x, y| UiEvent::MouseDown {
+            x,
+            y,
+            button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
+        };
+        let mut compass = Compass::new(100, 50);
+
+        // Clicks outside the compass are ignored.
+        assert_eq!(compass.handle_event(&down(0, 0)), EventResponse::Ignored);
+
+        assert_eq!(
+            compass.handle_event(&down(100, 50)),
+            EventResponse::Consumed
+        );
+        assert!(compass.is_dragging());
+
+        compass.handle_event(&UiEvent::MouseMove { x: 130, y: 70 });
+        assert_eq!(compass.center(), (130, 70));
+
+        compass.handle_event(&UiEvent::MouseMove { x: -500, y: -500 });
+        assert_eq!((compass.bounds().x, compass.bounds().y), (0, 0));
+
+        let up = UiEvent::MouseClick {
+            x: 0,
+            y: 0,
+            button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
+        };
+        assert_eq!(compass.handle_event(&up), EventResponse::Consumed);
+        assert!(!compass.is_dragging());
+
+        // Moves after release no longer reposition it.
+        compass.handle_event(&UiEvent::MouseMove { x: 300, y: 300 });
+        assert_eq!((compass.bounds().x, compass.bounds().y), (0, 0));
     }
 }

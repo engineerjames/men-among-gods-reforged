@@ -794,6 +794,13 @@ impl GameScene {
             return UiHandleResult::Consumed;
         }
 
+        // An active compass drag must keep receiving moves/release even over other widgets.
+        if self.compass.is_dragging()
+            && self.compass.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed
+        {
+            return UiHandleResult::Consumed;
+        }
+
         // --- Skill picker popup (modal — must come before skill bar) ---
         if self.skill_picker.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed {
             self.process_skill_picker_actions(app_state);
@@ -851,6 +858,11 @@ impl GameScene {
         // --- Dispatch to minimap toggle button / panel ---
         if self.minimap_widget.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed
         {
+            return UiHandleResult::Consumed;
+        }
+
+        // --- Dispatch to compass (drag to reposition) ---
+        if self.compass.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed {
             return UiHandleResult::Consumed;
         }
 

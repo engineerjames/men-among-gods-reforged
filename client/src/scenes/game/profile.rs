@@ -82,6 +82,7 @@ impl GameScene {
         let (minimap_x, minimap_y) = Self::default_minimap_window_position();
         self.minimap_widget
             .set_expanded_position(minimap_x, minimap_y);
+        self.compass = crate::ui::hud::compass::Compass::new(super::COMPASS_CX, super::COMPASS_CY);
     }
 
     /// Applies any saved per-character panel positions on top of the defaults.
@@ -118,6 +119,11 @@ impl GameScene {
         }
         if let Some((x, y)) = settings.minimap_window_pos {
             self.minimap_widget.set_expanded_position(x, y);
+        }
+        if let Some((x, y)) = settings.compass_pos {
+            let b = self.compass.bounds();
+            let (cx, cy) = clamp_to_viewport(x, y, b.width, b.height);
+            self.compass.set_position(cx, cy);
         }
     }
 
@@ -174,6 +180,7 @@ impl GameScene {
             height: chat.height,
         });
         snapshot.character.minimap_window_pos = Some(self.minimap_widget.expanded_position());
+        snapshot.character.compass_pos = Some((self.compass.bounds().x, self.compass.bounds().y));
 
         Some(snapshot)
     }
@@ -212,6 +219,7 @@ mod tests {
             .chat_box
             .set_window_bounds(crate::ui::widget::Bounds::new(40, 50, 500, 240));
         scene.minimap_widget.set_expanded_position(20, 30);
+        scene.compass.set_position(5, 5);
 
         let settings = CharacterSettings {
             inventory_panel_pos: Some((12, 34)),
@@ -220,6 +228,7 @@ mod tests {
 
         scene.apply_character_panel_positions(&settings);
 
+        assert_eq!(*scene.compass.bounds(), *GameScene::new().compass.bounds());
         assert_eq!(
             (
                 scene.inventory_panel.bounds().x,
@@ -296,11 +305,17 @@ mod tests {
                 height: 1,
             }),
             minimap_window_pos: Some((i32::MAX, i32::MAX)),
+            compass_pos: Some((i32::MAX, i32::MAX)),
             ..CharacterSettings::default()
         };
 
         scene.apply_character_panel_positions(&settings);
 
+        let compass = *scene.compass.bounds();
+        assert_eq!(
+            (compass.x, compass.y),
+            clamp_to_viewport(i32::MAX, i32::MAX, compass.width, compass.height)
+        );
         assert_eq!(
             (
                 scene.chat_box.bounds().width,

@@ -62,6 +62,9 @@ pub struct CharacterSettings {
     /// Saved position of the expanded minimap window, or `None` for default.
     #[serde(default)]
     pub minimap_window_pos: Option<(i32, i32)>,
+    /// Saved top-left position of the HUD compass, or `None` for default.
+    #[serde(default)]
+    pub compass_pos: Option<(i32, i32)>,
     /// Keyboard bindings mapping game actions to key combinations.
     #[serde(default)]
     pub key_bindings: KeyBindings,
@@ -97,6 +100,7 @@ impl Default for CharacterSettings {
             settings_panel_pos: None,
             chat_window: None,
             minimap_window_pos: None,
+            compass_pos: None,
             key_bindings: KeyBindings::default(),
             controller_bindings: ControllerBindings::default(),
             mouse_modifier_bindings: MouseModifierBindings::default(),
