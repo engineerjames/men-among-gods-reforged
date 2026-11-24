@@ -1,6 +1,6 @@
 use super::common::{
-    add_skill_cooldown, add_spell, effective_resist, skill_knee_300, skill_on_cooldown,
-    spell_immunity, spell_race_mod, spellcost,
+    add_exhaust, add_skill_cooldown, add_spell, effective_resist, is_exhausted, skill_knee_300,
+    skill_on_cooldown, spell_immunity, spell_race_mod, spellcost,
 };
 use super::curse::cast_curse_effect;
 use super::{hostile_cast_preflight, resolve_offensive_target};
@@ -591,6 +591,9 @@ pub fn skill_contagion(gs: &mut GameState, cn: usize) {
     if !hostile_cast_preflight(gs, cn, co, "You cannot infect yourself.\n") {
         return;
     }
+    if is_exhausted(gs, cn) {
+        return;
+    }
     if spellcost(gs, cn, 20) != 0 {
         return;
     }
@@ -633,6 +636,7 @@ pub fn skill_contagion(gs: &mut GameState, cn: usize) {
         i32::from(gs.characters[co].y),
         0,
     );
+    add_exhaust(gs, cn, TICKS * 4);
 }
 
 /// Active melee skill: a sweeping flurry of strikes that hits every adjacent
@@ -1021,6 +1025,11 @@ mod tests {
             assert_eq!(gs.characters[cn].a_mana, 30_000);
             let item = active_spell_item(gs, co, SK_CONTAGION).expect("contagion attached");
             assert_eq!(gs.items[item].active, (TICKS * 60) as u32);
+            assert!(is_exhausted(gs, cn));
+
+            // While exhausted, a recast is refused without spending mana.
+            skill_contagion(gs, cn);
+            assert_eq!(gs.characters[cn].a_mana, 30_000);
         });
     }
 

@@ -152,10 +152,6 @@ pub fn skill_curse(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    if spellcost(gs, cn, 35) != 0 {
-        return;
-    }
-
     if !gs.may_attack_msg(cn, co, true) {
         chlog!(
             cn,
@@ -165,9 +161,14 @@ pub fn skill_curse(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    cast_curse_effect(gs, cn, co, SK_CURSE);
+    if spellcost(gs, cn, 35) != 0 {
+        return;
+    }
 
-    add_exhaust(gs, cn, core::constants::TICKS * 4);
+    // A lost focus still costs mana but must not exhaust, so the caster can retry immediately.
+    if cast_curse_effect(gs, cn, co, SK_CURSE) {
+        add_exhaust(gs, cn, core::constants::TICKS * 4);
+    }
 }
 
 /// Rolls the resist/sense chance and applies Curse (with AoE splash) to `co`
@@ -183,7 +184,11 @@ pub fn skill_curse(gs: &mut GameState, cn: usize) {
 /// * `cn` - Caster character index.
 /// * `co` - Primary target character index.
 /// * `source_skill` - Skill row that supplies Curse power and area scaling.
-pub fn cast_curse_effect(gs: &mut GameState, cn: usize, co: usize, source_skill: usize) {
+///
+/// # Returns
+///
+/// * `true` when the caster kept focus and the curse was cast, `false` when focus was lost.
+pub fn cast_curse_effect(gs: &mut GameState, cn: usize, co: usize, source_skill: usize) -> bool {
     let source_power = gs.characters[cn].skill[source_skill][5];
     if chance_base(
         gs,
@@ -214,10 +219,10 @@ pub fn cast_curse_effect(gs: &mut GameState, cn: usize, co: usize, source_skill:
                 );
             }
         }
-        return;
+        return false;
     }
 
-    apply_curse_effect_after_focus(gs, cn, co, source_skill);
+    apply_curse_effect_after_focus(gs, cn, co, source_skill)
 }
 
 /// Applies Curse to the primary target and eligible area targets after the
@@ -229,17 +234,21 @@ pub fn cast_curse_effect(gs: &mut GameState, cn: usize, co: usize, source_skill:
 /// * `cn` - Caster character index.
 /// * `co` - Primary target character index.
 /// * `source_skill` - Skill row that supplies Curse power and area scaling.
+///
+/// # Returns
+///
+/// * `false` when the primary target is immortal (focus lost), otherwise `true`.
 pub(super) fn apply_curse_effect_after_focus(
     gs: &mut GameState,
     cn: usize,
     co: usize,
     source_skill: usize,
-) {
+) -> bool {
     let source_power = gs.characters[cn].skill[source_skill][5];
 
     if (gs.characters[co].flags & CharacterFlags::Immortal.bits()) != 0 {
         gs.do_character_log(cn, core::types::FontColor::Red, "You lost your focus.\n");
-        return;
+        return false;
     }
 
     spell_curse(gs, cn, co, i32::from(source_power));
@@ -286,6 +295,7 @@ pub(super) fn apply_curse_effect_after_focus(
         i32::from(gs.characters[cn].y),
         0,
     );
+    true
 }
 
 #[cfg(test)]
@@ -360,6 +370,22 @@ mod tests {
 
             assert_eq!(gs.characters[cn].a_mana, 100_000);
             assert!(active_spell_item(gs, co, SK_CURSE).is_none());
+        });
+    }
+
+    #[test]
+    fn skill_curse_spends_mana_on_a_lost_focus_without_exhausting() {
+        with_test_gs(|gs| {
+            let (cn, co) = caster_and_target(gs);
+            gs.characters[cn].skill[SK_CURSE][5] = 10;
+            gs.characters[co].skill[SK_RESIST][5] = 100;
+            gs.characters[cn].a_mana = 100_000;
+
+            skill_curse(gs, cn);
+
+            assert_eq!(gs.characters[cn].a_mana, 65_000);
+            assert!(active_spell_item(gs, co, SK_CURSE).is_none());
+            assert!(!is_exhausted(gs, cn));
         });
     }
 
