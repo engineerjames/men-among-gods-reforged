@@ -2,6 +2,7 @@ pub mod autoloot_settings_panel;
 pub mod button_bar;
 pub mod chat_box;
 pub mod compass;
+pub mod helper_window;
 pub mod inventory_panel;
 pub mod journal_panel;
 pub mod keybindings_panel;

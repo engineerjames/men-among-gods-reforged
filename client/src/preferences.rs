@@ -65,6 +65,9 @@ pub struct CharacterSettings {
     /// Saved top-left position of the HUD compass, or `None` for default.
     #[serde(default)]
     pub compass_pos: Option<(i32, i32)>,
+    /// Saved top-left position of the helper window, or `None` for default.
+    #[serde(default)]
+    pub helper_window_pos: Option<(i32, i32)>,
     /// Keyboard bindings mapping game actions to key combinations.
     #[serde(default)]
     pub key_bindings: KeyBindings,
@@ -101,6 +104,7 @@ impl Default for CharacterSettings {
             chat_window: None,
             minimap_window_pos: None,
             compass_pos: None,
+            helper_window_pos: None,
             key_bindings: KeyBindings::default(),
             controller_bindings: ControllerBindings::default(),
             mouse_modifier_bindings: MouseModifierBindings::default(),
@@ -209,6 +213,9 @@ pub struct Settings {
     /// Whether helper text is replaced with the cursor's logical screen position.
     #[serde(default)]
     pub show_positions: bool,
+    /// Whether the helper window (control hints + next objectives) is shown.
+    #[serde(default = "default_true")]
+    pub show_helper_window: bool,
     /// Whether the chat box fades out after a period of inactivity.
     #[serde(default)]
     pub chat_auto_hide: bool,
@@ -235,6 +242,7 @@ impl Default for Settings {
             show_danger_glyphs: true,
             show_helper_text: true,
             show_positions: false,
+            show_helper_window: true,
             chat_auto_hide: false,
             character: CharacterSettings::default(),
         }
@@ -311,6 +319,7 @@ fn global_settings_only(settings: &Settings) -> Settings {
         show_danger_glyphs: settings.show_danger_glyphs,
         show_helper_text: settings.show_helper_text,
         show_positions: settings.show_positions,
+        show_helper_window: settings.show_helper_window,
         chat_auto_hide: settings.chat_auto_hide,
         character: CharacterSettings::default(),
     }
@@ -637,7 +646,10 @@ mod tests {
         assert_eq!(deserialized.show_helper_text, defaults.show_helper_text);
         assert_eq!(deserialized.show_positions, defaults.show_positions);
         assert_eq!(deserialized.show_danger_glyphs, defaults.show_danger_glyphs);
-        assert!(!deserialized.chat_auto_hide, "chat must stay visible by default");
+        assert!(
+            !deserialized.chat_auto_hide,
+            "chat must stay visible by default"
+        );
         assert_eq!(
             deserialized.character.skill_keybinds,
             defaults.character.skill_keybinds

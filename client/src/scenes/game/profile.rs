@@ -83,6 +83,8 @@ impl GameScene {
         self.minimap_widget
             .set_expanded_position(minimap_x, minimap_y);
         self.compass = crate::ui::hud::compass::Compass::new(super::COMPASS_CX, super::COMPASS_CY);
+        self.helper_window
+            .set_position(super::HELPER_WINDOW_X, super::HELPER_WINDOW_Y);
     }
 
     /// Applies any saved per-character panel positions on top of the defaults.
@@ -125,6 +127,9 @@ impl GameScene {
             let (cx, cy) = clamp_to_viewport(x, y, b.width, b.height);
             self.compass.set_position(cx, cy);
         }
+        if let Some((x, y)) = settings.helper_window_pos {
+            self.helper_window.set_position(x, y);
+        }
     }
 
     /// Loads a persisted profile for the given character identity and applies
@@ -142,6 +147,8 @@ impl GameScene {
         // characters do not inherit another character's bindings or HUD layout.
         app_state.settings = preferences::load_settings(identity);
         self.apply_character_panel_positions(&app_state.settings.character);
+        self.helper_window
+            .set_key_bindings(&app_state.settings.character.key_bindings);
 
         log::info!(
             "Applied SDL profile state for character '{}' (id={})",
@@ -181,6 +188,8 @@ impl GameScene {
         });
         snapshot.character.minimap_window_pos = Some(self.minimap_widget.expanded_position());
         snapshot.character.compass_pos = Some((self.compass.bounds().x, self.compass.bounds().y));
+        snapshot.character.helper_window_pos =
+            Some((self.helper_window.bounds().x, self.helper_window.bounds().y));
 
         Some(snapshot)
     }
@@ -220,6 +229,7 @@ mod tests {
             .set_window_bounds(crate::ui::widget::Bounds::new(40, 50, 500, 240));
         scene.minimap_widget.set_expanded_position(20, 30);
         scene.compass.set_position(5, 5);
+        scene.helper_window.set_position(5, 5);
 
         let settings = CharacterSettings {
             inventory_panel_pos: Some((12, 34)),
@@ -229,6 +239,10 @@ mod tests {
         scene.apply_character_panel_positions(&settings);
 
         assert_eq!(*scene.compass.bounds(), *GameScene::new().compass.bounds());
+        assert_eq!(
+            *scene.helper_window.bounds(),
+            *GameScene::new().helper_window.bounds()
+        );
         assert_eq!(
             (
                 scene.inventory_panel.bounds().x,

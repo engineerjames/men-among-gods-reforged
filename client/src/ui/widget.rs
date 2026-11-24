@@ -357,6 +357,8 @@ pub enum WidgetAction {
     SetShowHelperText(bool),
     /// Toggle rendering the cursor's logical screen coordinates as helper text.
     SetShowPositions(bool),
+    /// Toggle the helper window (control hints + next objectives).
+    SetShowHelperWindow(bool),
     /// Toggle fading the chat box out after a period of inactivity.
     SetChatAutoHide(bool),
     /// Enable or disable grave auto-looting for the active character.

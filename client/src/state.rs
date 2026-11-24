@@ -49,6 +49,7 @@ pub fn apply_global_settings_action(
         WidgetAction::SetHideWalls(v) => settings.hide = v,
         WidgetAction::SetShowHelperText(v) => settings.show_helper_text = v,
         WidgetAction::SetShowPositions(v) => settings.show_positions = v,
+        WidgetAction::SetShowHelperWindow(v) => settings.show_helper_window = v,
         WidgetAction::SetChatAutoHide(v) => settings.chat_auto_hide = v,
         WidgetAction::SetMasterVolume(v) => settings.master_volume = v,
         WidgetAction::SetMusicEnabled(v) => settings.music_enabled = v,

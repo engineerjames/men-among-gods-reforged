@@ -800,6 +800,12 @@ impl GameScene {
         {
             return UiHandleResult::Consumed;
         }
+        if self.helper_window.is_dragging()
+            && self.helper_window.handle_event(ui_event)
+                == crate::ui::widget::EventResponse::Consumed
+        {
+            return UiHandleResult::Consumed;
+        }
 
         // --- Skill picker popup (modal — must come before skill bar) ---
         if self.skill_picker.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed {
@@ -842,6 +848,14 @@ impl GameScene {
         );
         if pointer_event && let Some(result) = self.dispatch_hud_panel_events(app_state, ui_event) {
             return result;
+        }
+
+        // The helper window renders above the chat box but below the HUD panels.
+        if app_state.settings.show_helper_window
+            && self.helper_window.handle_event(ui_event)
+                == crate::ui::widget::EventResponse::Consumed
+        {
+            return UiHandleResult::Consumed;
         }
 
         if self.chat_box.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed {

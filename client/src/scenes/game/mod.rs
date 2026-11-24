@@ -67,6 +67,7 @@ use crate::{
         hud::button_bar::HudButtonBar,
         hud::chat_box::ChatBox,
         hud::compass::Compass,
+        hud::helper_window::{HELPER_WINDOW_W, HelperWindow},
         hud::inventory_panel::InventoryPanel,
         hud::journal_panel::{JOURNAL_PANEL_H, JOURNAL_PANEL_W, JournalPanel},
         hud::look_panel::LookPanel,
@@ -469,6 +470,13 @@ const COMPASS_CX: i32 = MODE_BTN_CX - MODE_BTN_RADIUS as i32 - 28;
 /// Y center of the compass, level with the speed-mode button.
 const COMPASS_CY: i32 = MODE_BTN_CY;
 
+// ---- Helper window (right side, below the chat box) ---- //
+
+/// Default left edge of the helper window, just left of the HUD button column.
+const HELPER_WINDOW_X: i32 = HUD_BTN_CX - HUD_BUTTON_RADIUS as i32 - 8 - HELPER_WINDOW_W as i32;
+/// Default top edge of the helper window, just below the chat box.
+const HELPER_WINDOW_Y: i32 = CHATBOX_Y + CHATBOX_H as i32 + 6;
+
 // ---- Look panel (center-right) ---- //
 
 /// Width of the look panel.
@@ -650,6 +658,8 @@ pub struct GameScene {
     pub(super) mode_button: ModeButton,
     /// N/E/W/S compass (lower-right by default; draggable, position persisted).
     pub(super) compass: Compass,
+    /// Control hints + "what to do next" window (hideable via Display Settings).
+    pub(super) helper_window: HelperWindow,
     pub(super) look_panel: LookPanel,
     pub(super) shop_panel: ShopPanel,
     pub(super) vitality_bars: VitalityChevrons,
@@ -884,6 +894,7 @@ impl GameScene {
             minimap_widget: MinimapWidget::new(MINIMAP_BTN_CX, MINIMAP_BTN_CY, MINIMAP_BTN_RADIUS),
             mode_button: ModeButton::new(MODE_BTN_CX, MODE_BTN_CY, MODE_BTN_RADIUS),
             compass: Compass::new(COMPASS_CX, COMPASS_CY),
+            helper_window: HelperWindow::new(HELPER_WINDOW_X, HELPER_WINDOW_Y),
             vitality_bars: VitalityChevrons::new(VITALITY_BARS_X, VITALITY_BARS_Y),
             spell_effect_icons: SpellEffectIcons::new(
                 positive_start_x,
@@ -1250,6 +1261,8 @@ impl GameScene {
                         .character
                         .key_bindings
                         .set_binding(action, binding);
+                    self.helper_window
+                        .set_key_bindings(&app_state.settings.character.key_bindings);
                     profile_changed = true;
                 }
                 WidgetAction::UpdateControllerBinding { slot, button } => {
@@ -2433,7 +2446,8 @@ impl Scene for GameScene {
         if let Some(scene) = self.poll_high_index_mouse_buttons(app_state) {
             return Some(scene);
         }
-        self.chat_box.set_auto_hide(app_state.settings.chat_auto_hide);
+        self.chat_box
+            .set_auto_hide(app_state.settings.chat_auto_hide);
         self.chat_box.update(dt);
         self.weapon_armor_panel.update(dt);
         self.skills_panel.update(dt);
@@ -2871,6 +2885,9 @@ impl Scene for GameScene {
                 gfx: gfx_cache,
                 text: text_engine,
             };
+            if app_state.settings.show_helper_window {
+                self.helper_window.render(&mut ctx)?;
+            }
             self.skills_panel.render(&mut ctx)?;
             self.inventory_panel.render(&mut ctx)?;
             self.settings_panel.render(&mut ctx)?;
