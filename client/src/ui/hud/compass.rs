@@ -4,6 +4,9 @@
 //! N (top-left), E (top-right), W (bottom-left) and S (bottom-right), which
 //! matches how the isometric map's cardinal directions appear on screen.
 //! The player can reposition it by left-click dragging anywhere on it.
+//!
+//! When a target world tile is set, a needle points from the compass center
+//! in the on-screen direction the player must walk to reach it.
 
 use sdl2::pixels::Color;
 use sdl2::rect::Point;
@@ -29,12 +32,23 @@ const WIDTH: u32 = 40;
 const HEIGHT: u32 = 26;
 /// Color of the crossed lines, matched to the yellow letter font.
 const LINE_COLOR: Color = Color::RGB(230, 215, 150);
+/// Horizontal radius of the ellipse the target needle tip travels on.
+const MARKER_RX: f32 = 14.0;
+/// Vertical radius of the needle ellipse. Must be `MARKER_RX / 2` to match the
+/// 2:1 isometric projection so the needle points along the true screen ray.
+const MARKER_RY: f32 = MARKER_RX / 2.0;
+/// Color of the target needle and its tip.
+const MARKER_COLOR: Color = Color::RGB(255, 80, 60);
 
 /// Compass rose drawn in the HUD that the player can drag to reposition.
 pub struct Compass {
     bounds: Bounds,
     /// Cursor offset from the top-left corner while a drag is in progress.
     drag_offset: Option<(i32, i32)>,
+    /// World tile the needle points toward, if any.
+    target: Option<(u16, u16)>,
+    /// Local player's current world tile, if known.
+    player_pos: Option<(u16, u16)>,
 }
 
 impl Compass {
@@ -57,7 +71,56 @@ impl Compass {
                 HEIGHT,
             ),
             drag_offset: None,
+            target: None,
+            player_pos: None,
         }
+    }
+
+    /// Sets or clears the world tile the compass needle points toward.
+    ///
+    /// # Arguments
+    ///
+    /// * `target` - World tile `(x, y)` to point at, or `None` to hide the needle.
+    pub fn set_target(&mut self, target: Option<(u16, u16)>) {
+        self.target = target;
+    }
+
+    /// Updates the local player's world tile used to aim the needle.
+    ///
+    /// # Arguments
+    ///
+    /// * `pos` - The player's world tile `(x, y)`, or `None` when unknown.
+    pub fn set_player_position(&mut self, pos: Option<(u16, u16)>) {
+        self.player_pos = pos;
+    }
+
+    /// Returns the needle tip offset from the compass center.
+    ///
+    /// World `+x` projects to screen `(+16, +8)` and world `+y` to `(+16, -8)`
+    /// (see `GameScene::tile_ground_diamond_origin`), so the screen direction
+    /// of a world delta `(dx, dy)` is `(dx + dy, (dx - dy) / 2)`. Scaling the
+    /// unit vector of `(dx + dy, dx - dy)` by `(MARKER_RX, MARKER_RY)` lands the
+    /// tip on that ray.
+    ///
+    /// # Returns
+    ///
+    /// * `None` when no target is set or the player position is unknown.
+    /// * `Some((0, 0))` when the player stands on the target tile.
+    /// * Otherwise the `(dx, dy)` pixel offset of the needle tip.
+    fn marker_offset(&self) -> Option<(i32, i32)> {
+        let (tx, ty) = self.target?;
+        let (px, py) = self.player_pos?;
+        let dx = i32::from(tx) - i32::from(px);
+        let dy = i32::from(ty) - i32::from(py);
+        let (u, v) = ((dx + dy) as f32, (dx - dy) as f32);
+        let len = u.hypot(v);
+        if len == 0.0 {
+            return Some((0, 0));
+        }
+        Some((
+            (MARKER_RX * u / len).round() as i32,
+            (MARKER_RY * v / len).round() as i32,
+        ))
     }
 
     /// Returns whether the compass is currently being dragged.
@@ -151,6 +214,14 @@ impl Widget for Compass {
                 TextStyle::centered(),
             )?;
         }
+
+        if let Some((mx, my)) = self.marker_offset() {
+            let tip = Point::new(cx + mx, cy + my);
+            ctx.canvas.set_draw_color(MARKER_COLOR);
+            ctx.canvas.draw_line(Point::new(cx, cy), tip)?;
+            ctx.canvas
+                .fill_rect(sdl2::rect::Rect::new(tip.x - 1, tip.y - 1, 3, 3))?;
+        }
         Ok(())
     }
 }
@@ -170,6 +241,43 @@ mod tests {
         assert!(b.contains_point(cx - LETTER_DX - half_glyph_w, cy - LETTER_DY - 5));
         assert!(b.contains_point(cx + LETTER_DX + half_glyph_w, cy + LETTER_DY + 4));
         assert!(LINE_DX < LETTER_DX && LINE_DY < LETTER_DY);
+    }
+
+    #[test]
+    fn marker_points_along_isometric_screen_direction() {
+        let mut compass = Compass::new(100, 50);
+        assert_eq!(compass.marker_offset(), None);
+
+        compass.set_target(Some((110, 100)));
+        assert_eq!(compass.marker_offset(), None, "needs player position");
+
+        compass.set_player_position(Some((100, 100)));
+        // World +x is screen down-right (the "S" letter quadrant).
+        let (mx, my) = compass.marker_offset().unwrap();
+        assert!(mx > 0 && my > 0);
+        // Tip stays on the 2:1 diagonal, i.e. along the drawn "X" arm.
+        assert_eq!((mx, my), (10, 5));
+
+        // World -y is screen down-left ("W" quadrant).
+        compass.set_target(Some((100, 90)));
+        assert_eq!(compass.marker_offset(), Some((-10, 5)));
+
+        // dx == dy points straight right on screen.
+        compass.set_target(Some((105, 105)));
+        assert_eq!(compass.marker_offset(), Some((MARKER_RX as i32, 0)));
+
+        // Standing on the target collapses the needle to the center.
+        compass.set_target(Some((100, 100)));
+        assert_eq!(compass.marker_offset(), Some((0, 0)));
+
+        compass.set_target(None);
+        assert_eq!(compass.marker_offset(), None);
+
+        // Tip always stays inside the widget bounds.
+        compass.set_target(Some((u16::MAX, 0)));
+        let (mx, my) = compass.marker_offset().unwrap();
+        let (cx, cy) = compass.center();
+        assert!(compass.bounds().contains_point(cx + mx, cy + my));
     }
 
     #[test]

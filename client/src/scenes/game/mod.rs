@@ -2894,6 +2894,11 @@ impl Scene for GameScene {
             self.hud_buttons.render(&mut ctx)?;
             self.minimap_widget.render(&mut ctx)?;
             self.mode_button.render(&mut ctx)?;
+            self.compass.set_player_position(
+                ps.map()
+                    .tile_at_xy(TILEX / 2, TILEY / 2)
+                    .map(|t| (t.x, t.y)),
+            );
             self.compass.render(&mut ctx)?;
             self.skill_bar.render(&mut ctx)?;
             self.weapon_armor_panel.render(&mut ctx)?;
