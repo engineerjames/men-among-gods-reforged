@@ -45,6 +45,30 @@ const BTN_GAP: i32 = 6;
 /// Extra gap before the destructive delete action.
 const DELETE_BTN_GAP: i32 = 12;
 
+/// Side length of the square "+" (create character) button. Odd so the
+/// 5px-wide "+" glyph can sit exactly centered.
+const CREATE_BTN_SIZE: u32 = 15;
+
+/// Returns the top-left of the "+" button for a given "Characters" label row.
+///
+/// The button is right-aligned with the character list and vertically
+/// centered on the label text.
+///
+/// # Arguments
+///
+/// * `panel_x` - Left edge of the panel.
+/// * `label_y` - Top of the "Characters" label text.
+///
+/// # Returns
+///
+/// * `(x, y)` of the button's top-left corner.
+fn create_button_pos(panel_x: i32, label_y: i32) -> (i32, i32) {
+    (
+        panel_x + PANEL_W as i32 - PAD_X - CREATE_BTN_SIZE as i32,
+        label_y + (font_cache::BITMAP_GLYPH_H as i32 - CREATE_BTN_SIZE as i32) / 2,
+    )
+}
+
 /// Bitmap font index.
 const FONT: usize = 1;
 
@@ -84,7 +108,7 @@ pub struct CharacterSelectionForm {
     character_list: ScrollableList,
     /// "Play" button (enters the game with the selected character).
     play_button: RectButton,
-    /// "Create new character" button.
+    /// Square "+" button beside the "Characters" label (create new character).
     create_button: RectButton,
     /// "Log out" button.
     logout_button: RectButton,
@@ -101,7 +125,8 @@ pub struct CharacterSelectionForm {
     /// Cached character names keyed by ID (for delete dialog).
     character_names: Vec<(u64, String)>,
     /// Controller focus index, if any.
-    /// Slots 0..N = list rows, N..N+4 = play/create/logout/delete.
+    /// Slots 0..N = list rows, N..N+4 = play/logout/delete/create. The "+"
+    /// sits above the list, so wrapping from delete to it follows screen order.
     controller_focused: Option<usize>,
 }
 
@@ -155,10 +180,17 @@ impl CharacterSelectionForm {
                 .with_label("Play", FONT);
         btn_y += BTN_H as i32 + BTN_GAP;
 
-        let create_button =
-            RectButton::new(Bounds::new(panel_x + PAD_X, btn_y, BTN_W, BTN_H), btn_bg)
-                .with_border(btn_border)
-                .with_label("Create new character", FONT);
+        let (create_x, create_y) =
+            create_button_pos(panel_x, list_y - font_cache::BITMAP_GLYPH_H as i32 - 4);
+        let create_button = RectButton::new(
+            Bounds::new(create_x, create_y, CREATE_BTN_SIZE, CREATE_BTN_SIZE),
+            btn_bg,
+        )
+        .with_border(btn_border)
+        .with_label("+", FONT)
+        // The "+" glyph's ink sits 1px left of and 2px above its cell center.
+        .with_label_offset(1, 2);
+        // The create button's old slot between Play and Log out is left empty.
         btn_y += BTN_H as i32 + BTN_GAP;
 
         let logout_button =
@@ -341,11 +373,11 @@ impl CharacterSelectionForm {
 
         // Buttons.
         self.play_button.set_hovered(focused == Some(list_len));
-        self.create_button
-            .set_hovered(focused == Some(list_len + 1));
         self.logout_button
-            .set_hovered(focused == Some(list_len + 2));
+            .set_hovered(focused == Some(list_len + 1));
         self.delete_button
+            .set_hovered(focused == Some(list_len + 2));
+        self.create_button
             .set_hovered(focused == Some(list_len + 3));
     }
 }
@@ -393,12 +425,9 @@ impl Widget for CharacterSelectionForm {
                         }
                     }
                     Some(i) if i == list_len + 1 => {
-                        self.actions.push(CharacterSelectionFormAction::CreateNew);
-                    }
-                    Some(i) if i == list_len + 2 => {
                         self.actions.push(CharacterSelectionFormAction::LogOut);
                     }
-                    Some(i) if i == list_len + 3 => {
+                    Some(i) if i == list_len + 2 => {
                         if let Some(id) = self.character_list.selected_id() {
                             let name = self.character_name_for_id(id).unwrap_or("").to_owned();
                             self.actions
@@ -407,6 +436,9 @@ impl Widget for CharacterSelectionForm {
                                     character_name: name,
                                 });
                         }
+                    }
+                    Some(i) if i == list_len + 3 => {
+                        self.actions.push(CharacterSelectionFormAction::CreateNew);
                     }
                     _ => {}
                 }
@@ -551,6 +583,9 @@ impl Widget for CharacterSelectionForm {
             cursor_y,
             font_cache::TextStyle::PLAIN,
         )?;
+        let (create_x, create_y) = create_button_pos(self.bounds.x, cursor_y);
+        self.create_button.set_position(create_x, create_y);
+        self.create_button.render(ctx)?;
         cursor_y += font_cache::BITMAP_GLYPH_H as i32 + 4;
 
         // Character list.
@@ -563,12 +598,8 @@ impl Widget for CharacterSelectionForm {
         self.play_button
             .set_position(self.bounds.x + PAD_X, cursor_y);
         self.play_button.render(ctx)?;
-        cursor_y += BTN_H as i32 + BTN_GAP;
-
-        self.create_button
-            .set_position(self.bounds.x + PAD_X, cursor_y);
-        self.create_button.render(ctx)?;
-        cursor_y += BTN_H as i32 + BTN_GAP;
+        // Skip the slot the create button used to occupy.
+        cursor_y += (BTN_H as i32 + BTN_GAP) * 2;
 
         self.logout_button
             .set_position(self.bounds.x + PAD_X, cursor_y);
@@ -612,6 +643,28 @@ mod tests {
         ];
         let names = vec![(1, "Hero".into()), (2, "Mage".into())];
         (items, names)
+    }
+
+    #[test]
+    fn controller_focus_wraps_from_delete_to_create_then_first_row() {
+        let mut form = make_form();
+        let (items, names) = sample_items();
+        form.set_characters(items, names);
+
+        // 6 presses: row 0, row 1, play, logout, delete, then "+".
+        for _ in 0..6 {
+            form.handle_event(&UiEvent::NavNext);
+        }
+        assert_eq!(form.controller_focused, Some(5));
+        assert!(form.create_button.is_hovered());
+        form.handle_event(&UiEvent::NavConfirm);
+        assert!(matches!(
+            form.take_actions().as_slice(),
+            [CharacterSelectionFormAction::CreateNew]
+        ));
+
+        form.handle_event(&UiEvent::NavNext);
+        assert_eq!(form.controller_focused, Some(0));
     }
 
     #[test]
