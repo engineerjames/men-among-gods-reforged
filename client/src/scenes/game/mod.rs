@@ -54,8 +54,9 @@ use crate::{
     constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT},
     gfx_cache::GraphicsCache,
     network::NetworkRuntime,
-    player_state::PlayerState,
+    player_state::{CompletionSnapshot, PlayerState},
     preferences::{self, CharacterIdentity},
+    quests::QuestLog,
     scenes::scene::{Scene, SceneType},
     state::{AppState, apply_global_settings_action},
     types::mouse::{
@@ -660,6 +661,9 @@ pub struct GameScene {
     pub(super) compass: Compass,
     /// Control hints + "what to do next" window (hideable via Display Settings).
     pub(super) helper_window: HelperWindow,
+    /// Completion snapshot and total points the quest log was last built
+    /// from; the log is rebuilt only when these change.
+    quest_log_inputs: Option<(CompletionSnapshot, i32)>,
     pub(super) look_panel: LookPanel,
     pub(super) shop_panel: ShopPanel,
     pub(super) vitality_bars: VitalityChevrons,
@@ -895,6 +899,7 @@ impl GameScene {
             mode_button: ModeButton::new(MODE_BTN_CX, MODE_BTN_CY, MODE_BTN_RADIUS),
             compass: Compass::new(COMPASS_CX, COMPASS_CY),
             helper_window: HelperWindow::new(HELPER_WINDOW_X, HELPER_WINDOW_Y),
+            quest_log_inputs: None,
             vitality_bars: VitalityChevrons::new(VITALITY_BARS_X, VITALITY_BARS_Y),
             spell_effect_icons: SpellEffectIcons::new(
                 positive_start_x,
@@ -1040,6 +1045,23 @@ impl GameScene {
             compass_debug_target: self.compass.debug_target(),
             ..SettingsPanelData::from_settings(&app_state.settings)
         }
+    }
+
+    /// Rebuilds the objectives list and compass target when the player's
+    /// completion data or total points have changed.
+    ///
+    /// # Arguments
+    ///
+    /// * `ps` - Current player state.
+    fn sync_quest_log(&mut self, ps: &PlayerState) {
+        let inputs = (*ps.completion(), ps.character_info().points_tot);
+        if self.quest_log_inputs == Some(inputs) {
+            return;
+        }
+        self.quest_log_inputs = Some(inputs);
+        let log = QuestLog::build(&inputs.0, inputs.1.max(0) as u32);
+        self.helper_window.set_quest_log(&log);
+        self.compass.set_target(log.compass_target());
     }
 
     /// Returns whether a text field (chat or a settings input) has keyboard
@@ -2908,6 +2930,7 @@ impl Scene for GameScene {
             self.hud_buttons.render(&mut ctx)?;
             self.minimap_widget.render(&mut ctx)?;
             self.mode_button.render(&mut ctx)?;
+            self.sync_quest_log(ps);
             self.compass.set_player_position(
                 ps.map()
                     .tile_at_xy(TILEX / 2, TILEY / 2)

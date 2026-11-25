@@ -183,6 +183,7 @@ pub struct GameState {
 impl GameState {
     const TIMER_MIGRATION_KEY: &'static str = "game:meta:timers_migrated_v1";
     const COMPLETION_SCRATCH_MIGRATION_KEY: &'static str = "game:meta:completion_future3_reset_v1";
+    const QUEST_PROGRESS_MIGRATION_KEY: &'static str = "game:meta:quest_progress_future3_reset_v1";
 
     /// Normalize MOTD text for safe client display.
     ///
@@ -338,6 +339,7 @@ impl GameState {
 
         self.migrate_legacy_timer_data_once(&mut con, &mut data)?;
         self.migrate_completion_scratch_once(&mut con, &mut data)?;
+        Self::migrate_quest_progress_scratch_once(&mut con, &mut data)?;
 
         self.map = data.map;
         self.items = data.items;
@@ -455,6 +457,69 @@ impl GameState {
         );
 
         Ok(())
+    }
+
+    /// Performs a one-time migration that zeroes the quest started /
+    /// item-obtained bitsets (`future3[7]`/`[8]`, see
+    /// [`crate::quest_completion`]).
+    ///
+    /// Characters copied from templates during a race change inherited
+    /// template garbage in these previously unused slots, which would show
+    /// up as bogus quest progress.
+    ///
+    /// # Arguments
+    ///
+    /// * `con` - Open KeyDB connection used to read/write migration marker.
+    /// * `data` - Loaded snapshot data whose characters are cleared.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if migration is complete or already applied.
+    /// * `Err(String)` if marker read/write fails.
+    fn migrate_quest_progress_scratch_once(
+        con: &mut redis::Connection,
+        data: &mut store::GameData,
+    ) -> Result<(), String> {
+        let key = Self::QUEST_PROGRESS_MIGRATION_KEY;
+        let already_migrated: bool = con
+            .exists(key)
+            .map_err(|e| format!("KeyDB EXISTS {key}: {e}"))?;
+        if already_migrated {
+            return Ok(());
+        }
+
+        let changed = Self::clear_quest_progress_slots(&mut data.characters);
+        con.set::<_, _, ()>(key, 1)
+            .map_err(|e| format!("KeyDB SET {key}: {e}"))?;
+        log::info!(
+            "Applied quest-progress scratch migration v1: cleared future3[7..=8] on {changed} characters"
+        );
+        Ok(())
+    }
+
+    /// Zeroes the quest started / item-obtained slots on every non-empty
+    /// character.
+    ///
+    /// # Arguments
+    ///
+    /// * `characters` - Character slots to clear in-place.
+    ///
+    /// # Returns
+    ///
+    /// * Number of characters that had a nonzero value cleared.
+    pub(crate) fn clear_quest_progress_slots(characters: &mut [core::types::Character]) -> usize {
+        let slots = [
+            crate::quest_completion::QUEST_STARTED_IDX,
+            crate::quest_completion::QUEST_ITEM_OBTAINED_IDX,
+        ];
+        let mut changed = 0usize;
+        for character in characters.iter_mut().filter(|c| c.used != USE_EMPTY) {
+            if slots.iter().any(|&i| character.future3[i] != 0) {
+                slots.iter().for_each(|&i| character.future3[i] = 0);
+                changed += 1;
+            }
+        }
+        changed
     }
 
     /// Zeroes `future3[0]` and `future3[1]` on every non-empty character that
@@ -840,6 +905,22 @@ mod tests {
         assert_eq!(changed, 1);
         assert_eq!(templates[1].duration, 360);
         assert_eq!(templates[2].duration, 180);
+    }
+
+    #[test]
+    fn clear_quest_progress_slots_only_touches_quest_slots_of_used_characters() {
+        let mut characters = vec![core::types::Character::default(); 2];
+        characters[0].used = core::constants::USE_ACTIVE;
+        characters[0].future3 = [5; 12];
+        // Empty slot: left untouched.
+        characters[1].future3[7] = 9;
+
+        assert_eq!(GameState::clear_quest_progress_slots(&mut characters), 1);
+        let mut expected = [5; 12];
+        expected[7] = 0;
+        expected[8] = 0;
+        assert_eq!(characters[0].future3, expected);
+        assert_eq!(characters[1].future3[7], 9);
     }
 
     #[test]

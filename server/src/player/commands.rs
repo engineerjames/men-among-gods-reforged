@@ -1853,7 +1853,8 @@ pub fn send_set_char_rune_state(gs: &mut GameState, nr: usize) {
 /// Wire format: 1-byte opcode (`SetCompletionData = 77`) followed by
 /// `labyrinth_progress` (1 byte), `pentagram_solves` (u32 LE), 4x
 /// `first_kill_bits` (u32 LE each), 4x `explorer_point_bits` (u32 LE each),
-/// and `quest_completion_bits` (u32 LE) -- 42 bytes total. Always sent as a
+/// `quest_completion_bits`, `quest_started_bits` and
+/// `quest_item_obtained_bits` (u32 LE each) -- 50 bytes total. Always sent as a
 /// full snapshot (no delta mode); see `core::server_commands::ServerCommandType::SetCompletionData`.
 ///
 /// # Arguments
@@ -1879,8 +1880,11 @@ pub fn send_set_completion_data(gs: &mut GameState, nr: usize) {
         ch.data[49] as u32,
     ];
     let quest_completion_bits = ch.future3[1] as u32;
+    let quest_started_bits = ch.future3[crate::quest_completion::QUEST_STARTED_IDX] as u32;
+    let quest_item_obtained_bits =
+        ch.future3[crate::quest_completion::QUEST_ITEM_OBTAINED_IDX] as u32;
 
-    let mut buf: [u8; 42] = [0; 42];
+    let mut buf: [u8; 50] = [0; 50];
     buf[0] = ServerCommandType::SetCompletionData as u8;
     buf[1] = labyrinth_progress;
     buf[2..6].copy_from_slice(&pentagram_solves.to_le_bytes());
@@ -1893,7 +1897,9 @@ pub fn send_set_completion_data(gs: &mut GameState, nr: usize) {
     buf[30..34].copy_from_slice(&explorer_point_bits[2].to_le_bytes());
     buf[34..38].copy_from_slice(&explorer_point_bits[3].to_le_bytes());
     buf[38..42].copy_from_slice(&quest_completion_bits.to_le_bytes());
-    network_manager::xsend(gs, nr, &buf, 42);
+    buf[42..46].copy_from_slice(&quest_started_bits.to_le_bytes());
+    buf[46..50].copy_from_slice(&quest_item_obtained_bits.to_le_bytes());
+    network_manager::xsend(gs, nr, &buf, 50);
 }
 
 /// Resends the Journal completion-data snapshot for character `cn`, if `cn`
@@ -1903,7 +1909,7 @@ pub fn send_set_completion_data(gs: &mut GameState, nr: usize) {
 /// Call this after any change to the completion-tracked state: labyrinth
 /// progress (`data[20]`), pentagram solve count (`future3[0]`), first-kill
 /// bits (`data[60..=63]`), explorer-point bits (`data[46..=49]`), or quest
-/// completion bits (`future3[1]`).
+/// completion/started/item-obtained bits (`future3[1]`, `[7]`, `[8]`).
 ///
 /// # Arguments
 ///

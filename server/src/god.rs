@@ -3617,13 +3617,18 @@ impl God {
             let old_status2 = character.status2;
             let old_data = character.data;
             let old_depot = character.depot;
-            // future3[0]/[1] are pentagram-solve/quest-completion progress,
-            // which must survive a race change; the rest of future3 (incl.
+            // future3[0]/[1] are pentagram-solve/quest-completion progress
+            // and [7]/[8] quest started/item-obtained progress, which must
+            // survive a race change; the rest of future3 (incl.
             // the Seyan'Du rune slots) comes fresh from the template below,
             // since character_templates carry stale/garbage values there
             // (never zeroed, previously harmless unused padding).
             let old_pentagram_solves = character.future3[0];
             let old_quest_completion_bits = character.future3[1];
+            let old_quest_started_bits =
+                character.future3[crate::quest_completion::QUEST_STARTED_IDX];
+            let old_quest_item_obtained_bits =
+                character.future3[crate::quest_completion::QUEST_ITEM_OBTAINED_IDX];
 
             // Replace character with template
             *character = template;
@@ -3705,6 +3710,9 @@ impl God {
 
             character.future3[0] = old_pentagram_solves;
             character.future3[1] = old_quest_completion_bits;
+            character.future3[crate::quest_completion::QUEST_STARTED_IDX] = old_quest_started_bits;
+            character.future3[crate::quest_completion::QUEST_ITEM_OBTAINED_IDX] =
+                old_quest_item_obtained_bits;
             // Reset the Seyan'Du rune loadout so a fresh class never starts
             // out with a bogus swap cooldown inherited from template garbage.
             character.future3[3] = 0;

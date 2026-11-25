@@ -19,6 +19,7 @@ pub mod network;
 pub mod platform;
 pub mod player_state;
 pub mod preferences;
+pub mod quests;
 pub mod scenes;
 pub mod server_status;
 pub mod sfx_cache;

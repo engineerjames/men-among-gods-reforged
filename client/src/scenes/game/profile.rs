@@ -82,7 +82,11 @@ impl GameScene {
         let (minimap_x, minimap_y) = Self::default_minimap_window_position();
         self.minimap_widget
             .set_expanded_position(minimap_x, minimap_y);
-        self.compass = crate::ui::hud::compass::Compass::new(super::COMPASS_CX, super::COMPASS_CY);
+        // Reposition only: recreating the compass would drop its quest target.
+        let default_compass =
+            crate::ui::hud::compass::Compass::new(super::COMPASS_CX, super::COMPASS_CY);
+        self.compass
+            .set_position(default_compass.bounds().x, default_compass.bounds().y);
         self.helper_window
             .set_position(super::HELPER_WINDOW_X, super::HELPER_WINDOW_Y);
     }

@@ -87,6 +87,10 @@ pub struct CompletionSnapshot {
     pub explorer_point_bits: [u32; 4],
     /// Hand-authored quest-completion bitset (bit index = `QuestDef::id`).
     pub quest_completion_bits: u32,
+    /// Quests whose NPC has given the player the quest request.
+    pub quest_started_bits: u32,
+    /// Quests whose required item the player has picked up (sticky).
+    pub quest_item_obtained_bits: u32,
 }
 
 impl Default for PlayerState {
@@ -563,6 +567,8 @@ impl PlayerState {
                 first_kill_bits,
                 explorer_point_bits,
                 quest_completion_bits,
+                quest_started_bits,
+                quest_item_obtained_bits,
             } => {
                 self.completion = CompletionSnapshot {
                     labyrinth_progress: *labyrinth_progress,
@@ -570,6 +576,8 @@ impl PlayerState {
                     first_kill_bits: *first_kill_bits,
                     explorer_point_bits: *explorer_point_bits,
                     quest_completion_bits: *quest_completion_bits,
+                    quest_started_bits: *quest_started_bits,
+                    quest_item_obtained_bits: *quest_item_obtained_bits,
                 };
             }
             ServerCommandData::SetCharHp { values } => {

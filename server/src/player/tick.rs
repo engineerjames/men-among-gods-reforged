@@ -733,6 +733,10 @@ fn plr_change_stats(ctx: &mut PlayerUpdateCtx) {
             cpl_item != in_idx as i32
         };
 
+        if in_idx != 0 && cpl_item != in_idx as i32 {
+            ctx.deferred.acquired_item_temps.push(items[in_idx].temp);
+        }
+
         if needs_update {
             let mut buf: [u8; 9] = [0; 9];
             buf[0] = ServerCommandType::SetCharItem as u8;
@@ -890,6 +894,10 @@ fn plr_change_stats(ctx: &mut PlayerUpdateCtx) {
     } else {
         cpl_citem != in_idx as i32
     };
+
+    if in_idx != 0 && (in_idx & 0x80000000) == 0 && cpl_citem != in_idx as i32 {
+        ctx.deferred.acquired_item_temps.push(items[in_idx].temp);
+    }
 
     if needs_update {
         let mut buf: [u8; 5] = [0; 5];
@@ -1599,6 +1607,28 @@ mod tests {
             change_stats(gs, nr);
             assert_eq!(gs.players[nr].tbuf[0], ServerCommandType::SetCharObj as u8);
             assert_eq!(gs.players[nr].tbuf[1], 39);
+        });
+    }
+
+    #[test]
+    fn newly_held_quest_item_sets_item_obtained_bit() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.players[nr].cpl.name = gs.characters[cn].name;
+            gs.character_templates[25].data[49] = 105; // Jamil wants the amulet.
+            let obtained = crate::quest_completion::QUEST_ITEM_OBTAINED_IDX;
+
+            // Gold in hand is not an item.
+            gs.characters[cn].citem = 0x8000_0064;
+            change_stats(gs, nr);
+            assert_eq!(gs.characters[cn].future3[obtained], 0);
+
+            gs.items[20].used = USE_ACTIVE;
+            gs.items[20].temp = 105;
+            gs.characters[cn].citem = 20;
+            change_stats(gs, nr);
+            assert_eq!(gs.characters[cn].future3[obtained], 1 << 1);
         });
     }
 

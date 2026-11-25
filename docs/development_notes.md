@@ -50,7 +50,17 @@ completion tracking (see `SV_SETCOMPLETIONDATA` / opcode 77 in
 - `future3[1]` -- hand-authored quest completion bitset (one bit per entry in
   `server::quest_completion::QUEST_DEFS`). Set in the quest-item turn-in
   acceptance path in [server/src/driver/npc.rs](server/src/driver/npc.rs).
-- `future3[2..12]` -- still unused padding; same caveats as before apply.
+- `future3[7]` -- quest "started" bitset (same bit index as `future3[1]`). Set
+  when a quest NPC greets the player (`server::quest_completion::record_quest_started`).
+- `future3[8]` -- sticky quest "item obtained" bitset. Set when an item the
+  quest NPC wants (its template's `data[49]`) first enters the player's
+  inventory or hand slot (`record_quest_items_obtained`, fed by the per-tick
+  inventory diff via `Deferred::acquired_item_temps`). Both are sent to the
+  client in `SetCompletionData` and drive the helper window's quest chains
+  (`client/src/quests.rs`); a one-time migration
+  (`game:meta:quest_progress_future3_reset_v1`) cleared template garbage.
+- Other slots: `[2]` action-speed cache, `[3..=4]` Seyan'Du rune state,
+  `[5..=6]` Zoetje tutorial; `future3[9..12]` is still unused padding.
 
 | Field     | Type        | Origin (`server/orig/data.h`) |
 |-----------|-------------|-------------------------------|

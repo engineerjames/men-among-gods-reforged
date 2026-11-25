@@ -1,7 +1,7 @@
 //! Always-on helper window that guides newer players.
 //!
 //! Shows two sections: control hints (reflecting the player's current key
-//! bindings) and a "What to do next" list fed by a [`QuestLog`]. The window is
+//! bindings) and an objectives list fed by a [`QuestLog`]. The window is
 //! dragged by its title bar and can be hidden from Display Settings.
 
 use sdl2::pixels::Color;
@@ -9,6 +9,7 @@ use sdl2::render::BlendMode;
 
 use super::settings_panel::consume_mouse_events_in_bounds;
 use crate::font_cache::{self, BITMAP_GLYPH_H, TextStyle};
+use crate::quests::QuestLog;
 use crate::ui::RenderContext;
 use crate::ui::widget::{Bounds, EventResponse, GameAction, KeyBindings, UiEvent, Widget};
 use crate::ui::widgets::title_bar::{TITLE_BAR_H, TitleBar, clamp_to_viewport};
@@ -31,24 +32,6 @@ const BG_COLOR: Color = Color::RGBA(10, 10, 30, 180);
 const BORDER_COLOR: Color = Color::RGBA(120, 120, 140, 200);
 /// Placeholder shown when the quest log has no entries.
 const NO_OBJECTIVES_TEXT: &str = "No current objectives.";
-
-/// One suggested objective with a single world coordinate of interest.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct QuestLogEntry {
-    /// Short player-facing description of the objective.
-    pub description: String,
-    /// World tile X of the objective's point of interest.
-    pub x: u16,
-    /// World tile Y of the objective's point of interest.
-    pub y: u16,
-}
-
-/// Ordered list of suggested objectives, most relevant first.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct QuestLog {
-    /// Objectives in display order.
-    pub entries: Vec<QuestLogEntry>,
-}
 
 /// Movable HUD window showing control hints and the current [`QuestLog`].
 pub struct HelperWindow {
@@ -159,12 +142,10 @@ impl HelperWindow {
 /// * One unwrapped hint string per control.
 fn control_hints(bindings: &KeyBindings) -> Vec<String> {
     let mut hints: Vec<String> = [
-        "L-click: Move",
         "Ctrl+L-click: Attack / give item",
         "Shift+L-click: Take / use / drop",
         "Ctrl+R-click: Look at character",
         "Shift+R-click: Look at item",
-        "1-0: Use skill bar slot",
     ]
     .into_iter()
     .map(str::to_owned)
@@ -233,6 +214,7 @@ impl Widget for HelperWindow {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::quests::QuestLogEntry;
     use crate::ui::widget::{KeyBinding, KeyModifiers, MouseButton};
     use sdl2::keyboard::Keycode;
 
@@ -254,6 +236,7 @@ mod tests {
                 description: "Talk to the Cityguard captain about the Black Candle".into(),
                 x: 512,
                 y: 498,
+                min_rank: mag_core::ranks::Rank::Private,
             }],
         });
 

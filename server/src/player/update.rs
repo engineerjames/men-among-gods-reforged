@@ -96,6 +96,9 @@ pub struct Deferred {
     pub see_hit: u64,
     /// Visibility cache misses to add to `GameState::see_miss`.
     pub see_miss: u64,
+    /// Templates of items that newly entered the player's inventory or hand
+    /// slot, for quest "item obtained" tracking.
+    pub acquired_item_temps: Vec<u16>,
 }
 
 /// Per-player wall-clock split of a single update.
@@ -695,6 +698,11 @@ pub fn apply_deferred(gs: &mut GameState, nr: usize, deferred: Deferred) {
 
     gs.see_hit += deferred.see_hit;
     gs.see_miss += deferred.see_miss;
+
+    if !deferred.acquired_item_temps.is_empty() {
+        let cn = gs.players[nr].usnr;
+        crate::quest_completion::record_quest_items_obtained(gs, cn, &deferred.acquired_item_temps);
+    }
 
     if deferred.overflow {
         network_manager::disconnect_after_tick_overflow(gs, nr);

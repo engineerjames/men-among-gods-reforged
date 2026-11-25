@@ -3601,6 +3601,7 @@ pub fn answer_greeting(gs: &mut GameState, cn: usize, co: usize) {
 
         let formatted = greeting_text.replace("%s", ch_co.get_name());
         gs.do_sayx(cn, &formatted);
+        crate::quest_completion::record_quest_started(gs, cn, co);
     }
 }
 

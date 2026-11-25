@@ -3439,6 +3439,7 @@ pub fn npc_see(gs: &mut GameState, cn: usize, co: usize) -> bool {
                     npc_saytext_n(gs, cn, 2, Some(&co_name));
                 }
             }
+            crate::quest_completion::record_quest_started(gs, cn, co);
 
             gs.characters[cn].data[40] = gs.characters[cn].data[39];
             gs.characters[cn].data[39] = gs.characters[cn].data[38];
