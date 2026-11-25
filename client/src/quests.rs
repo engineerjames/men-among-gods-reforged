@@ -91,33 +91,195 @@ impl QuestChain {
     }
 }
 
+/// Builds the standard talk -> fetch item -> return chain for a quest.
+///
+/// # Arguments
+///
+/// * `id` - Server `QuestDef::id` (bit index in the completion bitsets).
+/// * `talk` - `(text, x, y)` for "talk to the quest NPC".
+/// * `find` - `(text, x, y)` for "find the requested item".
+/// * `turn_in` - `(text, x, y)` for "bring the item back".
+///
+/// # Returns
+///
+/// * The three steps, completed by the started / item-obtained / completed
+///   facts respectively.
+const fn fetch_quest(
+    id: u8,
+    talk: (&'static str, u16, u16),
+    find: (&'static str, u16, u16),
+    turn_in: (&'static str, u16, u16),
+) -> [QuestStep; 3] {
+    [
+        QuestStep {
+            description: talk.0,
+            x: talk.1,
+            y: talk.2,
+            done_when: StepDone::Started(id),
+        },
+        QuestStep {
+            description: find.0,
+            x: find.1,
+            y: find.2,
+            done_when: StepDone::ItemObtained(id),
+        },
+        QuestStep {
+            description: turn_in.0,
+            x: turn_in.1,
+            y: turn_in.2,
+            done_when: StepDone::Completed(id),
+        },
+    ]
+}
+
 /// All quest chains, in suggested play order.
 ///
-/// TODO: replace the placeholder `(0, 0)` coordinates with real locations.
-pub static QUEST_CHAINS: &[QuestChain] = &[QuestChain {
-    name: "Barter (Jamil)",
-    min_rank: Rank::Private,
-    steps: &[
-        QuestStep {
-            description: "Talk to Jamil",
-            x: 0,
-            y: 0,
-            done_when: StepDone::Started(1),
-        },
-        QuestStep {
-            description: "Find Jamil's amulet in the Thieves House",
-            x: 0,
-            y: 0,
-            done_when: StepDone::ItemObtained(1),
-        },
-        QuestStep {
-            description: "Return the amulet to Jamil",
-            x: 0,
-            y: 0,
-            done_when: StepDone::Completed(1),
-        },
-    ],
-}];
+/// Ids match `server::quest_completion::QUEST_DEFS`.
+///
+/// TODO: replace the placeholder `(0, 0)` coordinates with real locations and
+/// set each chain's real `min_rank`.
+pub static QUEST_CHAINS: &[QuestChain] = &[
+    QuestChain {
+        name: "Black Candle (Cityguard)",
+        min_rank: Rank::Private,
+        steps: &fetch_quest(
+            0,
+            ("Talk to the Cityguard", 0, 0),
+            ("Find a Black Candle", 0, 0),
+            ("Return the Black Candle to the Cityguard", 0, 0),
+        ),
+    },
+    QuestChain {
+        name: "Barter (Jamil)",
+        min_rank: Rank::Private,
+        steps: &fetch_quest(
+            1,
+            ("Talk to Jamil", 0, 0),
+            ("Find Jamil's amulet in the Thieves House", 0, 0),
+            ("Return the amulet to Jamil", 0, 0),
+        ),
+    },
+    QuestChain {
+        name: "Enhance Weapon (Sirjan)",
+        min_rank: Rank::Private,
+        steps: &fetch_quest(
+            2,
+            ("Talk to Sirjan", 0, 0),
+            ("Find the Belt Sirjan wants", 0, 0),
+            ("Return the Belt to Sirjan", 0, 0),
+        ),
+    },
+    QuestChain {
+        name: "Recall (Inga)",
+        min_rank: Rank::Private,
+        steps: &fetch_quest(
+            3,
+            ("Talk to Inga", 0, 0),
+            ("Find the Ruby Inga wants", 0, 0),
+            ("Return the Ruby to Inga", 0, 0),
+        ),
+    },
+    QuestChain {
+        name: "Repair (Jefferson)",
+        min_rank: Rank::Private,
+        steps: &fetch_quest(
+            4,
+            ("Talk to Jefferson", 0, 0),
+            ("Find the Bronze Armor Jefferson wants", 0, 0),
+            ("Return the Bronze Armor to Jefferson", 0, 0),
+        ),
+    },
+    QuestChain {
+        name: "Stun (Ingrid)",
+        min_rank: Rank::Private,
+        steps: &fetch_quest(
+            5,
+            ("Talk to Ingrid", 0, 0),
+            ("Find the Greater Healing Potion Ingrid wants", 0, 0),
+            ("Return the Greater Healing Potion to Ingrid", 0, 0),
+        ),
+    },
+    QuestChain {
+        name: "Lock (Steven)",
+        min_rank: Rank::Private,
+        steps: &fetch_quest(
+            6,
+            ("Talk to Steven", 0, 0),
+            ("Find the Barbarian Sword Steven wants", 0, 0),
+            ("Return the Barbarian Sword to Steven", 0, 0),
+        ),
+    },
+    QuestChain {
+        name: "Bless (Cirrus)",
+        min_rank: Rank::Private,
+        steps: &fetch_quest(
+            7,
+            ("Talk to Cirrus", 0, 0),
+            ("Find the Ruby Amulet Cirrus wants", 0, 0),
+            ("Return the Ruby Amulet to Cirrus", 0, 0),
+        ),
+    },
+    QuestChain {
+        name: "Identify (Nasir)",
+        min_rank: Rank::Private,
+        steps: &fetch_quest(
+            8,
+            ("Talk to Nasir", 0, 0),
+            ("Find the Greater Mana Potion Nasir wants", 0, 0),
+            ("Return the Greater Mana Potion to Nasir", 0, 0),
+        ),
+    },
+    QuestChain {
+        name: "Resist (Serena)",
+        min_rank: Rank::Private,
+        steps: &fetch_quest(
+            9,
+            ("Talk to Serena", 0, 0),
+            ("Find the Sword of Stealth Serena wants", 0, 0),
+            ("Return the Sword of Stealth to Serena", 0, 0),
+        ),
+    },
+    QuestChain {
+        name: "Curse (Gordon)",
+        min_rank: Rank::Private,
+        steps: &fetch_quest(
+            10,
+            ("Talk to Gordon", 0, 0),
+            ("Find the Potion of Life Gordon wants", 0, 0),
+            ("Return the Potion of Life to Gordon", 0, 0),
+        ),
+    },
+    QuestChain {
+        name: "Sense (Manfred)",
+        min_rank: Rank::Private,
+        steps: &fetch_quest(
+            11,
+            ("Talk to Manfred", 0, 0),
+            ("Find the Silver Small Ruby Ring Manfred wants", 0, 0),
+            ("Return the Silver Small Ruby Ring to Manfred", 0, 0),
+        ),
+    },
+    QuestChain {
+        name: "Rest (Leopold)",
+        min_rank: Rank::Private,
+        steps: &fetch_quest(
+            12,
+            ("Talk to Leopold", 0, 0),
+            ("Find the Ratling Fighter's Eye Leopold wants", 0, 0),
+            ("Return the Ratling Fighter's Eye to Leopold", 0, 0),
+        ),
+    },
+    QuestChain {
+        name: "Heal (Gunther)",
+        min_rank: Rank::Private,
+        steps: &fetch_quest(
+            13,
+            ("Talk to Gunther", 0, 0),
+            ("Find the Amulet of Resistance Gunther wants", 0, 0),
+            ("Return the Amulet of Resistance to Gunther", 0, 0),
+        ),
+    },
+];
 
 /// One suggested objective with a single world coordinate of interest.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -251,6 +413,25 @@ mod tests {
             jamil(&completion(!bit, !bit, !bit)).as_deref(),
             Some("Talk to Jamil")
         );
+    }
+
+    #[test]
+    fn every_chain_ends_with_a_distinct_in_range_turn_in() {
+        let ids: Vec<u8> = QUEST_CHAINS
+            .iter()
+            .filter_map(|chain| match chain.steps.last()?.done_when {
+                StepDone::Completed(id) => Some(id),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            ids.len(),
+            QUEST_CHAINS.len(),
+            "every chain ends with a turn-in"
+        );
+        assert!(ids.iter().all(|&id| id < 32));
+        let unique: std::collections::HashSet<u8> = ids.iter().copied().collect();
+        assert_eq!(unique.len(), ids.len(), "chains must not share quest ids");
     }
 
     #[test]
