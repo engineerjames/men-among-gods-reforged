@@ -284,6 +284,9 @@ pub static QUEST_CHAINS: &[QuestChain] = &[
 /// One suggested objective with a single world coordinate of interest.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct QuestLogEntry {
+    /// Name of the chain this objective comes from; stable as the chain
+    /// advances, so it identifies the player's tracked objective.
+    pub chain: &'static str,
     /// Short player-facing description of the objective.
     pub description: String,
     /// World tile X of the objective's point of interest.
@@ -339,6 +342,7 @@ impl QuestLog {
             .filter(|chain| chain.min_rank.index() <= rank)
             .filter_map(|chain| {
                 chain.current_step(completion).map(|step| QuestLogEntry {
+                    chain: chain.name,
                     description: step.description.to_owned(),
                     x: step.x,
                     y: step.y,
@@ -347,15 +351,6 @@ impl QuestLog {
             })
             .collect();
         Self { entries }
-    }
-
-    /// Returns the coordinate the compass should point at.
-    ///
-    /// # Returns
-    ///
-    /// * The first objective's `(x, y)`, or `None` when there are none.
-    pub fn compass_target(&self) -> Option<(u16, u16)> {
-        self.entries.first().map(|e| (e.x, e.y))
     }
 }
 
@@ -459,13 +454,11 @@ mod tests {
         let fresh = QuestLog::build_from(&chains, &none, 0);
         assert_eq!(fresh.entries.len(), 1);
         assert_eq!(fresh.entries[0].min_rank, Rank::Private);
-        assert_eq!(fresh.compass_target(), Some((7, 9)));
+        assert_eq!(fresh.entries[0].chain, "low");
 
         // 4900 points = Corporal: both chains, catalog order preserved.
         let corporal = QuestLog::build_from(&chains, &none, 4900);
         let ranks: Vec<Rank> = corporal.entries.iter().map(|e| e.min_rank).collect();
         assert_eq!(ranks, vec![Rank::Corporal, Rank::Private]);
-
-        assert_eq!(QuestLog::default().compass_target(), None);
     }
 }

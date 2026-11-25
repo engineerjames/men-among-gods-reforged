@@ -855,6 +855,8 @@ impl GameScene {
             && self.helper_window.handle_event(ui_event)
                 == crate::ui::widget::EventResponse::Consumed
         {
+            // A click may have changed the tracked objective.
+            self.compass.set_target(self.helper_window.compass_target());
             return UiHandleResult::Consumed;
         }
 

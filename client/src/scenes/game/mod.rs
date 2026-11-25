@@ -1061,7 +1061,7 @@ impl GameScene {
         self.quest_log_inputs = Some(inputs);
         let log = QuestLog::build(&inputs.0, inputs.1.max(0) as u32);
         self.helper_window.set_quest_log(&log);
-        self.compass.set_target(log.compass_target());
+        self.compass.set_target(self.helper_window.compass_target());
     }
 
     /// Returns whether a text field (chat or a settings input) has keyboard
@@ -1774,8 +1774,19 @@ impl GameScene {
 
     /// Returns `true` when the mouse cursor is hovering over any visible UI
     /// widget, in which case helper text should be suppressed.
-    fn is_mouse_over_ui(&self) -> bool {
+    ///
+    /// # Arguments
+    ///
+    /// * `show_helper_window` - Whether the helper window is visible.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when a visible widget is under the cursor.
+    fn is_mouse_over_ui(&self, show_helper_window: bool) -> bool {
         let (mx, my) = (self.mouse_x, self.mouse_y);
+        if show_helper_window && self.helper_window.bounds().contains_point(mx, my) {
+            return true;
+        }
         if self.chat_box.is_focused() && self.chat_box.bounds().contains_point(mx, my) {
             return true;
         }
@@ -1846,6 +1857,9 @@ impl GameScene {
     /// * `canvas` - SDL2 canvas.
     /// * `gfx` - Graphics/texture cache.
     /// * `ps` - Current player state.
+    /// * `show_helper_text` - Whether cursor helper text is enabled.
+    /// * `show_positions` - Whether to show raw cursor coordinates instead.
+    /// * `show_helper_window` - Whether the helper window is visible.
     ///
     /// # Returns
     ///
@@ -1857,6 +1871,7 @@ impl GameScene {
         ps: &PlayerState,
         show_helper_text: bool,
         show_positions: bool,
+        show_helper_window: bool,
     ) -> Result<(), String> {
         if !show_helper_text {
             return Ok(());
@@ -1895,7 +1910,7 @@ impl GameScene {
         {
             return self.draw_cursor_helper_text(canvas, gfx, text);
         }
-        if self.is_mouse_over_ui() {
+        if self.is_mouse_over_ui(show_helper_window) {
             return Ok(());
         }
         let Some(text) = self.resolve_helper_text(ps) else {
@@ -3019,6 +3034,7 @@ impl Scene for GameScene {
                 ps,
                 app_state.settings.show_helper_text,
                 app_state.settings.show_positions,
+                app_state.settings.show_helper_window,
             )?;
         }
         self.perf_profiler.end_sample(PerfLabel::DrawHelperText);
