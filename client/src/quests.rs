@@ -154,9 +154,9 @@ pub static QUEST_CHAINS: &[QuestChain] = &[
         min_rank: Rank::Private,
         steps: &fetch_quest(
             1,
-            ("Talk to Jamil", 0, 0),
-            ("Find Jamil's amulet in the Thieves House", 0, 0),
-            ("Return the amulet to Jamil", 0, 0),
+            ("Talk to Jamil", 542, 529),
+            ("Find Jamil's amulet in the Thieves House", 529, 543),
+            ("Return the amulet to Jamil", 542, 529), // TODO: Simplify to just providing two coordinates?
         ),
     },
     QuestChain {
@@ -164,9 +164,9 @@ pub static QUEST_CHAINS: &[QuestChain] = &[
         min_rank: Rank::Private,
         steps: &fetch_quest(
             2,
-            ("Talk to Sirjan", 0, 0),
-            ("Find the Belt Sirjan wants", 0, 0),
-            ("Return the Belt to Sirjan", 0, 0),
+            ("Talk to Sirjan", 559, 500),
+            ("Find the Belt in the Haunted Castle", 599, 542),
+            ("Return the Belt to Sirjan", 559, 500),
         ),
     },
     QuestChain {
@@ -174,9 +174,9 @@ pub static QUEST_CHAINS: &[QuestChain] = &[
         min_rank: Rank::Private,
         steps: &fetch_quest(
             3,
-            ("Talk to Inga", 0, 0),
-            ("Find the Ruby Inga wants", 0, 0),
-            ("Return the Ruby to Inga", 0, 0),
+            ("Talk to Inga", 568, 528),
+            ("Find the Ruby in the Cursed Tomb", 543, 561),
+            ("Return the Ruby to Inga", 568, 528),
         ),
     },
     QuestChain {
@@ -194,9 +194,13 @@ pub static QUEST_CHAINS: &[QuestChain] = &[
         min_rank: Rank::Private,
         steps: &fetch_quest(
             5,
-            ("Talk to Ingrid", 0, 0),
-            ("Find the Greater Healing Potion Ingrid wants", 0, 0),
-            ("Return the Greater Healing Potion to Ingrid", 0, 0),
+            ("Talk to Ingrid", 595, 499),
+            (
+                "Find the Greater Healing Potion from the Skeletonn Lord",
+                600,
+                488,
+            ),
+            ("Return the Greater Healing Potion to Ingrid", 595, 499),
         ),
     },
     QuestChain {
@@ -297,6 +301,9 @@ pub struct QuestLogEntry {
     pub min_rank: Rank,
 }
 
+/// Maximum number of objectives suggested at once.
+pub const MAX_QUEST_LOG_ENTRIES: usize = 3;
+
 /// Ordered list of suggested objectives, most relevant first.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct QuestLog {
@@ -314,8 +321,8 @@ impl QuestLog {
     ///
     /// # Returns
     ///
-    /// * The current step of every unfinished chain the player's rank allows,
-    ///   in catalog order.
+    /// * Up to [`MAX_QUEST_LOG_ENTRIES`] current steps of unfinished chains at
+    ///   most one rank above the player, lowest `min_rank` first.
     pub fn build(completion: &CompletionSnapshot, points_total: u32) -> Self {
         Self::build_from(QUEST_CHAINS, completion, points_total)
     }
@@ -330,16 +337,23 @@ impl QuestLog {
     ///
     /// # Returns
     ///
-    /// * The current step of every eligible, unfinished chain.
+    /// * Up to [`MAX_QUEST_LOG_ENTRIES`] current steps of unfinished chains
+    ///   whose `min_rank` is at most one above the player's, sorted by
+    ///   `min_rank` (catalog order within a rank).
     fn build_from(
         chains: &[QuestChain],
         completion: &CompletionSnapshot,
         points_total: u32,
     ) -> Self {
-        let rank = points2rank(points_total) as usize;
-        let entries = chains
+        let max_rank = points2rank(points_total) as usize + 1;
+        let mut eligible: Vec<&QuestChain> = chains
             .iter()
-            .filter(|chain| chain.min_rank.index() <= rank)
+            .filter(|chain| chain.min_rank.index() <= max_rank)
+            .collect();
+        // Stable: chains of equal rank keep catalog order.
+        eligible.sort_by_key(|chain| chain.min_rank.index());
+        let entries = eligible
+            .into_iter()
             .filter_map(|chain| {
                 chain.current_step(completion).map(|step| QuestLogEntry {
                     chain: chain.name,
@@ -349,6 +363,7 @@ impl QuestLog {
                     min_rank: chain.min_rank,
                 })
             })
+            .take(MAX_QUEST_LOG_ENTRIES)
             .collect();
         Self { entries }
     }
@@ -430,35 +445,44 @@ mod tests {
     }
 
     #[test]
-    fn chains_above_player_rank_are_hidden_and_order_is_kept() {
+    fn log_is_rank_limited_sorted_and_capped() {
         static STEPS: &[QuestStep] = &[QuestStep {
             description: "Step",
             x: 7,
             y: 9,
             done_when: StepDone::Completed(5),
         }];
+        let chain = |name, min_rank| QuestChain {
+            name,
+            min_rank,
+            steps: STEPS,
+        };
         let chains = [
-            QuestChain {
-                name: "high",
-                min_rank: Rank::Corporal,
-                steps: STEPS,
-            },
-            QuestChain {
-                name: "low",
-                min_rank: Rank::Private,
-                steps: STEPS,
-            },
+            chain("corporal", Rank::Corporal),
+            chain("pfc", Rank::PrivateFirstClass),
+            chain("lance", Rank::LanceCorporal),
+            chain("private-a", Rank::Private),
+            chain("private-b", Rank::Private),
         ];
         let none = CompletionSnapshot::default();
+        let names = |points| -> Vec<&str> {
+            QuestLog::build_from(&chains, &none, points)
+                .entries
+                .iter()
+                .map(|e| e.chain)
+                .collect()
+        };
 
-        let fresh = QuestLog::build_from(&chains, &none, 0);
-        assert_eq!(fresh.entries.len(), 1);
-        assert_eq!(fresh.entries[0].min_rank, Rank::Private);
-        assert_eq!(fresh.entries[0].chain, "low");
-
-        // 4900 points = Corporal: both chains, catalog order preserved.
-        let corporal = QuestLog::build_from(&chains, &none, 4900);
-        let ranks: Vec<Rank> = corporal.entries.iter().map(|e| e.min_rank).collect();
-        assert_eq!(ranks, vec![Rank::Corporal, Rank::Private]);
+        // Private: one rank above (PFC) is shown, two above (Lance) is not.
+        assert_eq!(names(0), vec!["private-a", "private-b", "pfc"]);
+        // 4900 points = Corporal: all eligible, sorted, capped at 3.
+        assert_eq!(names(4900), vec!["private-a", "private-b", "pfc"]);
+        // Finishing the low chains surfaces the next ranks in order.
+        let done_low = QuestLog::build_from(&chains[..3], &none, 4900);
+        let ranks: Vec<Rank> = done_low.entries.iter().map(|e| e.min_rank).collect();
+        assert_eq!(
+            ranks,
+            vec![Rank::PrivateFirstClass, Rank::LanceCorporal, Rank::Corporal]
+        );
     }
 }

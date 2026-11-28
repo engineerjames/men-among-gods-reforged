@@ -154,7 +154,7 @@ impl HelperWindow {
             self.objectives
                 .iter()
                 .enumerate()
-                .map(|(i, e)| (format!("- {} ({},{})", e.description, e.x, e.y), Some(i)))
+                .map(|(i, e)| (format!("- {}", e.description), Some(i)))
                 .collect()
         };
         let mut lines = Vec::new();
