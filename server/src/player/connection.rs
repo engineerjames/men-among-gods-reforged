@@ -594,8 +594,10 @@ pub fn plr_logout(gs: &mut GameState, character_id: usize, player_id: usize, rea
         if is_player && is_not_ccp {
             let name = gs.characters[character_id].get_name().to_owned();
 
-            // Handle exit punishment
-            if reason == LogoutReason::Exit {
+            // Handle exit punishment (gods and creators are exempt)
+            let is_god_or_creator =
+                character_flags & (CharacterFlags::God | CharacterFlags::Creator).bits() != 0;
+            if reason == LogoutReason::Exit && !is_god_or_creator {
                 log::warn!(
                     "Character '{}' punished for leaving the game by means of F12.",
                     gs.characters[character_id].get_name(),

@@ -14,9 +14,7 @@ use super::settings_panel::consume_mouse_events_in_bounds;
 use crate::font_cache::{self, BITMAP_GLYPH_H, TextStyle};
 use crate::quests::{QuestLog, QuestLogEntry};
 use crate::ui::RenderContext;
-use crate::ui::widget::{
-    Bounds, EventResponse, GameAction, KeyBindings, MouseButton, UiEvent, Widget,
-};
+use crate::ui::widget::{Bounds, EventResponse, KeyBindings, MouseButton, UiEvent, Widget};
 use crate::ui::widgets::title_bar::{TITLE_BAR_H, TitleBar, clamp_to_viewport};
 
 /// Fixed window width in logical pixels.
@@ -201,8 +199,8 @@ impl HelperWindow {
 /// # Returns
 ///
 /// * One unwrapped hint string per control.
-fn control_hints(bindings: &KeyBindings) -> Vec<String> {
-    let mut hints: Vec<String> = [
+fn control_hints(_bindings: &KeyBindings) -> Vec<String> {
+    let hints: Vec<String> = [
         "Ctrl+L-click: Attack / give item",
         "Shift+L-click: Take / use / drop",
         "Ctrl+R-click: Look at character",
@@ -211,11 +209,7 @@ fn control_hints(bindings: &KeyBindings) -> Vec<String> {
     .into_iter()
     .map(str::to_owned)
     .collect();
-    hints.extend(GameAction::ALL.iter().filter_map(|&action| {
-        bindings
-            .binding_for(action)
-            .map(|kb| format!("{kb}: {}", action.label()))
-    }));
+
     hints
 }
 
@@ -305,7 +299,7 @@ impl Widget for HelperWindow {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ui::widget::{KeyBinding, KeyModifiers};
+    use crate::ui::widget::{GameAction, KeyBinding, KeyModifiers};
     use sdl2::keyboard::Keycode;
 
     fn has_line(window: &HelperWindow, needle: &str) -> bool {

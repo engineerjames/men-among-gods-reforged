@@ -2985,6 +2985,26 @@ mod tests {
     }
 
     #[test]
+    fn plr_cmd_exit_does_not_punish_gods_or_creators() {
+        for flag in [CharacterFlags::God, CharacterFlags::Creator] {
+            with_test_gs(move |gs| {
+                let (cn, nr) = add_test_player(gs);
+                attach_test_socket(gs, nr);
+                gs.characters[cn].flags |= flag.bits();
+                gs.characters[cn].hp[5] = 10;
+                gs.characters[cn].a_hp = 20_000;
+                gs.characters[cn].gold = 1_000;
+
+                plr_cmd_exit(gs, nr);
+
+                assert_eq!(gs.characters[cn].a_hp, 20_000);
+                assert_eq!(gs.characters[cn].gold, 1_000);
+                assert_eq!(gs.players[nr].state, ST_EXIT);
+            });
+        }
+    }
+
+    #[test]
     fn plr_cmd_shop_handles_depot_withdrawals_and_corpse_gold() {
         with_test_gs(|gs| {
             let (cn, nr) = add_test_player(gs);
