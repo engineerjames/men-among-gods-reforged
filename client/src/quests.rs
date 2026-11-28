@@ -204,13 +204,17 @@ pub static QUEST_CHAINS: &[QuestChain] = &[
         ),
     },
     QuestChain {
-        name: "Lock (Steven)",
+        name: "Lockpicking (Steven)",
         min_rank: Rank::Private,
         steps: &fetch_quest(
             6,
-            ("Talk to Steven", 0, 0),
-            ("Find the Barbarian Sword Steven wants", 0, 0),
-            ("Return the Barbarian Sword to Steven", 0, 0),
+            ("Talk to Steven", 527, 470),
+            (
+                "Find the Barbarian Sword from the Templar Outlaws",
+                604,
+                452,
+            ),
+            ("Return the Barbarian Sword to Steven", 527, 470),
         ),
     },
     QuestChain {

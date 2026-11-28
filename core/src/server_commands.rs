@@ -84,8 +84,9 @@ pub enum ServerCommandType {
     /// Wire format: opcode (1) + labyrinth_progress (1) + pentagram_solves
     /// (u32 LE) + first_kill_bits (4x u32 LE) + explorer_point_bits (4x u32
     /// LE) + quest_completion_bits (u32 LE) + quest_started_bits (u32 LE) +
-    /// quest_item_obtained_bits (u32 LE) = **50 bytes total**. Always sent as
-    /// a full snapshot (no delta mode) since the payload is small.
+    /// quest_item_obtained_bits (u32 LE) + tutorial_step (1) = **51 bytes
+    /// total**. Always sent as a full snapshot (no delta mode) since the
+    /// payload is small.
     SetCompletionData = 77,
     /// Active Seyan'Du rune and remaining swap cooldown.
     ///
@@ -214,7 +215,7 @@ impl ServerCommandType {
             ServerCommandType::SetCharTalents => 26,
             ServerCommandType::SetCharRuneState => 4,
             ServerCommandType::SetWeather => 10,
-            ServerCommandType::SetCompletionData => 50,
+            ServerCommandType::SetCompletionData => 51,
             ServerCommandType::SetCharPts => 13,
             ServerCommandType::SetCharGold => 13,
             ServerCommandType::SetCharItem => 9,
@@ -544,6 +545,9 @@ pub enum ServerCommandData {
         quest_completion_bits: u32,
         quest_started_bits: u32,
         quest_item_obtained_bits: u32,
+        /// Zoetje starting-area tutorial step, or [`TUTORIAL_STEP_LEFT`] once
+        /// the character has left the starting area.
+        tutorial_step: u8,
     },
     Load {
         load: u32,
@@ -1189,6 +1193,7 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
                 quest_completion_bits: read_u32(bytes, 38)?,
                 quest_started_bits: read_u32(bytes, 42)?,
                 quest_item_obtained_bits: read_u32(bytes, 46)?,
+                tutorial_step: *bytes.get(50)?,
             },
         )),
         78 => Some((
@@ -1449,7 +1454,7 @@ mod tests {
 
     #[test]
     fn parse_set_completion_data_roundtrip() {
-        let mut pkt = [0u8; 50];
+        let mut pkt = [0u8; 51];
         pkt[0] = 77;
         pkt[1] = 7; // labyrinth_progress
         pkt[2..6].copy_from_slice(&42u32.to_le_bytes()); // pentagram_solves
@@ -1464,6 +1469,7 @@ mod tests {
         pkt[38..42].copy_from_slice(&9u32.to_le_bytes()); // quest_completion_bits
         pkt[42..46].copy_from_slice(&10u32.to_le_bytes()); // quest_started_bits
         pkt[46..50].copy_from_slice(&11u32.to_le_bytes()); // quest_item_obtained_bits
+        pkt[50] = 5; // tutorial_step
 
         let cmd = ServerCommand::from_bytes(&pkt).unwrap();
         assert_eq!(cmd.header, ServerCommandType::SetCompletionData);
@@ -1476,6 +1482,7 @@ mod tests {
                 quest_completion_bits,
                 quest_started_bits,
                 quest_item_obtained_bits,
+                tutorial_step,
             } => {
                 assert_eq!(labyrinth_progress, 7);
                 assert_eq!(pentagram_solves, 42);
@@ -1484,17 +1491,18 @@ mod tests {
                 assert_eq!(quest_completion_bits, 9);
                 assert_eq!(quest_started_bits, 10);
                 assert_eq!(quest_item_obtained_bits, 11);
+                assert_eq!(tutorial_step, 5);
             }
             _ => panic!("Expected SetCompletionData variant"),
         }
     }
 
     #[test]
-    fn set_completion_data_expected_length_is_50() {
-        let pkt = make_packet(77, &[0; 49]);
+    fn set_completion_data_expected_length_is_51() {
+        let pkt = make_packet(77, &[0; 50]);
         let mut last_n = 0i32;
         let len = ServerCommandType::get_expected_length(&pkt, &mut last_n).unwrap();
-        assert_eq!(len, 50);
+        assert_eq!(len, 51);
     }
 
     #[test]
