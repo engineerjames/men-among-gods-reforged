@@ -60,7 +60,10 @@ completion tracking (see `SV_SETCOMPLETIONDATA` / opcode 77 in
   (`client/src/quests.rs`); a one-time migration
   (`game:meta:quest_progress_future3_reset_v1`) cleared template garbage.
 - Other slots: `[2]` action-speed cache, `[3..=4]` Seyan'Du rune state,
-  `[5..=6]` Zoetje tutorial; `future3[9..12]` is still unused padding.
+  `[5..=6]` Zoetje tutorial (step `[5]` is sent as `SetCompletionData`'s
+  `tutorial_step`, or `TUTORIAL_STEP_LEFT` once the character's temple is no
+  longer the starting area, e.g. after the Magic Portal); `future3[9..12]` is
+  still unused padding.
 
 | Field     | Type        | Origin (`server/orig/data.h`) |
 |-----------|-------------|-------------------------------|

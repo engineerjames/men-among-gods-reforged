@@ -11,13 +11,18 @@
 //! Coordinates are placeholders until populated by hand.
 
 use mag_core::ranks::{Rank, points2rank};
+use mag_core::server_commands::TUTORIAL_STEP_LEFT;
 
 use crate::player_state::CompletionSnapshot;
 
-/// Server fact that marks a step as done; the `u8` is the server's
-/// `QuestDef::id` (bit index in the matching completion bitset).
+/// Server fact that marks a step as done. For the quest variants the `u8` is
+/// the server's `QuestDef::id` (bit index in the matching completion bitset).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StepDone {
+    /// The Zoetje tutorial step has reached at least this value (see
+    /// `server::driver::special` `ZOETJE_*_STEP`); [`TUTORIAL_STEP_LEFT`]
+    /// means the player has left the starting area.
+    Tutorial(u8),
     /// The quest NPC greeted the player with the quest request.
     Started(u8),
     /// The player has picked up the quest item at least once (sticky).
@@ -35,9 +40,11 @@ impl StepDone {
     ///
     /// # Returns
     ///
-    /// * `true` when the matching quest bit is set.
+    /// * `true` when the matching quest bit is set or the tutorial has
+    ///   progressed far enough.
     fn is_set(self, completion: &CompletionSnapshot) -> bool {
         let (bits, id) = match self {
+            StepDone::Tutorial(step) => return completion.tutorial_step >= step,
             StepDone::Started(id) => (completion.quest_started_bits, id),
             StepDone::ItemObtained(id) => (completion.quest_item_obtained_bits, id),
             StepDone::Completed(id) => (completion.quest_completion_bits, id),
@@ -71,6 +78,16 @@ pub struct QuestChain {
 }
 
 impl QuestChain {
+    /// Returns whether this chain is the starting-area tutorial.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when any step is completed by a [`StepDone::Tutorial`] fact.
+    fn is_tutorial(&self) -> bool {
+        self.steps
+            .iter()
+            .any(|s| matches!(s.done_when, StepDone::Tutorial(_)))
+    }
     /// Returns the step the player should do next.
     ///
     /// # Arguments
@@ -139,6 +156,44 @@ const fn fetch_quest(
 /// TODO: replace the placeholder `(0, 0)` coordinates with real locations and
 /// set each chain's real `min_rank`.
 pub static QUEST_CHAINS: &[QuestChain] = &[
+    // Step thresholds mirror the server's Zoetje dialogue: each gate is
+    // cleared once the line after it has been delivered.
+    QuestChain {
+        name: "Temple of Rebirth (Zoetje)",
+        min_rank: Rank::Private,
+        steps: &[
+            QuestStep {
+                description: "Look at Zoetje (hold Ctrl + right-click her)",
+                x: 484,
+                y: 128,
+                done_when: StepDone::Tutorial(3),
+            },
+            QuestStep {
+                description: "Equip the armor and weapon from Zoetje (press I)",
+                x: 484,
+                y: 128,
+                done_when: StepDone::Tutorial(5),
+            },
+            QuestStep {
+                description: "Gather flowers in the garden and brew a potion",
+                x: 491,
+                y: 125,
+                done_when: StepDone::Tutorial(7),
+            },
+            QuestStep {
+                description: "Defeat the practice enemy",
+                x: 498,
+                y: 125,
+                done_when: StepDone::Tutorial(8),
+            },
+            QuestStep {
+                description: "Step through the Magic Portal",
+                x: 484,
+                y: 122,
+                done_when: StepDone::Tutorial(TUTORIAL_STEP_LEFT),
+            },
+        ],
+    },
     QuestChain {
         name: "Black Candle (Cityguard)",
         min_rank: Rank::Private,
@@ -325,8 +380,10 @@ impl QuestLog {
     ///
     /// # Returns
     ///
-    /// * Up to [`MAX_QUEST_LOG_ENTRIES`] current steps of unfinished chains at
-    ///   most one rank above the player, lowest `min_rank` first.
+    /// * Only the tutorial objective while the player is in the starting
+    ///   area; otherwise up to [`MAX_QUEST_LOG_ENTRIES`] current steps of
+    ///   unfinished chains at most one rank above the player, lowest
+    ///   `min_rank` first.
     pub fn build(completion: &CompletionSnapshot, points_total: u32) -> Self {
         Self::build_from(QUEST_CHAINS, completion, points_total)
     }
@@ -341,18 +398,21 @@ impl QuestLog {
     ///
     /// # Returns
     ///
-    /// * Up to [`MAX_QUEST_LOG_ENTRIES`] current steps of unfinished chains
-    ///   whose `min_rank` is at most one above the player's, sorted by
-    ///   `min_rank` (catalog order within a rank).
+    /// * Only the tutorial chain while the player is still in the starting
+    ///   area; otherwise up to [`MAX_QUEST_LOG_ENTRIES`] current steps of
+    ///   unfinished chains whose `min_rank` is at most one above the
+    ///   player's, sorted by `min_rank` (catalog order within a rank).
     fn build_from(
         chains: &[QuestChain],
         completion: &CompletionSnapshot,
         points_total: u32,
     ) -> Self {
+        let in_tutorial = completion.tutorial_step != TUTORIAL_STEP_LEFT;
         let max_rank = points2rank(points_total) as usize + 1;
         let mut eligible: Vec<&QuestChain> = chains
             .iter()
             .filter(|chain| chain.min_rank.index() <= max_rank)
+            .filter(|chain| !in_tutorial || chain.is_tutorial())
             .collect();
         // Stable: chains of equal rank keep catalog order.
         eligible.sort_by_key(|chain| chain.min_rank.index());
@@ -382,6 +442,7 @@ mod tests {
             quest_started_bits: started,
             quest_item_obtained_bits: obtained,
             quest_completion_bits: completed,
+            tutorial_step: TUTORIAL_STEP_LEFT,
             ..CompletionSnapshot::default()
         }
     }
@@ -430,8 +491,48 @@ mod tests {
     }
 
     #[test]
+    fn tutorial_chain_advances_and_ends_when_starting_area_is_left() {
+        let tutorial = |step| {
+            let completion = CompletionSnapshot {
+                tutorial_step: step,
+                ..CompletionSnapshot::default()
+            };
+            let entries = QuestLog::build(&completion, 0).entries;
+            // Nothing but the tutorial is suggested inside the starting area.
+            assert!(
+                step == TUTORIAL_STEP_LEFT || entries.len() <= 1,
+                "{entries:?}"
+            );
+            entries
+                .into_iter()
+                .find(|e| e.chain == "Temple of Rebirth (Zoetje)")
+                .map(|e| e.description)
+        };
+        assert!(tutorial(0).unwrap().starts_with("Look at Zoetje"));
+        assert!(tutorial(3).unwrap().starts_with("Equip"));
+        assert_eq!(
+            tutorial(8).as_deref(),
+            Some("Step through the Magic Portal")
+        );
+        // Portal used early, or a character from before the tutorial.
+        assert_eq!(tutorial(TUTORIAL_STEP_LEFT), None);
+        let left = CompletionSnapshot {
+            tutorial_step: TUTORIAL_STEP_LEFT,
+            ..CompletionSnapshot::default()
+        };
+        assert!(!QuestLog::build(&left, 0).entries.is_empty());
+    }
+
+    #[test]
     fn every_chain_ends_with_a_distinct_in_range_turn_in() {
-        let ids: Vec<u8> = QUEST_CHAINS
+        let quest_chains: Vec<&QuestChain> = QUEST_CHAINS
+            .iter()
+            .filter(|chain| {
+                chain.steps.last().map(|s| s.done_when)
+                    != Some(StepDone::Tutorial(TUTORIAL_STEP_LEFT))
+            })
+            .collect();
+        let ids: Vec<u8> = quest_chains
             .iter()
             .filter_map(|chain| match chain.steps.last()?.done_when {
                 StepDone::Completed(id) => Some(id),
@@ -440,8 +541,8 @@ mod tests {
             .collect();
         assert_eq!(
             ids.len(),
-            QUEST_CHAINS.len(),
-            "every chain ends with a turn-in"
+            quest_chains.len(),
+            "every chain ends with a turn-in or leaving the starting area"
         );
         assert!(ids.iter().all(|&id| id < 32));
         let unique: std::collections::HashSet<u8> = ids.iter().copied().collect();
@@ -468,7 +569,10 @@ mod tests {
             chain("private-a", Rank::Private),
             chain("private-b", Rank::Private),
         ];
-        let none = CompletionSnapshot::default();
+        let none = CompletionSnapshot {
+            tutorial_step: TUTORIAL_STEP_LEFT,
+            ..CompletionSnapshot::default()
+        };
         let names = |points| -> Vec<&str> {
             QuestLog::build_from(&chains, &none, points)
                 .entries

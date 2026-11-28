@@ -629,6 +629,9 @@ pub fn teleport3(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         gs.characters[cn].tavern_y = 512;
     }
 
+    // The new home ends the starting-area tutorial in the client's quest log.
+    crate::player::commands::resend_completion_data_for_character(gs, cn);
+
     true
 }
 

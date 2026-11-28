@@ -1,5 +1,9 @@
 use crate::string_operations::c_string_to_str;
 
+/// `SetCompletionData::tutorial_step` value meaning the character has left
+/// the starting area (portal, Zoetje's fallback, or a pre-tutorial character).
+pub const TUTORIAL_STEP_LEFT: u8 = u8::MAX;
+
 /// Opcode values for incoming server commands.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u8)]

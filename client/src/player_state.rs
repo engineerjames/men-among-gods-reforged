@@ -91,6 +91,9 @@ pub struct CompletionSnapshot {
     pub quest_started_bits: u32,
     /// Quests whose required item the player has picked up (sticky).
     pub quest_item_obtained_bits: u32,
+    /// Zoetje tutorial step, or `TUTORIAL_STEP_LEFT` once the starting area
+    /// has been left.
+    pub tutorial_step: u8,
 }
 
 impl Default for PlayerState {
@@ -569,6 +572,7 @@ impl PlayerState {
                 quest_completion_bits,
                 quest_started_bits,
                 quest_item_obtained_bits,
+                tutorial_step,
             } => {
                 self.completion = CompletionSnapshot {
                     labyrinth_progress: *labyrinth_progress,
@@ -578,6 +582,7 @@ impl PlayerState {
                     quest_completion_bits: *quest_completion_bits,
                     quest_started_bits: *quest_started_bits,
                     quest_item_obtained_bits: *quest_item_obtained_bits,
+                    tutorial_step: *tutorial_step,
                 };
             }
             ServerCommandData::SetCharHp { values } => {

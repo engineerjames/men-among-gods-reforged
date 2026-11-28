@@ -1093,6 +1093,31 @@ const ZOETJE_FALLBACK_POS: (usize, usize) = (HOME_MERCENARY_X as usize, HOME_MER
 /// What Zoetje tells the player before sending them to Aston early.
 const ZOETJE_FALLBACK_MESSAGE: &str = "The weave of the Temple of Rebirth is fraying- I cannot hold these halls together around you any longer. I will send you to the Temple of Skua in Aston instead. Go with the gods!";
 
+/// Returns the tutorial progress byte sent to the client in `SetCompletionData`.
+///
+/// A character counts as having left the starting area once its temple is no
+/// longer [`HOME_START_X`]/[`HOME_START_Y`]: the exit portal and
+/// [`zoetje_send_to_aston`] both rebind it, and characters created before the
+/// tutorial existed never had it.
+///
+/// # Arguments
+///
+/// * `ch` - Player character.
+///
+/// # Returns
+///
+/// * [`core::server_commands::TUTORIAL_STEP_LEFT`] once the character left the
+///   starting area, otherwise its current tutorial step.
+pub fn zoetje_tutorial_step_for_client(ch: &Character) -> u8 {
+    let in_start_area =
+        i32::from(ch.temple_x) == HOME_START_X && i32::from(ch.temple_y) == HOME_START_Y;
+    if !in_start_area {
+        return core::server_commands::TUTORIAL_STEP_LEFT;
+    }
+    ch.future3[ZOETJE_TUTORIAL_STEP_IDX]
+        .clamp(0, i32::from(core::server_commands::TUTORIAL_STEP_LEFT) - 1) as u8
+}
+
 /// What the player must do before Zoetje will deliver a given tutorial line.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum ZoetjeGate {
@@ -1372,6 +1397,7 @@ fn zoetje_send_to_aston(gs: &mut GameState, cn: usize, player: usize) {
     character.tavern_x = x as u16;
     character.tavern_y = y as u16;
     character.future3[ZOETJE_TUTORIAL_STEP_IDX] = ZOETJE_TUTORIAL_DONE_STEP;
+    player::commands::resend_completion_data_for_character(gs, player);
 
     if !God::transfer_char(gs, player, x, y) {
         log::error!("Zoetje could not send character {player} to Aston ({x}, {y})");
@@ -1579,6 +1605,7 @@ fn npc_zoetje_advance_tutorial(
 
     // Commit progress first: the room transfer re-enters this driver via NT_SEE.
     gs.characters[player].future3[ZOETJE_TUTORIAL_STEP_IDX] = step + 1;
+    player::commands::resend_completion_data_for_character(gs, player);
     gs.characters[player].future3[ZOETJE_TUTORIAL_NEXT_TICK_IDX] = gs
         .globals
         .ticker
@@ -1879,13 +1906,13 @@ pub fn npc_malte_msg(
 #[cfg(test)]
 mod tests {
     use super::{
-        ZOETJE_FALLBACK_POS, ZOETJE_FLASK_STEP, ZOETJE_PRACTICE_ENEMY_LIFETIME,
+        ZOETJE_FALLBACK_POS, ZOETJE_FLASK_STEP, ZOETJE_POTION_STEP, ZOETJE_PRACTICE_ENEMY_LIFETIME,
         ZOETJE_PRACTICE_ENEMY_TEMPLATE, ZOETJE_SLAIN_STEP, ZOETJE_START_ROOM_POS,
         ZOETJE_TUTORIAL_DONE_STEP, ZOETJE_TUTORIAL_STEP_IDX, ZoetjeGate, npc_zoetje_low,
         npc_zoetje_msg, zoetje_action_gate_just_cleared, zoetje_gate_satisfied,
         zoetje_player_has_potion, zoetje_player_in_practice_room, zoetje_practice_enemy_killed,
         zoetje_send_to_aston, zoetje_spawn_practice_enemy, zoetje_tell_parts,
-        zoetje_tutorial_dialogue,
+        zoetje_tutorial_dialogue, zoetje_tutorial_step_for_client,
     };
     use crate::test_helpers::{add_test_player, with_test_gs};
     use core::constants::NT_SEE;
@@ -1893,6 +1920,7 @@ mod tests {
         CharacterFlags, DR_IDLE, DR_TURN, DX_DOWN, DX_UP, IT_FLASK, IT_HEALING_POTION,
         IT_RED_FLOWER, SERVER_MAPX, USE_ACTIVE, WN_BODY, WN_RHAND,
     };
+    use core::constants::{HOME_MERCENARY_X, HOME_START_X, HOME_START_Y};
     use core::traits::Class;
 
     #[test]
@@ -2183,6 +2211,24 @@ mod tests {
             assert_ne!((enemy.x, enemy.y), (10, 10));
             assert!((i32::from(enemy.x) - 10).abs() <= 2 && (i32::from(enemy.y) - 10).abs() <= 2);
         });
+    }
+
+    #[test]
+    fn tutorial_step_for_client_reports_left_once_home_moves() {
+        let mut ch = core::types::Character::default();
+        ch.temple_x = HOME_START_X as u16;
+        ch.temple_y = HOME_START_Y as u16;
+        ch.future3[ZOETJE_TUTORIAL_STEP_IDX] = ZOETJE_POTION_STEP;
+        assert_eq!(
+            zoetje_tutorial_step_for_client(&ch),
+            ZOETJE_POTION_STEP as u8
+        );
+
+        ch.temple_x = HOME_MERCENARY_X as u16;
+        assert_eq!(
+            zoetje_tutorial_step_for_client(&ch),
+            core::server_commands::TUTORIAL_STEP_LEFT
+        );
     }
 
     #[test]
